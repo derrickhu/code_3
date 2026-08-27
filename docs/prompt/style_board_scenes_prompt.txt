@@ -1,0 +1,16 @@
+Premium Chinese casual-game environment style board, 2x2 equal panels, thin dark gutter.
+
+House style (MUST be identical across all later scene plates):
+- High-end WeChat minigame environment art, cinematic but readable at phone size
+- Painterly lighting, soft volumetric glow, rich material: plastic, rust, warm tiles, paper, night glass
+- Slightly stylized modern Chinese adults, appealing not chibi-ugly, not photoreal, not anime-pretty
+- Large obvious props, uncluttered composition, empty stage space in the middle
+- Warm key light vs cool shadow. Color: warm lamp #f2d48a, plastic blue #3d7ea6, rust red #b5523a, cement, paper cream
+- NO TEXT, no labels, no captions, no Chinese characters, no letters, no numbers, no watermarks, no UI, no logos
+
+Panel 1 — Night convenience store: hanging blank sign board, cashier at counter with cash peeking from sleeve, expired bread bag on counter, two customers in a short queue, fluorescent lamps
+Panel 2 — Back kitchen / staff room: roster board on wall (blank), manager badge on a jacket, red envelope on a table
+Panel 3 — Counter inside: security camera facing a wall, open cash drawer with a hidden layer, crumpled receipt
+Panel 4 — Dinner table: sliding bill, phone face-up, empty glasses, two people eating
+
+Same camera height, same outline softness, same lighting language.

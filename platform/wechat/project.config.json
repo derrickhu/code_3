@@ -1,0 +1,26 @@
+{
+  "description": "不对劲 · 微信小游戏。用微信开发者工具打开 build/wechat/",
+  "projectname": "不对劲",
+  "appid": "",
+  "compileType": "game",
+  "libVersion": "3.12.1",
+  "isGameTourist": false,
+  "editorSetting": {},
+  "simulatorPluginLibVersion": {},
+  "setting": {
+    "es6": false,
+    "minified": false,
+    "enhance": false,
+    "urlCheck": false,
+    "uploadWithSourceMap": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "swc": false,
+    "disableSWC": true,
+    "postcss": false
+  },
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  }
+}

@@ -1,0 +1,12 @@
+All variant plates use the matching base scene as reference. Keep camera, style, and materials. Change only the exposed prop lighting / story. Sign boards and screens stay blank. NO TEXT, no labels, no captions, no Chinese characters, no letters, no numbers, no watermarks, no logos, no UI.
+
+store_sign: same store, overtime grind, harsher lamps, longer queue.
+store_cash: same store, closed and guilty, cash spilling from sleeve.
+overtime_roster: spotlight the blank roster board.
+overtime_badge: spotlight the manager badge.
+books_camera: spotlight camera facing a wall.
+books_drawer: spotlight hidden bills in the drawer.
+dinner_bill: spotlight the bill being slid over.
+dinner_phone: spotlight phone with abstract payment blocks only.
+wrap_oldsign: spotlight the changed blank hanging board.
+wrap_dropped: spotlight cash on the sidewalk.
