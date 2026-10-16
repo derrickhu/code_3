@@ -35,6 +35,7 @@ namespace Rescue.Sim
             Sides[0] = new Side(0, this, false, seed * 7 + 1, playerItems);
             Sides[1] = new Side(1, this, true, seed * 13 + 5, null);
             Sides[1].IncomeMul = chapter.RivalIncome;
+            if (playerItems != null && playerItems.Xuming) Sides[1].AddMaxHp(6);
         }
 
         public float NextWaveIn => _qi < _queue.Count ? 0 : Math.Max(0, _nextWaveT - Time);

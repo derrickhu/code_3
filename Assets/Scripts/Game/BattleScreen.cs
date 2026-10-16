@@ -19,7 +19,7 @@ namespace Rescue
     /// <summary>一局战斗：对局、对手 AI、界面浮层（横幅、引导、暂停、结算）。</summary>
     public sealed class BattleScreen : MonoBehaviour
     {
-        enum Tut { Recruit, Place, Merge, Gold, Hero, Rain, Dismiss }
+        enum Tut { Recruit, Place, Merge, Gold, Hero, Rain, Dismiss, Dig, Danger }
 
         public Match M { get; private set; }
         public BattleView View { get; private set; }
@@ -124,7 +124,7 @@ namespace Rescue
             Ui.Label(card.transform, $"头目：{ch.Boss.Title}{ch.Boss.Name}（{ch.Boss.SkillText}）\n克星：{nem}，对他伤害 ×5", 36, Pal.RedDeep,
                 new Vector2(0, -150), new Vector2(800, 140));
             Ui.Label(card.transform, "对手：" + ch.RivalName + "（谁的宋江先倒谁输）", 34, Pal.InkSoft, new Vector2(0, -255), new Vector2(800, 60));
-            if (items != null && (items.Gang || items.Flag || items.Marsh || items.Stele || items.MengHan > 0 || items.TianShu > 0))
+            if (items != null && ItemSummary(items).Length > 0)
                 Ui.Label(card.transform, "随身：" + ItemSummary(items), 34, Pal.Willow, new Vector2(0, -320), new Vector2(800, 60));
 
             Ui.Btn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Pal.Red, () =>
@@ -145,6 +145,9 @@ namespace Rescue
             if (l.Stele) parts.Add("石碣");
             if (l.MengHan > 0) parts.Add("蒙汗药×" + l.MengHan);
             if (l.TianShu > 0) parts.Add("天书×" + l.TianShu);
+            if (l.Baozi > 0) parts.Add("包子×" + l.Baozi);
+            if (l.Xuming) parts.Add("续命丹");
+            if (l.Shovels > 0) parts.Add("铲子×" + l.Shovels);
             return string.Join("、", parts);
         }
 
@@ -180,8 +183,15 @@ namespace Rescue
                 case Ev.ItemUsed when mine:
                     Banner(ev.Text + "！", "", Pal.Willow, 0.7f);
                     break;
-                case Ev.StaffUsed when mine && ev.Flag == 1:
-                    Banner("倒拔垂杨柳！", "鲁智深拔掉柳树，开出一块新地", Pal.Willow, 0.8f);
+                case Ev.Shovels when mine && ev.Val == 1:
+                    Banner("方便铲！", "鲁智深送来一把铲子，拖到草地上开荒", Pal.Willow, 0.8f);
+                    break;
+                case Ev.Rescue when mine:
+                    Banner("宋江哥哥高枕无忧了！", "公孙胜作法：官兵清场，十二秒内宋江不掉血", Pal.Red, 1.2f);
+                    break;
+                case Ev.Dig when mine && !Save.Tut((int)Tut.Dig):
+                    Save.SetTut((int)Tut.Dig);
+                    ShowHint("开出来的白地才能摆字。\n招兵偶尔会掉铲子，上方铲子按钮看广告也能领。", 5f);
                     break;
                 case Ev.Merge when mine:
                     if (_tut == Tut.Merge) CompleteTut();
@@ -228,8 +238,9 @@ namespace Rescue
                 layer.anchoredPosition = new Vector2(0, 260);
                 var g = layer.gameObject.AddComponent<CanvasGroup>();
                 g.blocksRaycasts = false;
-                Ui.Box(layer, new Vector2(1080, 300), Vector2.zero, Pal.Paper.A(0.92f), Art.Blob2);
-                var t = Ui.Label(layer, title, 120, color, new Vector2(0, 30), new Vector2(1000, 160), TextAnchor.MiddleCenter, Fonts.Brush);
+                Ui.Box(layer, new Vector2(980, 280), Vector2.zero, Pal.Paper);
+                int size = Mathf.Min(120, 900 / Mathf.Max(1, title.Length));
+                var t = Ui.Label(layer, title, size, color, new Vector2(0, 30), new Vector2(1000, 160), TextAnchor.MiddleCenter, Fonts.Brush);
                 if (!string.IsNullOrEmpty(sub)) Ui.Label(layer, sub, 38, Pal.Ink, new Vector2(0, -80), new Vector2(980, 60));
                 Tween.Pop(t.transform, 0.3f);
                 Tween.FadeGroup(g, 0, 1, 0.12f);
@@ -281,7 +292,7 @@ namespace Rescue
                     _ringPos = View.RecruitButtonPos;
                     break;
                 case Tut.Place:
-                    ShowHint("把山寨里的字拖到绿色草地上，\n他们会自动打路上的官兵。", 999);
+                    ShowHint("把山寨里的字拖到路边的白地上，\n他们会自动打路上的官兵。", 999);
                     _ringPos = BattleView.CampWorld(0);
                     break;
                 case Tut.Merge:
@@ -331,6 +342,12 @@ namespace Rescue
 
             if (_tut != null || M.Hold || Autoplay) return;
             var p = M.Player;
+            if (!Save.Tut((int)Tut.Danger) && p.InDanger && !p.RescueUsed)
+            {
+                Save.SetTut((int)Tut.Danger);
+                ShowHint("宋江危险！点山寨右边的「救」，\n看段广告请公孙胜作法清场护身。", 4f);
+                return;
+            }
             if (!Save.Tut((int)Tut.Dismiss) && Save.Tut((int)Tut.Place) && p.EmptyCampSlots == 0 && !p.CanRecruit && p.Buns >= p.RecruitCost)
             {
                 Save.SetTut((int)Tut.Dismiss);

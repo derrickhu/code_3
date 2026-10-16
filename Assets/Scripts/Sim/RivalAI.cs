@@ -48,7 +48,7 @@ namespace Rescue.Sim
 
         void Act()
         {
-            if (TryStaff()) return;
+            if (TryDig()) return;
             if (_rng.Chance(0.15f + 0.85f * _skill) && TryMergeCamp()) return;
             for (int i = 0; i < _s.Camp.Length; i++)
             {
@@ -77,20 +77,33 @@ namespace Rescue.Sim
             {
                 var p = _s.Camp[i];
                 if (p == null) continue;
-                float v = p.Type == PieceType.Chanzhang ? 0 : p.Type == PieceType.HeroChar ? (BestCharScore(p.Char) >= 10 ? 25 : 5) : p.Level * 10;
+                float v = p.Type == PieceType.Shovel ? 100 : p.Type == PieceType.HeroChar ? (BestCharScore(p.Char) >= 10 ? 25 : 5) : p.Level * 10;
                 v += _rng.Next01() * (1f - _skill) * 40f;
                 if (v < worst) { worst = v; pick = i; }
             }
             if (pick >= 0) _s.DismissCamp(pick);
         }
 
-        bool TryStaff()
+        /// <summary>有铲子就往离路最近的草地开荒；新手挑得随便。</summary>
+        bool TryDig()
         {
+            var b = _s.Board;
             for (int i = 0; i < _s.Camp.Length; i++)
             {
                 var p = _s.Camp[i];
-                if (p == null || p.Type != PieceType.Chanzhang) continue;
-                if (_s.Board.TryFindWillow(out var w)) return _s.CampToCell(i, w.c, w.r);
+                if (p == null || p.Type != PieceType.Shovel) continue;
+                int bc = -1, br = -1;
+                float best = -1;
+                for (int c = 0; c < Board.Cols; c++)
+                    for (int r = 0; r < Board.Rows; r++)
+                    {
+                        if (!b.Diggable(c, r)) continue;
+                        float s = _coverage[0][c, r] + _coverage[2][c, r] * 0.5f + _rng.Next01() * (1f - _skill) * 15f;
+                        if (s > best) { best = s; bc = c; br = r; }
+                    }
+                if (bc >= 0) return _s.CampToCell(i, bc, br);
+                _s.DismissCamp(i);
+                return true;
             }
             return false;
         }

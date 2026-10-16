@@ -1,0 +1,6 @@
+A 3 columns x 3 rows sprite sheet, 9 panels, each object centered alone on a flat plain warm off-white rice-paper background (#EFE4CC) with generous empty margin, no frames, no grid lines.
+Style: traditional Chinese ink-wash (shuimo) with bold confident brush outlines and light watercolor tint, cute casual mobile game icon readability, consistent line weight and lighting across all panels, Water Margin (Shuihu) Song dynasty theme.
+Row 1: (1) a round lush green shrub bush with dark ink outline, small leaves, (2) a Song dynasty official black futou hat with two long thin horizontal wing flaps sticking out left and right, front view, (3) a monk's crescent spade (Buddhist monk shovel, fangbian chan) diagonally, wooden pole with an iron crescent blade at one end.
+Row 2: (4) a single white fluffy steamed bun (baozi) with pleated top, (5) an ancient Chinese copper coin with square hole, gold-bronze color, (6) a traditional wooden recurve bow with taut string, vertical.
+Row 3: (7) a Chinese broad saber (dao) blade, diagonal, steel with red tassel, (8) a red-tasseled spear head on short shaft, diagonal, (9) a galloping ink horse silhouette, dynamic side view, black ink with a little brown wash.
+NO TEXT, no labels, no captions, no characters, no calligraphy, no seals, no writing anywhere in the image.

@@ -6,22 +6,29 @@ using UnityEngine.UI;
 
 namespace Rescue
 {
+    /// <summary>神秘商人（孙二娘）的货：主动道具战斗里点着用，被动道具开局就生效。</summary>
     public sealed class ShopItem
     {
         public int Id;
-        public string Name, Desc;
+        public string Name, Desc, Rarity, Icon;
+        public bool Active;
         public int Price;
         public Func<bool> Owned;
         public Action Give;
 
+        public Color RarityColor => Rarity == "传说" ? Pal.Hex("D9822B") : Rarity == "卓越" ? Pal.Purple : Pal.Hex("3D7BBF");
+
         public static readonly ShopItem[] All =
         {
-            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +20", Price = 40, Owned = () => Save.D.gang, Give = () => Save.D.gang = true },
-            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +10%", Price = 60, Owned = () => Save.D.flag, Give = () => Save.D.flag = true },
-            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -15%", Price = 50, Owned = () => Save.D.marsh, Give = () => Save.D.marsh = true },
-            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时\n天降石碣砸下", Price = 70, Owned = () => Save.D.stele, Give = () => Save.D.stele = true },
-            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "战斗中点击\n全场官兵昏睡 3 秒", Price = 30, Owned = () => Save.D.menghan >= 3, Give = () => Save.D.menghan++ },
-            new ShopItem { Id = 5, Name = "天书", Desc = "战斗中点击\n最高级的字再升一级", Price = 45, Owned = () => Save.D.tianshu >= 3, Give = () => Save.D.tianshu++ },
+            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +20", Rarity = "稀有", Icon = "coin", Price = 40, Owned = () => Save.D.gang, Give = () => Save.D.gang = true },
+            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +10%", Rarity = "卓越", Price = 80, Owned = () => Save.D.flag, Give = () => Save.D.flag = true },
+            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -15%", Rarity = "卓越", Price = 70, Owned = () => Save.D.marsh, Give = () => Save.D.marsh = true },
+            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时\n天降石碣砸下", Rarity = "传说", Price = 120, Owned = () => Save.D.stele, Give = () => Save.D.stele = true },
+            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "战斗中点击\n全场官兵昏睡 3 秒", Rarity = "卓越", Active = true, Price = 60, Owned = () => Save.D.menghan >= 1, Give = () => Save.D.menghan++ },
+            new ShopItem { Id = 5, Name = "天书", Desc = "战斗中点击\n最低级的字升一级", Rarity = "传说", Active = true, Price = 150, Owned = () => Save.D.tianshu >= 1, Give = () => Save.D.tianshu++ },
+            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "55% 给宋江回一颗心\n45% 吃坏肚子掉一颗心", Rarity = "稀有", Icon = "bun", Active = true, Price = 50, Owned = () => Save.D.baozi >= 1, Give = () => Save.D.baozi++ },
+            new ShopItem { Id = 7, Name = "续命丹", Desc = "我方宋江 +10 血\n对手宋江 +6 血", Rarity = "传说", Price = 150, Owned = () => Save.D.xuming, Give = () => Save.D.xuming = true },
+            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子\n多开两块地", Rarity = "稀有", Icon = "shovel", Price = 50, Owned = () => Save.D.shovels >= 2, Give = () => Save.D.shovels = 2 },
         };
     }
 
@@ -56,13 +63,10 @@ namespace Rescue
             _root.anchorMax = Vector2.one;
             _root.offsetMin = _root.offsetMax = Vector2.zero;
 
+            Save.RefreshShopDay();
             var bg = _root.gameObject.AddComponent<Image>();
-            bg.sprite = Art.Paper;
-            bg.type = Image.Type.Tiled;
-            bg.color = Pal.Paper;
-
-            var ink = Ui.Box(_root, new Vector2(1500, 900), new Vector2(-250, 640), Pal.Ink.A(0.06f), Art.Blob);
-            ink.rectTransform.localRotation = Quaternion.Euler(0, 0, 8);
+            bg.sprite = Art.Img("home_bg");
+            bg.color = Color.white;
 
             var top = Ui.Rect(_root, "top");
             Ui.Anchor(top, 0.5f, 1f);
@@ -115,7 +119,9 @@ namespace Rescue
             Ui.Label(go.transform, "体力 -1", 28, Pal.Paper.A(0.8f), new Vector2(0, -62), new Vector2(300, 40));
             StartCoroutineLoop(go.transform.parent);
             Ui.Btn(bottom, "好汉谱", new Vector2(440, 130), new Vector2(-240, 200), Pal.Ink, ShowCodex, 54, Pal.GoldBright, Fonts.Brush);
-            Ui.Btn(bottom, "十字坡酒店", new Vector2(440, 130), new Vector2(240, 200), Pal.Willow, ShowShop, 50, Pal.Paper, Fonts.Brush);
+            var shopBtn = Ui.Btn(bottom, "神秘商人", new Vector2(440, 130), new Vector2(240, 200), Pal.Willow, ShowShop, 54, Pal.Paper, Fonts.Brush);
+            var face = Ui.Box(shopBtn.transform, new Vector2(150, 150), new Vector2(-190, 40), Color.white, Art.Img("merchant"));
+            face.preserveAspect = true;
             Ui.Label(bottom, "垂直切片 Demo v0.1 · 题材原创 · 字体 OFL", 26, Pal.InkSoft.A(0.6f), new Vector2(0, 70), new Vector2(900, 40));
 
             Refresh();
@@ -197,8 +203,7 @@ namespace Rescue
             int s = Stamina.Current;
             int sec = Stamina.SecondsToNext;
             _stamina.text = s >= Stamina.Max ? $"体力 {s}/{Stamina.Max}" : $"体力 {s}/{Stamina.Max}  {sec / 60}:{sec % 60:00}";
-            var l = new Loadout { Gang = Save.D.gang, Flag = Save.D.flag, Marsh = Save.D.marsh, Stele = Save.D.stele, MengHan = Save.D.menghan, TianShu = Save.D.tianshu };
-            _loadout.text = Save.D.HasAnyItem ? "下一战随身：" + BattleScreen.ItemSummary(l) : "";
+            _loadout.text = Save.D.HasAnyItem ? "下一战随身：" + BattleScreen.ItemSummary(Save.D.PeekLoadout()) : "";
         }
 
         // ─────────────────────────── 浮层 ───────────────────────────
@@ -262,38 +267,63 @@ namespace Rescue
 
         public void ShowShop()
         {
-            Panel("十字坡酒店", out var card, new Vector2(1000, 1560));
-            Ui.Label(card, "孙二娘：客官里面请——买了都带去下一战用。", 34, Pal.InkSoft, new Vector2(0, 590), new Vector2(900, 60));
-            var coins = Ui.Label(card, "", 40, Pal.Gold, new Vector2(0, 525), new Vector2(900, 60));
+            Save.RefreshShopDay();
+            Panel("神秘商人", out var card, new Vector2(1000, 1700));
+            var portrait = Ui.Box(card, new Vector2(300, 300), new Vector2(-320, 530), Color.white, Art.Img("merchant"));
+            portrait.preserveAspect = true;
+            var bubble = Ui.Box(card, new Vector2(560, 170), new Vector2(150, 560), Pal.Tile);
+            Ui.Label(bubble.transform, "孙二娘：客官，好货不等人！\n道具仅当天有效，明日换新货。", 32, Pal.Ink, Vector2.zero, new Vector2(530, 150), TextAnchor.MiddleLeft);
+            var coins = Ui.Label(card, "", 40, Pal.Gold, new Vector2(150, 440), new Vector2(560, 60));
+            Ui.Box(card, new Vector2(48, 48), new Vector2(-30, 440), Color.white, Art.Img("coin"));
             var buttons = new List<(ShopItem item, Button btn)>();
             void RefreshShop()
             {
-                coins.text = "铜钱 " + Save.D.coins;
+                coins.text = "　 铜钱 " + Save.D.coins;
                 foreach (var (item, btn) in buttons)
-                    Ui.SetText(btn, item.Owned() ? "已备" : item.Price + " 文");
+                    Ui.SetText(btn, Save.D.shopSold.Contains(item.Id) || item.Owned() ? "已购" : item.Price + " 文");
                 Refresh();
             }
-            for (int i = 0; i < ShopItem.All.Length; i++)
+
+            void Section(string title, bool active, float y)
             {
-                var it = ShopItem.All[i];
-                var pos = new Vector2(i % 2 == 0 ? -235 : 235, 330 - (i / 2) * 320);
-                var face = Ui.Box(card, new Vector2(450, 300), pos, Pal.Tile);
-                Ui.Label(face.transform, it.Name, 64, Pal.Ink, new Vector2(0, 90), new Vector2(440, 90), TextAnchor.MiddleCenter, Fonts.Brush);
-                Ui.Label(face.transform, it.Desc, 30, Pal.InkSoft, new Vector2(0, 5), new Vector2(420, 90));
-                var b = Ui.Btn(face.transform, "", new Vector2(260, 80), new Vector2(0, -95), Pal.Red, () =>
+                Ui.Box(card, new Vector2(920, 54), new Vector2(0, y), Pal.Ink.A(0.85f));
+                Ui.Label(card, title, 34, Pal.GoldBright, new Vector2(0, y), new Vector2(900, 54));
+                int col = 0;
+                foreach (int id in Save.D.shopOffer)
                 {
-                    if (it.Owned()) { Toast("已经备好了"); return; }
-                    if (Save.D.coins < it.Price) { Toast("铜钱不够，打仗去赚"); return; }
-                    Save.D.coins -= it.Price;
-                    it.Give();
-                    Save.Write();
-                    Sfx.Play(Snd.Merge);
-                    RefreshShop();
-                }, 38, Pal.Paper);
-                buttons.Add((it, b));
+                    var it = ShopItem.All[id];
+                    if (it.Active != active) continue;
+                    var pos = new Vector2(col == 0 ? -235 : 235, y - 210);
+                    col++;
+                    var face = Ui.Box(card, new Vector2(450, 340), pos, Pal.Tile);
+                    var tag = Ui.Box(face.transform, new Vector2(110, 46), new Vector2(-155, 135), it.RarityColor);
+                    Ui.Label(tag.transform, it.Rarity, 28, Pal.Paper, Vector2.zero, new Vector2(110, 46));
+                    if (it.Icon != null)
+                    {
+                        var icon = Ui.Box(face.transform, new Vector2(110, 110), new Vector2(-140, 40), Color.white, Art.Img(it.Icon));
+                        icon.preserveAspect = true;
+                    }
+                    else Ui.Label(face.transform, it.Name.Substring(0, 1), 96, it.RarityColor, new Vector2(-140, 40), new Vector2(120, 120), TextAnchor.MiddleCenter, Fonts.Brush);
+                    Ui.Label(face.transform, it.Name, it.Name.Length > 4 ? 46 : 58, Pal.Ink, new Vector2(60, 80), new Vector2(300, 80), TextAnchor.MiddleCenter, Fonts.Brush);
+                    Ui.Label(face.transform, it.Desc, 28, Pal.InkSoft, new Vector2(60, 5), new Vector2(300, 80));
+                    var b = Ui.Btn(face.transform, "", new Vector2(260, 80), new Vector2(0, -115), Pal.Red, () =>
+                    {
+                        if (Save.D.shopSold.Contains(it.Id) || it.Owned()) { Toast("今天已经买过了"); return; }
+                        if (Save.D.coins < it.Price) { Toast("铜钱不够，打仗去赚"); return; }
+                        Save.D.coins -= it.Price;
+                        it.Give();
+                        Save.D.shopSold.Add(it.Id);
+                        Save.Write();
+                        Sfx.Play(Snd.Merge);
+                        RefreshShop();
+                    }, 38, Pal.Paper);
+                    buttons.Add((it, b));
+                }
             }
-            Ui.Btn(card, "看广告 白拿一包蒙汗药", new Vector2(640, 110), new Vector2(0, -560), Pal.Gold, () =>
-                AdStub.Show("免费道具", () => { Save.D.menghan = Mathf.Min(3, Save.D.menghan + 1); Save.Write(); RefreshShop(); }), 40, Pal.Paper);
+            Section("主动道具 · 战斗中点击使用", true, 330);
+            Section("被动道具 · 开局自动生效", false, -150);
+            Ui.Btn(card, "看广告 白拿一个孙二娘包子", new Vector2(700, 110), new Vector2(0, -620), Pal.Gold, () =>
+                AdStub.Show("免费道具", () => { Save.D.baozi = Mathf.Min(3, Save.D.baozi + 1); Save.Write(); RefreshShop(); }), 40, Pal.Paper);
             RefreshShop();
         }
 
@@ -356,7 +386,8 @@ namespace Rescue
             if (r.NewHeroes.Count > 0)
                 Ui.Label(card, $"好汉谱 +{r.NewHeroes.Count}", 40, Pal.Red, new Vector2(0, -120), new Vector2(600, 60));
 
-            var coinText = Ui.Label(card, "铜钱 +" + coins, 64, Pal.Gold, new Vector2(0, -230), new Vector2(800, 100), TextAnchor.MiddleCenter, Fonts.Brush);
+            var coinText = Ui.Label(card, "铜钱 +" + coins, 64, Pal.Gold, new Vector2(30, -230), new Vector2(800, 100), TextAnchor.MiddleCenter, Fonts.Brush);
+            Ui.Box(card, new Vector2(90, 90), new Vector2(-200, -230), Color.white, Art.Img("coin")).preserveAspect = true;
             bool claimed = false;
             void Close()
             {

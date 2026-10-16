@@ -15,8 +15,19 @@ namespace Rescue.Tests
             for (int i = 0; i < s.Camp.Length; i++) s.Camp[i] = null;
         }
 
+        static void OpenAll(Side s)
+        {
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    if (s.Board.Cells[c, r] == Cell.Grass) s.Board.Cells[c, r] = Cell.Tile;
+                    else if (s.Board.Cells[c, r] == Cell.Marsh) s.Board.Cells[c, r] = Cell.Water;
+                }
+        }
+
         static CellPos FindRun(Side s, int len, CellPos dir)
         {
+            OpenAll(s);
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
                 {
@@ -36,11 +47,13 @@ namespace Rescue.Tests
                 var b = new Board(ch.Map);
                 Assert.Greater(b.Path.Count, 10, ch.Name);
                 Assert.AreEqual(b.Goal, b.Path[b.Path.Count - 1], ch.Name);
-                int placeable = 0;
+                int start = b.PlaceableCount, potential = 0;
                 for (int c = 0; c < Board.Cols; c++)
                     for (int r = 0; r < Board.Rows; r++)
-                        if (b.Placeable(c, r)) placeable++;
-                Assert.GreaterOrEqual(placeable, 14, ch.Name + " 可放格子太少");
+                        if (b.Cells[c, r] != Cell.Path && b.Cells[c, r] != Cell.Rock) potential++;
+                Assert.That(start, Is.InRange(5, 8), ch.Name + " 开局白地应是一小块");
+                Assert.GreaterOrEqual(potential, 18, ch.Name + " 能开荒的地太少");
+                Assert.IsTrue(b.AnyDiggable(), ch.Name);
             }
         }
 
@@ -68,7 +81,7 @@ namespace Rescue.Tests
             Assert.IsFalse(Side.CanMerge(Piece.Unit(UnitKind.Qi, UnitDef.MaxLevel), Piece.Unit(UnitKind.Qi, UnitDef.MaxLevel)));
             Assert.IsTrue(Side.CanMerge(Piece.Hero('武'), Piece.Hero('武')));
             Assert.IsFalse(Side.CanMerge(Piece.Hero('武'), Piece.Hero('松')));
-            Assert.IsFalse(Side.CanMerge(Piece.Staff(), Piece.Staff()));
+            Assert.IsFalse(Side.CanMerge(Piece.Shovel(), Piece.Shovel()));
         }
 
         [Test]
@@ -190,14 +203,101 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void StaffClearsWillow()
+        public void ShovelDigsGrassIntoTile()
         {
             var s = NewMatch().Player;
-            Assert.IsTrue(s.Board.TryFindWillow(out var w));
-            s.Camp[0] = Piece.Staff();
-            Assert.IsFalse(s.CampToCell(0, s.Board.Spawn.c, s.Board.Spawn.r));
-            Assert.IsTrue(s.CampToCell(0, w.c, w.r));
-            Assert.AreEqual(Cell.Grass, s.Board.Cells[w.c, w.r]);
+            Clear(s);
+            CellPos near = default, tile = default;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    if (s.Board.Cells[c, r] == Cell.Grass) near = new CellPos(c, r);
+                    if (s.Board.Cells[c, r] == Cell.Tile) tile = new CellPos(c, r);
+                }
+            Assert.IsFalse(s.Board.Placeable(near.c, near.r), "草地开荒前不能摆");
+            s.Camp[1] = Piece.Unit(UnitKind.Dao);
+            Assert.IsFalse(s.CampToCell(1, near.c, near.r));
+
+            s.Camp[0] = Piece.Shovel();
+            Assert.IsFalse(s.CampToCell(0, s.Board.Spawn.c, s.Board.Spawn.r), "路不能挖");
+            Assert.IsFalse(s.CampToCell(0, tile.c, tile.r), "白地不用再挖");
+            int before = s.Board.PlaceableCount;
+            Assert.IsTrue(s.CampToCell(0, near.c, near.r));
+            Assert.IsNull(s.Camp[0]);
+            Assert.AreEqual(Cell.Tile, s.Board.Cells[near.c, near.r]);
+            Assert.AreEqual(before + 1, s.Board.PlaceableCount);
+        }
+
+        [Test]
+        public void AdShovelsOverflowIntoStock()
+        {
+            var s = NewMatch().Player;
+            Clear(s);
+            for (int i = 1; i < s.Camp.Length; i++) s.Camp[i] = Piece.Unit(UnitKind.Dao);
+            s.GrantShovels(Tuning.AdShovels);
+            Assert.AreEqual(PieceType.Shovel, s.Camp[0].Type);
+            Assert.AreEqual(1, s.ShovelStock);
+            s.DismissCamp(1);
+            Assert.AreEqual(PieceType.Shovel, s.Camp[1].Type, "空出来的位置自动补铲子");
+            Assert.AreEqual(0, s.ShovelStock);
+        }
+
+        [Test]
+        public void HeroGainsXpAndLevelsUpAllChars()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            Clear(s);
+            var at = FindRun(s, 2, new CellPos(1, 0));
+            s.Board.Pieces[at.c, at.r] = Piece.Hero('武');
+            s.Board.Pieces[at.c + 1, at.r] = Piece.Hero('松');
+            s.RecomputeHeroes();
+            var h = s.Heroes[0];
+            h.UltCd = 999;
+            h.Xp = HeroInstance.XpNeed(1) - 0.1f;
+            m.SpawnOn(s, EnemyKind.Zu, 0);
+            s.Enemies[0].Pos = h.Pos;
+            s.Enemies[0].StunT = 999;
+            for (int i = 0; i < 30 && h.Level == 1; i++) m.Step(0.05f);
+            Assert.AreEqual(2, h.Level);
+            Assert.AreEqual(2, s.Board.Pieces[at.c, at.r].Level);
+            Assert.AreEqual(2, s.Board.Pieces[at.c + 1, at.r].Level);
+        }
+
+        [Test]
+        public void RescueClearsGruntsAndShieldsGoal()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            for (int i = 0; i < 4; i++) m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.5f);
+            Assert.IsTrue(s.InDanger);
+            Assert.IsTrue(s.Rescue());
+            Assert.IsFalse(s.Rescue(), "一局只能请一次");
+            foreach (var e in s.Enemies) Assert.IsTrue(e.Dead);
+            m.Step(0.02f);
+            int hp = s.Hp;
+            m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.01f);
+            m.Step(0.05f);
+            Assert.AreEqual(hp, s.Hp, "护身期间不掉血");
+        }
+
+        [Test]
+        public void BaoziMovesOneHeartEitherWay()
+        {
+            var s = new Match(ChapterDef.All[0], 42, new Loadout { Baozi = 1 }).Player;
+            s.Hp = 15;
+            Assert.IsTrue(s.UseBaozi());
+            Assert.That(s.Hp == 25 || s.Hp == 5, "包子只会回或掉一颗心");
+            Assert.IsFalse(s.UseBaozi());
+        }
+
+        [Test]
+        public void XumingRaisesBothSidesUnevenly()
+        {
+            var m = new Match(ChapterDef.All[0], 42, new Loadout { Xuming = true });
+            Assert.AreEqual(Tuning.MaxHp + 10, m.Player.Hp);
+            Assert.AreEqual(Tuning.MaxHp + 6, m.Rival.Hp);
+            Assert.AreEqual(4, m.Player.MaxHearts);
         }
 
         [Test]

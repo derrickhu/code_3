@@ -19,20 +19,31 @@ namespace Rescue
         public string shopDay = "";
         public List<int> shopOffer = new List<int>();
         public List<int> shopSold = new List<int>();
-        public bool gang, flag, marsh, stele;
-        public int menghan, tianshu;
+        public bool gang, flag, marsh, stele, xuming;
+        public int menghan, tianshu, baozi, shovels;
         public bool sfx = true;
         public int wins, battles;
 
+        public Loadout PeekLoadout() => new Loadout
+        {
+            Gang = gang, Flag = flag, Marsh = marsh, Stele = stele, MengHan = menghan, TianShu = tianshu,
+            Baozi = baozi, Xuming = xuming, Shovels = shovels,
+        };
+
         public Loadout TakeLoadout()
         {
-            var l = new Loadout { Gang = gang, Flag = flag, Marsh = marsh, Stele = stele, MengHan = menghan, TianShu = tianshu };
-            gang = flag = marsh = stele = false;
-            menghan = tianshu = 0;
+            var l = PeekLoadout();
+            ClearItems();
             return l;
         }
 
-        public bool HasAnyItem => gang || flag || marsh || stele || menghan > 0 || tianshu > 0;
+        public void ClearItems()
+        {
+            gang = flag = marsh = stele = xuming = false;
+            menghan = tianshu = baozi = shovels = 0;
+        }
+
+        public bool HasAnyItem => gang || flag || marsh || stele || xuming || menghan > 0 || tianshu > 0 || baozi > 0 || shovels > 0;
     }
 
     public static class Save
@@ -61,6 +72,33 @@ namespace Rescue
             if (Volatile) return;
             PlayerPrefs.SetString(Key, JsonUtility.ToJson(D));
             PlayerPrefs.Save();
+        }
+
+        public static string Today => DateTime.Now.ToString("yyyyMMdd");
+
+        /// <summary>神秘商人每天换货；没用掉的道具过了今天作废。</summary>
+        public static void RefreshShopDay()
+        {
+            if (D.shopDay == Today && D.shopOffer.Count > 0) return;
+            if (!string.IsNullOrEmpty(D.shopDay)) D.ClearItems();
+            D.shopDay = Today;
+            D.shopSold.Clear();
+            D.shopOffer.Clear();
+            var rng = new System.Random(int.Parse(Today));
+            void Pick(bool active, int n)
+            {
+                var pool = new List<int>();
+                foreach (var it in ShopItem.All) if (it.Active == active) pool.Add(it.Id);
+                for (int i = 0; i < n && pool.Count > 0; i++)
+                {
+                    int k = rng.Next(pool.Count);
+                    D.shopOffer.Add(pool[k]);
+                    pool.RemoveAt(k);
+                }
+            }
+            Pick(true, 2);
+            Pick(false, 2);
+            Write();
         }
 
         public static bool Tut(int bit) => (D.tutorial & (1 << bit)) != 0;

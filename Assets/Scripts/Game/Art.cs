@@ -15,6 +15,11 @@ namespace Rescue
         public static readonly Color PathEdge = Hex("A88D66");
         public static readonly Color Water = Hex("86AFC0");
         public static readonly Color Willow = Hex("4E7A45");
+        public static readonly Color Earth = Hex("B98A6A");
+        public static readonly Color Marsh = Hex("7FA7A0");
+        public static readonly Color Raft = Hex("D8C08E");
+        public static readonly Color Purple = Hex("7B4FA8");
+        public static readonly Color Valid = Hex("F2D25C");
         public static readonly Color Tile = Hex("FBF6EA");
         public static readonly Color TileHero = Hex("F3DFA2");
         public static readonly Color Gold = Hex("B07A12");
@@ -79,6 +84,26 @@ namespace Rescue
         public static Sprite Heart => Get("heart", HeartTex);
         public static Sprite Paper => Get("paper", PaperTex);
         public static Sprite White => Get("white", () => Solid(4));
+        public static Sprite Swirl => Get("swirl", SwirlTex);
+        public static Sprite ArrowShaft => Get("arrow", ArrowTex);
+        public static Sprite Dashed => Get("dashed", DashedTex);
+
+        /// <summary>Resources/Art 下的手绘图（生成后抠图），长边 = 1 个世界单位。</summary>
+        public static Sprite Img(string name) => Get("img_" + name, () => Resources.Load<Sprite>("Art/" + name) ?? Rounded);
+
+        /// <summary>地面贴图按格子切成 1×1 的小块，相邻格子取相邻区域，拼起来比较连贯。</summary>
+        public static Sprite Ground(string tex, int c, int r)
+        {
+            int vx = ((c % 2) + 2) % 2, vy = ((r % 2) + 2) % 2;
+            return Get($"g_{tex}_{vx}_{vy}", () =>
+            {
+                var src = Img(tex);
+                var t = src.texture;
+                float half = Mathf.Min(t.width, t.height) * 0.5f;
+                var rect = new Rect(src.rect.x + vx * half, src.rect.y + vy * half, half, half);
+                return Sprite.Create(t, rect, new Vector2(0.5f, 0.5f), half, 0, SpriteMeshType.FullRect);
+            });
+        }
 
         static Sprite Get(string key, System.Func<Sprite> make)
         {
@@ -239,6 +264,65 @@ namespace Rescue
                     float v = Mathf.Pow(fx * fx + fy * fy - 1, 3) - fx * fx * fy * fy * fy;
                     float a = Mathf.Clamp01(-v * 18f);
                     px[y * n + x] = new Color(1, 1, 1, a);
+                }
+            t.SetPixels(px);
+            return Make(t);
+        }
+
+        /// <summary>大招用的墨旋风：三道粗细不匀的弧形笔触绕成一圈。</summary>
+        static Sprite SwirlTex()
+        {
+            int n = 192;
+            var t = NewTex(n, n);
+            var px = new Color[n * n];
+            float c = n * 0.5f;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float dx = x + 0.5f - c, dy = y + 0.5f - c;
+                    float d = Mathf.Sqrt(dx * dx + dy * dy) / c;
+                    float ang = Mathf.Atan2(dy, dx);
+                    float u = Mathf.Repeat(ang / (Mathf.PI * 2f) * 3f, 1f);
+                    float radius = 0.62f + 0.3f * u;
+                    float thick = 0.13f * Mathf.Sin(u * Mathf.PI) + 0.01f;
+                    float a = Mathf.Clamp01((thick - Mathf.Abs(d - radius)) * c * 0.5f);
+                    a *= 0.7f + 0.3f * Mathf.PerlinNoise(x * 0.09f, y * 0.09f);
+                    px[y * n + x] = new Color(1, 1, 1, Mathf.Clamp01(a));
+                }
+            t.SetPixels(px);
+            return Make(t);
+        }
+
+        static Sprite ArrowTex()
+        {
+            int w = 96, h = 24;
+            var t = NewTex(w, h);
+            var px = new Color[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    float cy = Mathf.Abs(y + 0.5f - h * 0.5f);
+                    float a = 0;
+                    if (x < 76 && cy < 1.6f) a = 1;
+                    if (x >= 70) a = Mathf.Max(a, Mathf.Clamp01((h * 0.5f - 1) * (1f - (x - 70) / 26f) - cy + 0.5f));
+                    if (x < 16 && cy < 2f + (16 - x) * 0.4f && cy > 1.2f) a = Mathf.Max(a, 0.75f);
+                    px[y * w + x] = new Color(1, 1, 1, a);
+                }
+            t.SetPixels(px);
+            return Make(t);
+        }
+
+        static Sprite DashedTex()
+        {
+            int n = 64;
+            var t = NewTex(n, n);
+            var px = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    int edge = Mathf.Min(Mathf.Min(x, n - 1 - x), Mathf.Min(y, n - 1 - y));
+                    int along = (x + y) % 12;
+                    px[y * n + x] = new Color(1, 1, 1, edge < 4 && along < 7 ? 1 : 0);
                 }
             t.SetPixels(px);
             return Make(t);

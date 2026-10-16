@@ -31,9 +31,6 @@ namespace Rescue
             go.AddComponent<GraphicRaycaster>();
             _canvasRt = (RectTransform)go.transform;
 
-            var bars = Fill(_canvasRt, Pal.Hex("1A1612"), false, "bars");
-            bars.SetAsFirstSibling();
-
             var phone = Rect(_canvasRt, "Phone");
             phone.anchorMin = phone.anchorMax = new Vector2(0.5f, 0.5f);
             phone.pivot = new Vector2(0.5f, 0.5f);

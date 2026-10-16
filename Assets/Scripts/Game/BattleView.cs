@@ -14,6 +14,8 @@ namespace Rescue
         public const float CampY = -7.05f;
         public const float ButtonY = -8.3f;
         public const float TopY = 8.05f;
+        const float WallY = (MyBottom + Board.Rows + OppBottom) * 0.5f;
+        const int MaxShovelAds = 3;
 
         public Match M;
         public bool Paused;
@@ -32,8 +34,8 @@ namespace Rescue
         Vector3 _camBase;
         int _frame;
 
-        readonly SpriteRenderer[][,] _cells = { new SpriteRenderer[Board.Cols, Board.Rows], new SpriteRenderer[Board.Cols, Board.Rows] };
-        readonly TextMesh[][,] _willow = { new TextMesh[Board.Cols, Board.Rows], new TextMesh[Board.Cols, Board.Rows] };
+        readonly Transform[][,] _cellVis = { new Transform[Board.Cols, Board.Rows], new Transform[Board.Cols, Board.Rows] };
+        readonly Cell[][,] _cellKind = { new Cell[Board.Cols, Board.Rows], new Cell[Board.Cols, Board.Rows] };
         readonly SpriteRenderer[,] _hl = new SpriteRenderer[Board.Cols, Board.Rows];
         readonly TextMesh[,] _hlMark = new TextMesh[Board.Cols, Board.Rows];
         readonly Dictionary<int, PieceView> _pieces = new Dictionary<int, PieceView>();
@@ -41,16 +43,29 @@ namespace Rescue
         readonly Dictionary<int, FrameView> _frames = new Dictionary<int, FrameView>();
         readonly GoalView[] _goals = new GoalView[2];
         readonly List<Fx> _fx = new List<Fx>();
-        readonly Stack<Fx> _fxPool = new Stack<Fx>();
         readonly SpriteRenderer[] _campSlots = new SpriteRenderer[Tuning.CampSlots];
 
-        SpriteRenderer _recruitBtn, _pauseBtn, _mengBtn, _shuBtn;
-        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _rivalText, _titleText;
-        Transform _bunIcon;
-        static readonly Vector3 _bunIconScale = new Vector3(0.42f, 0.34f, 1f);
+        SpriteRenderer _recruitBtn, _pauseBtn, _mengBtn, _shuBtn, _baoziBtn, _shovelAdBtn, _rescueBtn;
+        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _rivalText, _titleText, _shovelAdText;
+        Transform _bunIcon, _rescueRoot;
+        static readonly Vector3 _bunIconScale = new Vector3(0.5f, 0.5f, 1f);
+        int _shovelAds;
         TextMesh _tipText;
         SpriteRenderer _tipBg;
         float _tipT;
+
+        // 点选属性卡 + 攻击范围
+        Transform _card;
+        SpriteRenderer _cardBg, _rangeFill, _rangeRing;
+        TextMesh _cardTitle, _cardLevel, _cardBody;
+        float _cardT;
+
+        // 闲置提示
+        readonly List<SpriteRenderer> _hintDots = new List<SpriteRenderer>();
+        SpriteRenderer _hintBox;
+        float _idleT, _hintRecalc;
+        bool _hintOn;
+        Vector2 _hintFrom, _hintTo;
 
         // 拖拽状态
         PieceView _drag;
@@ -82,64 +97,121 @@ namespace Rescue
             paper.drawMode = SpriteDrawMode.Tiled;
             paper.size = new Vector2(30, 30);
             paper.transform.localScale = Vector3.one;
-            Gfx.Text(_root, "梁山", Fonts.Brush, 5.5f, Pal.Ink.A(0.035f), new Vector2(0, 4.1f), -9);
-            Gfx.Text(_root, "水泊", Fonts.Brush, 5.5f, Pal.Ink.A(0.035f), new Vector2(0, -2.9f), -9);
 
+            BuildFrame();
             for (int s = 0; s < 2; s++) BuildBoard(s);
             BuildCamp();
             BuildHud();
             BuildTip();
+            BuildCard();
             for (int s = 0; s < 2; s++) _goals[s] = new GoalView(this, s);
             SyncAll(true);
+        }
+
+        /// <summary>原作是一整张棋盘：上半对手、下半自己，中间一道城墙。</summary>
+        void BuildFrame()
+        {
+            float top = OppBottom + Board.Rows, bottom = MyBottom;
+            var center = new Vector2(0, (top + bottom) * 0.5f);
+            var size = new Vector2(Board.Cols, top - bottom);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Shadow, center + new Vector2(0.08f, -0.14f), size + new Vector2(0.5f, 0.5f), 0, "board_shadow");
+            Gfx.Sprite(_root, Art.Rounded, Pal.Ink, center, size + new Vector2(0.34f, 0.34f), 1, "board_bg");
+
+            float wallH = OppBottom - (MyBottom + Board.Rows);
+            var wall = Gfx.Sprite(_root, Art.Img("tex_stone"), Color.white, new Vector2(0, WallY), Vector2.one, 9, "wall");
+            wall.drawMode = SpriteDrawMode.Tiled;
+            wall.transform.localScale = Vector3.one;
+            wall.size = new Vector2(Board.Cols, wallH);
+            Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.75f), new Vector2(0, WallY + wallH * 0.5f), new Vector2(Board.Cols, 0.05f), 10);
+            Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.75f), new Vector2(0, WallY - wallH * 0.5f), new Vector2(Board.Cols, 0.05f), 10);
+            for (float x = Left + 0.25f; x < -Left; x += 0.5f)
+            {
+                Gfx.Sprite(_root, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, WallY + wallH * 0.5f + 0.06f), new Vector2(0.26f, 0.1f), 10);
+                Gfx.Sprite(_root, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, WallY - wallH * 0.5f - 0.06f), new Vector2(0.26f, 0.1f), 10);
+            }
         }
 
         void BuildBoard(int side)
         {
             var b = M.Sides[side].Board;
-            float bottom = side == 0 ? MyBottom : OppBottom;
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, bottom + Board.Rows * 0.5f), new Vector2(Board.Cols + 0.3f, Board.Rows + 0.3f), 1, "board_bg");
-            Gfx.Sprite(_root, Art.Rounded, Pal.PaperDark, new Vector2(0, bottom + Board.Rows * 0.5f), new Vector2(Board.Cols + 0.12f, Board.Rows + 0.12f), 2, "board_in");
-
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
                 {
-                    var pos = CellWorld(side, c, r);
-                    var cell = b.Cells[c, r];
-                    _cells[side][c, r] = Gfx.Sprite(_root, Art.Rounded, CellColor(cell, side), pos, new Vector2(0.95f, 0.95f), 10, "cell");
-                    if (cell == Cell.Path)
-                    {
-                        Gfx.Sprite(_root, Art.SoftDot, Pal.PathEdge.A(0.35f), pos + new Vector2(0.18f, -0.15f), new Vector2(0.18f, 0.12f), 11);
-                        Gfx.Sprite(_root, Art.SoftDot, Pal.PathEdge.A(0.3f), pos + new Vector2(-0.2f, 0.17f), new Vector2(0.14f, 0.1f), 11);
-                    }
-                    else if (cell == Cell.Water)
-                    {
-                        var w1 = Gfx.Sprite(_root, Art.Stroke, Color.white.A(0.45f), pos + new Vector2(-0.12f, 0.12f), new Vector2(0.45f, 0.1f), 11);
-                        var w2 = Gfx.Sprite(_root, Art.Stroke, Color.white.A(0.35f), pos + new Vector2(0.14f, -0.16f), new Vector2(0.38f, 0.09f), 11);
-                    }
-                    else if (cell == Cell.Willow)
-                    {
-                        _willow[side][c, r] = Gfx.Text(_root, "柳", Fonts.Brush, 0.7f, Pal.Willow, pos, 12);
-                    }
+                    BuildCell(side, c, r);
                     if (side == 0)
                     {
+                        var pos = CellWorld(side, c, r);
                         _hl[c, r] = Gfx.Sprite(_root, Art.Rounded, Color.clear, pos, new Vector2(0.95f, 0.95f), 14, "hl");
                         _hlMark[c, r] = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.RedDeep, pos + new Vector2(0, -0.33f), 15);
                     }
                 }
 
             var sp = CellWorld(side, b.Spawn.c, b.Spawn.r);
-            Gfx.Sprite(_root, Art.Blob, Pal.Ink.A(0.8f), sp, new Vector2(1.0f, 1.0f), 12, "spawn");
-            Gfx.Text(_root, "官", Fonts.Brush, 0.45f, Pal.Paper, sp, 13);
+            Gfx.Sprite(_root, Art.Img("bush"), Color.white, sp + new Vector2(0, 0.05f), Vector2.one * 1.2f, 13, "spawn");
+            var flagBg = Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), sp + new Vector2(0.3f, 0.32f), new Vector2(0.36f, 0.36f), 13);
+            Gfx.Text(_root, "官", Fonts.Brush, 0.26f, Pal.Paper, flagBg.transform.localPosition, 14);
         }
 
-        static Color CellColor(Cell c, int side)
+        void BuildCell(int side, int c, int r)
         {
-            switch (c)
+            var b = M.Sides[side].Board;
+            var kind = b.Cells[c, r];
+            _cellKind[side][c, r] = kind;
+            if (_cellVis[side][c, r] != null) Destroy(_cellVis[side][c, r].gameObject);
+            var t = new GameObject("cell").transform;
+            t.SetParent(_root, false);
+            t.localPosition = CellWorld(side, c, r);
+            _cellVis[side][c, r] = t;
+            var full = new Vector2(1.01f, 1.01f);
+            switch (kind)
             {
-                case Cell.Path: return Pal.Path;
-                case Cell.Water: return Pal.Water;
-                case Cell.Rock: return Pal.InkSoft;
-                default: return side == 0 ? Pal.Grass : Pal.GrassRival;
+                case Cell.Path:
+                    Gfx.Sprite(t, Art.Ground("tex_earth", c, r), Color.white, Vector2.zero, full, 8);
+                    PathEdges(t, side, b, c, r);
+                    break;
+                case Cell.Grass:
+                    Gfx.Sprite(t, Art.Ground("tex_grass", c, r), Color.white, Vector2.zero, full, 8);
+                    break;
+                case Cell.Tile:
+                    Gfx.Sprite(t, Art.Ground("tex_grass", c, r), Color.white, Vector2.zero, full, 8);
+                    Gfx.Sprite(t, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.06f), new Vector2(0.9f, 0.9f), 9);
+                    Gfx.Sprite(t, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.9f, 0.9f), 10);
+                    Gfx.Sprite(t, Art.Frame, Pal.Ink.A(0.18f), Vector2.zero, new Vector2(0.9f, 0.9f), 10);
+                    break;
+                case Cell.Marsh:
+                case Cell.Water:
+                    Gfx.Sprite(t, Art.White, kind == Cell.Marsh ? Pal.Marsh : Pal.Water, Vector2.zero, full, 8);
+                    Gfx.Sprite(t, Art.Stroke, Color.white.A(0.45f), new Vector2(-0.14f, 0.18f), new Vector2(0.45f, 0.08f), 9);
+                    Gfx.Sprite(t, Art.Stroke, Color.white.A(0.35f), new Vector2(0.16f, -0.2f), new Vector2(0.38f, 0.07f), 9);
+                    if (kind == Cell.Marsh)
+                        for (int i = 0; i < 3; i++)
+                        {
+                            var reed = Gfx.Sprite(t, Art.Stroke, Pal.Willow.A(0.85f), new Vector2(-0.22f + i * 0.2f, -0.05f + (i % 2) * 0.1f), new Vector2(0.5f, 0.07f), 9);
+                            reed.transform.localRotation = Quaternion.Euler(0, 0, 80 + i * 6);
+                        }
+                    else
+                    {
+                        Gfx.Sprite(t, Art.Rounded, Pal.Raft.A(0.9f), Vector2.zero, new Vector2(0.86f, 0.86f), 10);
+                        for (int i = 0; i < 3; i++)
+                            Gfx.Sprite(t, Art.White, Pal.PathEdge.A(0.6f), new Vector2(-0.28f + i * 0.28f, 0), new Vector2(0.03f, 0.8f), 10);
+                    }
+                    break;
+                case Cell.Rock:
+                    Gfx.Sprite(t, Art.White, Pal.InkSoft, Vector2.zero, full, 8);
+                    break;
+            }
+        }
+
+        void PathEdges(Transform t, int side, Board b, int c, int r)
+        {
+            var self = CellWorld(side, c, r);
+            foreach (var d in new[] { new CellPos(1, 0), new CellPos(-1, 0), new CellPos(0, 1), new CellPos(0, -1) })
+            {
+                int nc = c + d.c, nr = r + d.r;
+                if (Board.InBounds(nc, nr) && b.Cells[nc, nr] == Cell.Path) continue;
+                var delta = (CellWorld(side, nc, nr) - self) * 0.5f;
+                var edge = Gfx.Sprite(t, Art.Stroke, Pal.PathEdge.A(0.8f), delta * 0.94f, new Vector2(1.0f, 0.07f), 9);
+                edge.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Abs(delta.x) > 0.01f ? 90 : 0);
             }
         }
 
@@ -150,6 +222,17 @@ namespace Rescue
             Gfx.Text(_root, "山寨", Fonts.Brush, 0.42f, Pal.RedDeep, new Vector2(-3.55f, CampY), 5);
             for (int i = 0; i < _campSlots.Length; i++)
                 _campSlots[i] = Gfx.Sprite(_root, Art.Rounded, Pal.Paper.A(0.9f), CampWorld(i), new Vector2(0.98f, 0.98f), 4, "slot");
+
+            _rescueRoot = new GameObject("rescue").transform;
+            _rescueRoot.SetParent(_root, false);
+            _rescueRoot.localPosition = new Vector2(3.68f, CampY);
+            Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.07f), new Vector2(0.84f, 1.08f), 49);
+            _rescueBtn = Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.GoldBright, Vector2.zero, new Vector2(0.84f, 1.08f), 50);
+            Gfx.Sprite(_rescueRoot, Art.Frame, Pal.Gold, Vector2.zero, new Vector2(0.84f, 1.08f), 51);
+            Gfx.Text(_rescueRoot, "救", Fonts.Brush, 0.5f, Pal.RedDeep, new Vector2(0, 0.12f), 52);
+            Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Red, new Vector2(0, -0.34f), new Vector2(0.7f, 0.26f), 52);
+            Gfx.Text(_rescueRoot, "看广告", Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0, -0.34f), 53);
+            _rescueRoot.gameObject.SetActive(false);
         }
 
         void BuildHud()
@@ -157,29 +240,41 @@ namespace Rescue
             _recruitBtn = Gfx.Sprite(_root, Art.Rounded, Pal.Red, new Vector2(0.2f, ButtonY), new Vector2(2.7f, 1.0f), 50, "recruit");
             Gfx.Sprite(_root, Art.Rounded, Pal.Shadow, new Vector2(0.2f, ButtonY - 0.09f), new Vector2(2.7f, 1.0f), 49);
             _recruitLabel = Gfx.Text(_root, "聚  义", Fonts.Brush, 0.5f, Pal.Paper, new Vector2(0.2f, ButtonY + 0.14f), 52);
-            _recruitCost = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(0.3f, ButtonY - 0.27f), 52);
-            Gfx.Sprite(_root, Art.Circle, Pal.GoldBright, new Vector2(-0.08f, ButtonY - 0.27f), new Vector2(0.2f, 0.16f), 52);
+            _recruitCost = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(0.32f, ButtonY - 0.27f), 52);
+            Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-0.06f, ButtonY - 0.27f), Vector2.one * 0.26f, 52);
 
-            _mengBtn = Gfx.Sprite(_root, Art.Rounded, Pal.InkSoft, new Vector2(-3.05f, ButtonY), new Vector2(1.6f, 0.8f), 50, "meng");
-            _mengText = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(-3.05f, ButtonY), 52);
-            _shuBtn = Gfx.Sprite(_root, Art.Rounded, Pal.InkSoft, new Vector2(3.35f, ButtonY), new Vector2(1.6f, 0.8f), 50, "shu");
-            _shuText = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(3.35f, ButtonY), 52);
+            _mengBtn = ItemButton(new Vector2(-3.4f, ButtonY), out _mengText);
+            _baoziBtn = ItemButton(new Vector2(-2.15f, ButtonY), out _baoziText);
+            _shuBtn = ItemButton(new Vector2(2.85f, ButtonY), out _shuText);
 
-            _pauseBtn = Gfx.Sprite(_root, Art.Circle, Pal.Ink.A(0.85f), new Vector2(-3.55f, TopY), new Vector2(0.75f, 0.75f), 50, "pause");
-            Gfx.Text(_root, "停", Fonts.Brush, 0.38f, Pal.Paper, new Vector2(-3.55f, TopY), 52);
+            _pauseBtn = Gfx.Sprite(_root, Art.Circle, Pal.Ink.A(0.85f), new Vector2(-3.6f, TopY), new Vector2(0.75f, 0.75f), 50, "pause");
+            Gfx.Text(_root, "停", Fonts.Brush, 0.38f, Pal.Paper, new Vector2(-3.6f, TopY), 52);
 
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-1.95f, TopY), new Vector2(1.9f, 0.62f), 49);
-            _bunIcon = Gfx.Sprite(_root, Art.Circle, Pal.GoldBright, new Vector2(-2.6f, TopY), new Vector2(0.42f, 0.34f), 51, "bun").transform;
-            Gfx.Text(_root, "饼", Fonts.Brush, 0.24f, Pal.RedDeep, new Vector2(-2.6f, TopY), 52);
-            _bunsText = Gfx.Text(_root, "0", Fonts.Kai, 0.36f, Pal.Paper, new Vector2(-1.75f, TopY), 52);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-2.15f, TopY), new Vector2(1.7f, 0.62f), 49);
+            _bunIcon = Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-2.8f, TopY), Vector2.one * 0.5f, 51, "bun").transform;
+            _bunsText = Gfx.Text(_root, "0", Fonts.Kai, 0.36f, Pal.Paper, new Vector2(-1.95f, TopY), 52);
 
-            _titleText = Gfx.Text(_root, M.Chapter.Name, Fonts.Brush, 0.46f, Pal.Ink, new Vector2(0.75f, TopY + 0.2f), 52);
-            _waveText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(0.75f, TopY - 0.27f), 52);
-            _rivalText = Gfx.Text(_root, "对手 · " + M.Chapter.RivalName, Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(3.95f, TopY), 52, TextAnchor.MiddleRight);
+            _titleText = Gfx.Text(_root, M.Chapter.Name, Fonts.Brush, 0.46f, Pal.Ink, new Vector2(0.1f, TopY + 0.2f), 52);
+            _waveText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(0.1f, TopY - 0.27f), 52);
 
-            Gfx.Sprite(_root, Art.Stroke, Pal.Ink.A(0.5f), new Vector2(0, 0.55f), new Vector2(8.2f, 0.12f), 3);
-            _midText = Gfx.Text(_root, "", Fonts.Kai, 0.3f, Pal.Ink, new Vector2(0, 0.55f), 6);
-            var midBg = Gfx.Sprite(_root, Art.Rounded, Pal.Paper, new Vector2(0, 0.55f), new Vector2(3.6f, 0.46f), 5);
+            _shovelAdBtn = Gfx.Sprite(_root, Art.Circle, Pal.Paper, new Vector2(1.75f, TopY), new Vector2(0.8f, 0.8f), 50, "shovelAd");
+            Gfx.Sprite(_root, Art.Ring, Pal.Ink, new Vector2(1.75f, TopY), new Vector2(0.84f, 0.84f), 51);
+            Gfx.Sprite(_root, Art.Img("shovel"), Color.white, new Vector2(1.75f, TopY + 0.04f), Vector2.one * 0.6f, 52);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Red, new Vector2(1.75f, TopY - 0.42f), new Vector2(0.72f, 0.24f), 52);
+            _shovelAdText = Gfx.Text(_root, "广告+2", Fonts.Kai, 0.16f, Pal.Paper, new Vector2(1.75f, TopY - 0.42f), 53);
+
+            _rivalText = Gfx.Text(_root, "对手·" + M.Chapter.RivalName, Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(4.0f, TopY), 52, TextAnchor.MiddleRight);
+
+            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, WallY), new Vector2(3.5f, 0.56f), 11);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Paper, new Vector2(0, WallY), new Vector2(3.4f, 0.46f), 12);
+            _midText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.Ink, new Vector2(0, WallY), 13);
+        }
+
+        SpriteRenderer ItemButton(Vector2 pos, out TextMesh text)
+        {
+            var btn = Gfx.Sprite(_root, Art.Rounded, Pal.InkSoft, pos, new Vector2(1.18f, 0.8f), 50, "item");
+            text = Gfx.Text(_root, "", Fonts.Kai, 0.22f, Pal.Paper, pos, 52);
+            return btn;
         }
 
         void BuildTip()
@@ -188,6 +283,20 @@ namespace Rescue
             _tipText = Gfx.Text(_root, "", Fonts.Kai, 0.27f, Pal.Paper, Vector2.zero, 81);
             _tipBg.enabled = false;
             _tipText.text = "";
+        }
+
+        void BuildCard()
+        {
+            _rangeFill = Gfx.Sprite(_root, Art.Circle, Color.white.A(0.2f), Vector2.zero, Vector2.one, 16, "rangeFill");
+            _rangeRing = Gfx.Sprite(_root, Art.Ring, Color.white.A(0.85f), Vector2.zero, Vector2.one, 16, "rangeRing");
+            _card = new GameObject("card").transform;
+            _card.SetParent(_root, false);
+            _cardBg = Gfx.Sprite(_card, Art.Rounded, Pal.Ink.A(0.92f), Vector2.zero, new Vector2(3.6f, 2f), 82);
+            _cardTitle = Gfx.Text(_card, "", Fonts.Brush, 0.42f, Pal.GoldBright, Vector2.zero, 83, TextAnchor.MiddleLeft);
+            _cardLevel = Gfx.Text(_card, "", Fonts.Kai, 0.26f, Pal.Paper, Vector2.zero, 83, TextAnchor.MiddleRight);
+            _cardBody = Gfx.Text(_card, "", Fonts.Kai, 0.24f, Pal.Paper, Vector2.zero, 83, TextAnchor.UpperLeft);
+            _cardBody.lineSpacing = 1.1f;
+            HideCard();
         }
 
         // ─────────────────────────── 主循环 ───────────────────────────
@@ -214,6 +323,8 @@ namespace Rescue
             SyncAll(false);
             UpdateFx(Time.deltaTime);
             UpdateTip(Time.deltaTime);
+            UpdateCard(Time.deltaTime);
+            UpdateIdleHint(Time.deltaTime);
 
             _shake = Mathf.Max(0, _shake - Time.deltaTime * 2.5f);
             _cam.transform.position = _camBase + (Vector3)(UnityEngine.Random.insideUnitCircle * _shake * 0.18f);
@@ -254,22 +365,39 @@ namespace Rescue
                 _recruitCost.text = "+" + Side.DismissRefund(_drag.Piece);
             }
 
-            _mengBtn.gameObject.SetActive(p.Items.MengHan > 0);
-            _mengText.gameObject.SetActive(p.Items.MengHan > 0);
-            _mengText.text = "蒙汗药×" + p.Items.MengHan;
-            _shuBtn.gameObject.SetActive(p.Items.TianShu > 0);
-            _shuText.gameObject.SetActive(p.Items.TianShu > 0);
-            _shuText.text = "天书×" + p.Items.TianShu;
+            SetItem(_mengBtn, _mengText, p.Items.MengHan, "蒙汗药");
+            SetItem(_baoziBtn, _baoziText, p.Items.Baozi, "包子");
+            SetItem(_shuBtn, _shuText, p.Items.TianShu, "天书");
+
+            bool adLeft = _shovelAds < MaxShovelAds && !M.Over;
+            _shovelAdBtn.color = adLeft ? Pal.Paper : Pal.PaperDark;
+            _shovelAdText.text = adLeft ? "广告+" + Tuning.AdShovels : "已用完";
+
+            bool rescue = p.InDanger && !p.RescueUsed;
+            if (rescue != _rescueRoot.gameObject.activeSelf)
+            {
+                _rescueRoot.gameObject.SetActive(rescue);
+                if (rescue) Tween.Pop(_rescueRoot, 0.3f);
+            }
+            if (rescue) _rescueRoot.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 8f) * 0.06f);
 
             _waveText.text = M.Wave > 0 ? $"第 {M.Wave} 波" : "备战";
             float next = M.NextWaveIn;
-            _midText.text = M.Wave == 0 ? $"官兵 {next:0} 秒后到" : next > 0.1f ? $"下一波 {next:0} 秒" : $"第 {M.Wave} 波来袭";
+            _midText.text = p.ShieldT > 0 ? $"公孙胜护法 {p.ShieldT:0} 秒"
+                : M.Wave == 0 ? $"官兵 {next:0} 秒后到" : next > 0.1f ? $"下一波 {next:0} 秒" : $"第 {M.Wave} 波来袭";
 
             for (int s = 0; s < 2; s++) SyncSide(s, snap);
             SyncCamp(snap);
             SyncEnemies();
             for (int s = 0; s < 2; s++) _goals[s].Sync();
             CleanupStale();
+        }
+
+        static void SetItem(SpriteRenderer btn, TextMesh text, int n, string name)
+        {
+            btn.gameObject.SetActive(n > 0);
+            text.gameObject.SetActive(n > 0);
+            text.text = name + "×" + n;
         }
 
         void SyncSide(int s, bool snap)
@@ -279,12 +407,7 @@ namespace Rescue
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
                 {
-                    if (_willow[s][c, r] != null && b.Cells[c, r] != Cell.Willow)
-                    {
-                        Destroy(_willow[s][c, r].gameObject);
-                        _willow[s][c, r] = null;
-                        _cells[s][c, r].color = CellColor(b.Cells[c, r], s);
-                    }
+                    if (_cellKind[s][c, r] != b.Cells[c, r]) BuildCell(s, c, r);
                     var piece = b.Pieces[c, r];
                     if (piece == null) continue;
                     var v = GetPiece(piece, s);
@@ -412,6 +535,15 @@ namespace Rescue
                     else FloatText(pos + new Vector2(0, -0.7f), "对手召出 " + ev.Text, Pal.RedDeep, 0.3f, 1.6f);
                     break;
                 }
+                case Ev.HeroLevel:
+                {
+                    var pos = World(ev.Side, ev.P);
+                    Ring(pos, 2.4f, Pal.GoldBright, 0.5f, 45);
+                    FloatText(pos + new Vector2(0, 0.6f), ev.Text + " 升" + ToCn((int)ev.Val) + "级", Pal.Gold, mine ? 0.36f : 0.26f, 1.2f);
+                    if (_frames.TryGetValue(ev.A, out var fv)) fv.Glow();
+                    if (mine) Sfx.Play(Snd.Merge, 0.9f, 1.3f);
+                    break;
+                }
                 case Ev.Attack:
                     UnitAttackFx(ev);
                     break;
@@ -423,21 +555,31 @@ namespace Rescue
                     if (mine && ev.Flag > 0)
                         FloatText(World(ev.Side, ev.P) + new Vector2(UnityEngine.Random.Range(-0.2f, 0.2f), 0.4f),
                             (ev.Flag == 2 ? "克制 " : "") + Mathf.RoundToInt(ev.Val), ev.Flag == 2 ? Pal.Red : Pal.Gold, ev.Flag == 2 ? 0.4f : 0.32f, 0.7f);
+                    else if (mine && UnityEngine.Random.value < 0.3f)
+                        DamageNumber(World(ev.Side, ev.P), ev.Val);
                     if (mine) Sfx.Play(Snd.Hit, 0.25f);
                     break;
                 case Ev.Kill:
                 {
                     var pos = World(ev.Side, ev.P);
-                    Splat(pos, ev.Flag == 2 ? 2.4f : ev.Flag == 1 ? 1.4f : 0.8f, Pal.Ink.A(0.5f), 0.8f);
+                    Splat(pos, ev.Flag == 2 ? 2.4f : ev.Flag == 1 ? 1.4f : 0.85f, Pal.Ink.A(0.55f), 0.9f);
+                    InkDrops(pos, ev.Flag > 0 ? 9 : 5);
                     if (mine)
                     {
                         Sfx.Play(Snd.Kill, 0.35f);
-                        BunFly(pos, (int)ev.Val);
+                        if (ev.Val > 0) BunFly(pos, (int)ev.Val);
                         if (ev.Flag == 2) { _shake = 1f; Sfx.Play(Snd.Ult); }
                     }
                     break;
                 }
                 case Ev.Leak:
+                    if (ev.Flag == 1)
+                    {
+                        var at = World(ev.Side, ev.P);
+                        InkSwirl(at, 1.2f, Pal.Red.A(0.8f), 0.5f);
+                        if (mine) FloatText(at + Vector2.up * 0.5f, "挡！", Pal.Red, 0.32f, 0.6f);
+                        break;
+                    }
                     _goals[ev.Side].Hurt();
                     if (mine) { Sfx.Play(Snd.Leak); _shake = Mathf.Max(_shake, 0.7f); }
                     break;
@@ -449,7 +591,11 @@ namespace Rescue
                     var pos = World(ev.Side, ev.P);
                     bool boss = ev.Flag == 1;
                     float r = Mathf.Min(ev.Val, 6f);
-                    if (r > 0.1f) Ring(pos, r * 2f, boss ? Pal.Red : Pal.Ink, 0.5f, 44);
+                    if (r > 0.1f)
+                    {
+                        Ring(pos, r * 2f, boss ? Pal.Red : Pal.Ink, 0.5f, 44);
+                        if (!boss) InkSwirl(pos, Mathf.Clamp(r * 2f, 1.6f, 7f), Pal.Ink.A(0.8f), 0.8f);
+                    }
                     string word = ev.Text ?? "";
                     int colon = word.IndexOf('：');
                     if (colon > 0 && !boss) word = word.Substring(0, colon) + "！";
@@ -458,11 +604,28 @@ namespace Rescue
                     if (_frames.TryGetValue(ev.A, out var fv)) fv.Glow();
                     break;
                 }
-                case Ev.StaffUsed:
-                {
-                    var pos = World(ev.Side, ev.P);
-                    Leaves(pos);
+                case Ev.Dig:
+                    DigFx(World(ev.Side, ev.P), ev.Flag == 1);
                     if (mine) Sfx.Play(Snd.Staff);
+                    break;
+                case Ev.Shovels:
+                    if (mine)
+                    {
+                        FloatText(CampWorld(2) + Vector2.up * 0.9f, "铲子 +" + ev.Val, Pal.Willow, 0.38f, 1.2f);
+                        Sfx.Play(Snd.Recruit, 0.8f, 1.2f);
+                    }
+                    break;
+                case Ev.Rescue:
+                    RescueFx(ev.Side);
+                    break;
+                case Ev.Baozi:
+                {
+                    var at = CellWorld(ev.Side, M.Sides[ev.Side].Board.Goal.c, M.Sides[ev.Side].Board.Goal.r);
+                    bool good = ev.Flag == 1;
+                    FloatText(at + Vector2.up * 0.9f, good ? "包子真香！回一颗心" : "吃坏肚子！掉一颗心", good ? Pal.Willow : Pal.Red, 0.32f, 1.6f);
+                    Splat(at, 1.6f, (good ? Pal.GoldBright : Pal.Red).A(0.4f), 0.8f);
+                    if (!good) _goals[ev.Side].Hurt();
+                    Sfx.Play(good ? Snd.Rain : Snd.Leak);
                     break;
                 }
                 case Ev.Buns:
@@ -499,10 +662,10 @@ namespace Rescue
             var col = Pal.ForLevel((int)ev.Val).A(0.85f);
             switch (kind)
             {
-                case UnitKind.Dao: SlashAt(to, col, 0.9f); break;
-                case UnitKind.Qiang: Thrust(from, to, col, 0.16f); break;
+                case UnitKind.Dao: SlashAt(to, col, 0.95f); break;
+                case UnitKind.Qiang: Thrust(from, to, col, 0.14f); break;
                 case UnitKind.Gong: Arrow(from, to, col); break;
-                case UnitKind.Qi: Splat(to, 0.5f, col.A(0.4f), 0.3f); break;
+                case UnitKind.Qi: Splat(to, 0.6f, Pal.Earth.A(0.5f), 0.35f); InkDrops(to, 3); break;
             }
         }
 
@@ -511,28 +674,40 @@ namespace Rescue
             var from = World(ev.Side, ev.P);
             var to = World(ev.Side, ev.Q);
             var id = (HeroId)ev.B;
-            var col = Pal.GoldBright;
+            var dir = (to - from).normalized;
             if (ev.Flag == 2)
             {
-                Thrust(from, to, Pal.Red, 0.35f);
+                WeaponFlash(from, "bow", dir, UnitKind.Gong, 1.1f);
+                Arrow(from, to, Pal.Red, 1.6f);
                 Ring(to, 1.6f, Pal.Red, 0.4f, 46);
                 if (ev.Side == 0) Sfx.Play(Snd.Ult, 0.6f, 1.3f);
                 return;
             }
+            var col = Pal.GoldBright;
             switch (id)
             {
                 case HeroId.HuaRong:
+                    WeaponFlash(from, "bow", dir, UnitKind.Gong, 0.9f);
+                    Arrow(from, to, col, 1.2f);
+                    break;
                 case HeroId.HuSanNiang:
                 case HeroId.RuanXiaoQi:
                 case HeroId.RuanXiaoEr:
                 case HeroId.ZhangShun:
                 case HeroId.ZhangHeng:
-                    Arrow(from, to, col);
+                    Arrow(from, to, col, 1.1f);
                     break;
                 case HeroId.LinChong:
+                    WeaponFlash(from, "spear", dir, UnitKind.Qiang, 1.0f);
                     Thrust(from, to, col, 0.22f);
                     break;
+                case HeroId.LiKui:
+                    WeaponFlash(to + new Vector2(-0.25f, 0), "dao", dir, UnitKind.Dao, 0.8f);
+                    WeaponFlash(to + new Vector2(0.25f, 0), "dao", -dir, UnitKind.Dao, 0.8f);
+                    SlashAt(to, col, 1.4f);
+                    break;
                 default:
+                    WeaponFlash(Vector2.Lerp(from, to, 0.6f), "dao", dir, UnitKind.Dao, 0.85f);
                     SlashAt(to, ev.Flag == 1 ? Pal.Red : col, 1.2f);
                     break;
             }
@@ -601,6 +776,23 @@ namespace Rescue
             fx.Go.transform.localRotation = Quaternion.Euler(0, 0, UnityEngine.Random.Range(0, 360f));
         }
 
+        /// <summary>击杀时飞溅的墨点。</summary>
+        void InkDrops(Vector2 pos, int n)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                var dir = UnityEngine.Random.insideUnitCircle.normalized * UnityEngine.Random.Range(0.3f, 0.75f);
+                float s = UnityEngine.Random.Range(0.07f, 0.15f);
+                var fx = NewSpriteFx(Art.Circle, Pal.Ink.A(0.75f), pos, Vector2.one * s, 34, 0.45f, (f, k) =>
+                {
+                    f.Go.transform.localPosition = f.A + (f.B - f.A) * Tween.OutCubic(k);
+                    f.Sr.color = f.C.A(f.C.a * (1 - k * k));
+                });
+                fx.A = pos;
+                fx.B = pos + dir;
+            }
+        }
+
         void SlashAt(Vector2 pos, Color c, float size)
         {
             var fx = NewSpriteFx(Art.Slash, c, pos, new Vector2(size, size), 42, 0.22f, (f, k) =>
@@ -624,16 +816,90 @@ namespace Rescue
             fx.Go.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
         }
 
-        void Arrow(Vector2 from, Vector2 to, Color c)
+        void Arrow(Vector2 from, Vector2 to, Color c, float scale = 1f)
         {
             var dir = to - from;
-            var fx = NewSpriteFx(Art.Stroke, c, from, new Vector2(0.45f, 0.09f), 42, 0.14f, (f, k) =>
+            var fx = NewSpriteFx(Art.ArrowShaft, c, from, new Vector2(0.55f, 0.14f) * scale, 42, 0.16f, (f, k) =>
             {
                 f.Go.transform.localPosition = Vector2.Lerp(f.A, f.B, k);
+                if (k >= 0.99f) Splat(f.B, 0.35f, Pal.Ink.A(0.4f), 0.25f);
             });
             fx.A = from;
             fx.B = to;
             fx.Go.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
+        }
+
+        /// <summary>好汉出手时在棋盘上闪现兵器：刀抡一圈、枪往前捅、弓拉满。</summary>
+        void WeaponFlash(Vector2 pos, string img, Vector2 dir, UnitKind style, float size)
+        {
+            float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+            var fx = NewSpriteFx(Art.Img(img), Color.white, pos, Vector2.one * size, 43, 0.3f, (f, k) =>
+            {
+                float a = Mathf.Clamp01(Mathf.Min(k / 0.15f, (1 - k) / 0.3f));
+                f.Sr.color = Color.white.A(a);
+                var t = f.Go.transform;
+                switch (style)
+                {
+                    case UnitKind.Dao: t.localRotation = Quaternion.Euler(0, 0, ang - 45f + Mathf.Lerp(90f, -90f, Tween.OutCubic(k))); break;
+                    case UnitKind.Qiang: t.localPosition = f.A + dir * Mathf.Sin(k * Mathf.PI) * 0.6f; t.localRotation = Quaternion.Euler(0, 0, ang - 45f); break;
+                    default:
+                        t.localRotation = Quaternion.Euler(0, 0, ang - 180f);
+                        t.localScale = new Vector3(size * (1f - 0.25f * Mathf.Sin(Mathf.Min(1, k * 1.6f) * Mathf.PI)), size, 1);
+                        break;
+                }
+            });
+            fx.A = pos;
+        }
+
+        /// <summary>大招：一圈墨旋风边转边扩散。</summary>
+        void InkSwirl(Vector2 pos, float size, Color c, float life)
+        {
+            float spin = UnityEngine.Random.value < 0.5f ? 1f : -1f;
+            NewSpriteFx(Art.Swirl, c, pos, Vector2.one * size * 0.4f, 44, life, (f, k) =>
+            {
+                float s = Mathf.Lerp(0.4f, 1.05f, Tween.OutCubic(k)) * size;
+                f.Go.transform.localScale = new Vector3(s, s, 1);
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, spin * -540f * Tween.OutCubic(k));
+                f.Sr.color = f.C.A(f.C.a * (k < 0.6f ? 1f : (1 - k) / 0.4f));
+            });
+        }
+
+        void DigFx(Vector2 pos, bool water)
+        {
+            var dirt = water ? Pal.Water : Pal.Earth;
+            Splat(pos, 1.3f, dirt.A(0.55f), 0.7f);
+            for (int i = 0; i < 10; i++)
+            {
+                var dir = new Vector2(UnityEngine.Random.Range(-0.8f, 0.8f), UnityEngine.Random.Range(0.3f, 1.1f));
+                var fx = NewSpriteFx(Art.Circle, dirt, pos, Vector2.one * UnityEngine.Random.Range(0.08f, 0.16f), 46, 0.6f, (f, k) =>
+                {
+                    f.Go.transform.localPosition = f.A + (f.B - f.A) * k + new Vector2(0, -k * k * 1.4f);
+                    f.Sr.color = f.C.A(1 - k);
+                });
+                fx.A = pos;
+                fx.B = pos + dir;
+            }
+            NewSpriteFx(Art.Img("shovel"), Color.white, pos + new Vector2(0.25f, 0.35f), Vector2.one * 0.8f, 47, 0.45f, (f, k) =>
+            {
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Lerp(30f, -50f, Tween.OutCubic(k)));
+                f.Sr.color = Color.white.A(k < 0.7f ? 1 : (1 - k) / 0.3f);
+            });
+            FloatText(pos + Vector2.up * 0.55f, water ? "开出水寨" : "开荒", Pal.Willow, 0.3f, 0.8f);
+        }
+
+        void RescueFx(int side)
+        {
+            var b = M.Sides[side].Board;
+            var goal = CellWorld(side, b.Goal.c, b.Goal.r);
+            float baseY = side == 0 ? MyBottom : OppBottom;
+            for (int i = 0; i < 4; i++)
+            {
+                var p = new Vector2(Left + 1.5f + (i % 2) * 5f, baseY + 1.5f + (i / 2) * 2.6f);
+                InkSwirl(p, 2.2f, Pal.Red.A(0.4f), 0.7f + i * 0.08f);
+            }
+            InkSwirl(goal, 2.2f, Pal.Red.A(0.8f), 1.2f);
+            Ring(goal, 4f, Pal.Red, 0.8f, 45);
+            if (side == 0) { _shake = 1f; Sfx.Play(Snd.Ult); Sfx.Play(Snd.Rain, 0.6f); }
         }
 
         public void FloatText(Vector2 pos, string s, Color c, float h, float life)
@@ -656,10 +922,24 @@ namespace Rescue
             _fx.Add(fx);
         }
 
+        void DamageNumber(Vector2 pos, float val)
+        {
+            var at = pos + new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), 0.3f);
+            var fx = new Fx { Life = 0.5f, C = Pal.Ink, A = at };
+            fx.Tm = Gfx.Text(_fxRoot, Mathf.Max(1, Mathf.RoundToInt(val)).ToString(), Fonts.Kai, 0.2f, Pal.Ink, at, 47, TextAnchor.MiddleCenter, "dmg");
+            fx.Go = fx.Tm.gameObject;
+            fx.Step = (f, k) =>
+            {
+                f.Go.transform.localPosition = f.A + new Vector2(0, k * 0.35f);
+                f.Tm.color = f.C.A(1 - k * k);
+            };
+            _fx.Add(fx);
+        }
+
         void BunFly(Vector2 from, int n)
         {
             var target = (Vector2)_bunIcon.position;
-            NewSpriteFx(Art.Circle, Pal.GoldBright, from, new Vector2(0.24f, 0.2f), 47, 0.55f, (f, k) =>
+            NewSpriteFx(Art.Img("bun"), Color.white, from, Vector2.one * 0.3f, 47, 0.6f, (f, k) =>
             {
                 float e = k * k;
                 var p = Vector2.Lerp(f.A, f.B, e) + new Vector2(0, Mathf.Sin(k * Mathf.PI) * 0.8f);
@@ -667,7 +947,7 @@ namespace Rescue
                 if (k >= 0.99f) Tween.Punch(_bunIcon, 0.15f, 0.25f, _bunIconScale);
             }).A = from;
             _fx[_fx.Count - 1].B = target;
-            if (n > 1) FloatText(from + new Vector2(0, 0.35f), "+" + n, Pal.Gold, 0.28f, 0.6f);
+            FloatText(from + new Vector2(0, 0.35f), "+" + n, Pal.Gold, n > 1 ? 0.3f : 0.24f, 0.6f);
         }
 
         void CoinRain()
@@ -676,30 +956,16 @@ namespace Rescue
             {
                 var start = new Vector2(UnityEngine.Random.Range(-4f, 4f), MyBottom + Board.Rows + UnityEngine.Random.Range(0f, 2.5f));
                 var end = start + new Vector2(UnityEngine.Random.Range(-0.4f, 0.4f), -UnityEngine.Random.Range(5f, 8f));
-                var fx = NewSpriteFx(Art.Circle, Pal.GoldBright, start, new Vector2(0.22f, 0.18f), 47, UnityEngine.Random.Range(0.9f, 1.5f), (f, k) =>
+                var fx = NewSpriteFx(Art.Img("coin"), Color.white, start, Vector2.one * 0.28f, 47, UnityEngine.Random.Range(0.9f, 1.5f), (f, k) =>
                 {
                     f.Go.transform.localPosition = Vector2.Lerp(f.A, f.B, k);
-                    f.Sr.color = f.C.A(k < 0.8f ? 1 : (1 - k) * 5);
+                    f.Go.transform.localRotation = Quaternion.Euler(0, 0, k * 360f * f.F);
+                    f.Sr.color = Color.white.A(k < 0.8f ? 1 : (1 - k) * 5);
                 });
                 fx.A = start;
                 fx.B = end;
+                fx.F = UnityEngine.Random.Range(-1.5f, 1.5f);
             }
-        }
-
-        void Leaves(Vector2 pos)
-        {
-            for (int i = 0; i < 14; i++)
-            {
-                var dir = UnityEngine.Random.insideUnitCircle.normalized * UnityEngine.Random.Range(0.6f, 1.6f);
-                var fx = NewSpriteFx(Art.SoftDot, Pal.Willow, pos, new Vector2(0.22f, 0.12f), 46, 0.7f, (f, k) =>
-                {
-                    f.Go.transform.localPosition = f.A + (f.B - f.A) * Tween.OutCubic(k) + new Vector2(0, -k * k * 0.6f);
-                    f.Sr.color = f.C.A(1 - k);
-                });
-                fx.A = pos;
-                fx.B = pos + dir;
-            }
-            Splat(pos, 1.4f, Pal.Willow.A(0.35f), 0.7f);
         }
 
         public void Shake(float amount) => _shake = Mathf.Max(_shake, amount);
@@ -716,7 +982,7 @@ namespace Rescue
         static bool In(Vector2 p, Vector2 center, Vector2 size) =>
             Mathf.Abs(p.x - center.x) <= size.x * 0.5f && Mathf.Abs(p.y - center.y) <= size.y * 0.5f;
 
-        bool TryMyCell(Vector2 w, out int c, out int r)
+        static bool TryMyCell(Vector2 w, out int c, out int r)
         {
             c = Mathf.FloorToInt(w.x - Left);
             r = Mathf.FloorToInt(w.y - MyBottom);
@@ -730,6 +996,16 @@ namespace Rescue
             return -1;
         }
 
+        void ShowAd(string reason, Action onReward)
+        {
+            Paused = true;
+            AdStub.Show(reason, () =>
+            {
+                Paused = false;
+                onReward();
+            });
+        }
+
         void HandleInput()
         {
             var p = M.Player;
@@ -737,6 +1013,7 @@ namespace Rescue
 
             if (Input.GetMouseButtonDown(0))
             {
+                _idleT = 0;
                 if (Ui.PointerOverUi()) return;
                 _downPos = w;
                 _dragMoved = false;
@@ -747,8 +1024,11 @@ namespace Rescue
                     return;
                 }
                 if (In(w, _pauseBtn.transform.localPosition, new Vector2(0.9f, 0.9f))) { OnPauseClicked?.Invoke(); return; }
-                if (_mengBtn.gameObject.activeSelf && In(w, _mengBtn.transform.localPosition, new Vector2(1.6f, 0.8f))) { p.UseMengHan(); return; }
-                if (_shuBtn.gameObject.activeSelf && In(w, _shuBtn.transform.localPosition, new Vector2(1.6f, 0.8f))) { p.UseTianShu(); return; }
+                if (_mengBtn.gameObject.activeSelf && In(w, _mengBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseMengHan(); return; }
+                if (_baoziBtn.gameObject.activeSelf && In(w, _baoziBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseBaozi(); return; }
+                if (_shuBtn.gameObject.activeSelf && In(w, _shuBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseTianShu(); return; }
+                if (In(w, _shovelAdBtn.transform.localPosition, new Vector2(0.95f, 1.1f))) { ShovelAd(); return; }
+                if (_rescueRoot.gameObject.activeSelf && In(w, _rescueRoot.localPosition, new Vector2(0.95f, 1.2f))) { RescueAd(); return; }
 
                 int slot = CampAt(w);
                 if (slot >= 0 && p.Camp[slot] != null && _pieces.TryGetValue(p.Camp[slot].Id, out var cv))
@@ -761,16 +1041,39 @@ namespace Rescue
                     BeginDrag(bv, -1, new CellPos(c, r));
                     return;
                 }
+                if (TryMyCell(w, out c, out r) && p.Board.Diggable(c, r))
+                    Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "草地要先用铲子开荒才能摆字");
             }
 
             if (_drag != null)
             {
                 if ((w - _downPos).magnitude > 0.18f) _dragMoved = true;
-                if (_dragMoved) _drag.Target = w + new Vector2(0, 0.55f);
+                if (_dragMoved) { _drag.Target = w + new Vector2(0, 0.55f); HideCard(); }
                 ShowHighlights(_drag.Piece, w);
 
                 if (Input.GetMouseButtonUp(0)) EndDrag(w);
             }
+        }
+
+        public void ShovelAd()
+        {
+            var p = M.Player;
+            if (M.Over) return;
+            if (_shovelAds >= MaxShovelAds) { Tip(_shovelAdBtn.transform.localPosition + Vector3.down * 1f, "这一局的铲子广告看完了"); return; }
+            if (!p.Board.AnyDiggable()) { Tip(_shovelAdBtn.transform.localPosition + Vector3.down * 1f, "地已经全开出来了"); return; }
+            ShowAd("鲁智深送铲子", () =>
+            {
+                _shovelAds++;
+                p.GrantShovels(Tuning.AdShovels);
+                Tip(new Vector2(0, CampY + 1.3f), $"恭喜获得 {Tuning.AdShovels} 把铲子！\n拖到草地上开荒");
+            });
+        }
+
+        public void RescueAd()
+        {
+            var p = M.Player;
+            if (p.RescueUsed || M.Over) return;
+            ShowAd("公孙胜作法", () => p.Rescue());
         }
 
         bool OverRecruit(Vector2 w) => In(w, _recruitBtn.transform.localPosition, new Vector2(2.9f, 1.3f));
@@ -815,7 +1118,8 @@ namespace Rescue
             {
                 ok = _dragCamp >= 0 ? p.CampToCell(_dragCamp, c, r) : p.CellToCell(_dragCell.c, _dragCell.r, c, r);
                 if (ok) { Sfx.Play(Snd.Place, 0.8f); OnPlaced?.Invoke(); }
-                else if (v.Piece.Type == PieceType.Chanzhang) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "禅杖只能拔柳树");
+                else if (v.Piece.Type == PieceType.Shovel) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "铲子只能挖草地");
+                else if (p.Board.Diggable(c, r)) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "这块是草地，先用铲子开荒");
             }
             if (!ok) v.Punch(0.1f);
         }
@@ -826,6 +1130,7 @@ namespace Rescue
             var b = p.Board;
             bool hasHover = TryMyCell(w + new Vector2(0, 0.35f), out var hc, out var hr);
             var nameTargets = piece.Type == PieceType.HeroChar ? NameTargets(piece.Char) : null;
+            float blink = 0.5f + 0.5f * Mathf.Sin(Time.time * 8);
 
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
@@ -833,18 +1138,18 @@ namespace Rescue
                     var t = b.Pieces[c, r];
                     Color col = Color.clear;
                     string mark = "";
-                    if (piece.Type == PieceType.Chanzhang)
+                    if (piece.Type == PieceType.Shovel)
                     {
-                        if (b.Cells[c, r] == Cell.Willow) col = Pal.Willow.A(0.45f + 0.2f * Mathf.Sin(Time.time * 8));
+                        if (b.Diggable(c, r)) { col = Pal.Valid.A(0.35f + 0.25f * blink); mark = "挖"; }
                     }
                     else if (b.Placeable(c, r))
                     {
                         if (t != null && ReferenceEquals(t, piece)) col = Color.clear;
-                        else if (Side.CanMerge(piece, t)) { col = Pal.GoldBright.A(0.55f + 0.25f * Mathf.Sin(Time.time * 8)); mark = "合"; }
-                        else if (t == null) col = Color.white.A(0.28f);
+                        else if (Side.CanMerge(piece, t)) { col = Pal.GoldBright.A(0.55f + 0.25f * blink); mark = "合"; }
+                        else if (t == null) col = Pal.Valid.A(0.42f);
                         if (nameTargets != null && nameTargets.TryGetValue(new CellPos(c, r), out var nm))
                         {
-                            col = Pal.Red.A(0.35f + 0.2f * Mathf.Sin(Time.time * 8));
+                            col = Pal.Red.A(0.35f + 0.2f * blink);
                             mark = nm;
                         }
                     }
@@ -897,33 +1202,202 @@ namespace Rescue
                 }
         }
 
+        // ─────────────────────────── 属性卡 ───────────────────────────
+
         void ShowInfo(PieceView v)
         {
             var piece = v.Piece;
-            string s;
+            string title, level, body;
+            float range = 0;
+            Vector2 center = v.Root.localPosition;
             if (piece.Type == PieceType.Unit)
             {
                 var d = UnitDef.Get(piece.Kind);
-                s = $"{d.Glyph} · {ToCn(piece.Level)}级\n{d.Role}\n两个同级的{d.Glyph}拖到一起可升级";
+                title = d.Glyph + "兵";
+                level = $"Lv.{piece.Level}";
+                body = $"类型：{d.TypeLabel}　射程：{d.Range:0.#}格\n攻击力：{d.DamageAt(piece.Level):0.#}　攻速：{1f / d.CooldownAt(piece.Level):0.0}次/秒\n满级{UnitDef.MaxLevel}级 · {d.Role}";
+                range = d.Range;
             }
-            else if (piece.Type == PieceType.Chanzhang)
+            else if (piece.Type == PieceType.Shovel)
             {
-                s = "禅杖（鲁智深遗物）\n拖到柳树上，拔掉它开出新地";
+                title = "方便铲";
+                level = "道具";
+                body = "鲁智深的方便铲\n拖到草地上，开出一块能摆字的白地\n招兵偶尔会掉，也能看广告领";
             }
             else if (v.Hero != null)
             {
-                var d = v.Hero.Def;
-                s = $"{d.Name} · {d.Nick}  {ToCn(v.Hero.Level)}级\n{d.Skill}\n{(string.IsNullOrEmpty(d.Ult) ? "" : "绝技：" + d.Ult)}";
+                var h = v.Hero;
+                var d = h.Def;
+                title = d.Name;
+                level = $"Lv.{h.Level}";
+                center = World(0, h.Pos);
+                string xp = h.Level >= UnitDef.MaxLevel ? "已满级" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}";
+                string atk = d.NoAttack ? "不出手" : $"攻击力：{d.DamageAt(h.Level) * (h.OnWater ? d.WaterBonus : 1f):0.#}　攻速：{1f / d.Cooldown:0.0}次/秒";
+                body = $"{(d.Disha ? "地煞星" : "天罡星")}·{d.Nick}　类型：{d.TypeLabel}\n{atk}\n{xp}　满级{UnitDef.MaxLevel}级\n{d.Skill}";
+                range = d.NoAttack ? 0 : d.Range;
             }
             else
             {
                 var names = new List<string>();
                 foreach (var h in M.Player.Pool)
                     if (h.Name.IndexOf(piece.Char) >= 0) names.Add(h.Hidden ? "？？？" : h.Name);
-                s = $"「{piece.Char}」还在睡大觉\n可组成：{string.Join("、", names)}\n按名字顺序左→右或上→下摆好";
+                title = "「" + piece.Char + "」";
+                level = $"Lv.{piece.Level}";
+                body = $"金字，还没成名\n可组成：{string.Join("、", names)}\n按名字顺序左到右或上到下摆好";
             }
-            Tip((Vector2)v.Root.localPosition + new Vector2(0, 1.2f), s);
+
+            int lines = 1, maxLen = title.Length + 4, cur = 0;
+            foreach (var ch in body)
+            {
+                if (ch == '\n') { lines++; maxLen = Mathf.Max(maxLen, cur); cur = 0; }
+                else cur++;
+            }
+            maxLen = Mathf.Max(maxLen, cur);
+            var size = new Vector2(Mathf.Max(3.2f, maxLen * 0.25f + 0.5f), lines * 0.34f + 0.95f);
+            var pos = center + new Vector2(0, 0.6f + size.y * 0.5f);
+            if (pos.y + size.y * 0.5f > 7.5f) pos = center - new Vector2(0, 0.6f + size.y * 0.5f);
+            pos.x = Mathf.Clamp(pos.x, -4.1f + size.x * 0.5f, 4.1f - size.x * 0.5f);
+
+            _card.gameObject.SetActive(true);
+            _card.localPosition = pos;
+            _cardBg.size = size;
+            _cardTitle.text = title;
+            _cardTitle.transform.localPosition = new Vector2(-size.x * 0.5f + 0.22f, size.y * 0.5f - 0.32f);
+            _cardLevel.text = level;
+            _cardLevel.transform.localPosition = new Vector2(size.x * 0.5f - 0.22f, size.y * 0.5f - 0.32f);
+            _cardBody.text = body;
+            _cardBody.transform.localPosition = new Vector2(-size.x * 0.5f + 0.22f, size.y * 0.5f - 0.66f);
+            Tween.Pop(_card, 0.2f);
+
+            bool showRange = range > 0 && range < 20f && piece.Type != PieceType.Shovel;
+            _rangeFill.enabled = _rangeRing.enabled = showRange;
+            if (showRange)
+            {
+                _rangeFill.transform.localPosition = _rangeRing.transform.localPosition = center;
+                _rangeFill.transform.localScale = _rangeRing.transform.localScale = Vector3.one * range * 2f;
+            }
+            _cardT = 4f;
+            v.Punch(0.15f);
+            Sfx.Play(Snd.Tap, 0.6f);
         }
+
+        /// <summary>验收截图用：点开场上第一个字的属性卡。</summary>
+        public void ShowInfoForAnyPiece()
+        {
+            PieceView best = null;
+            foreach (var v in _pieces.Values)
+                if (v.Side == 0 && v.Piece.Type == PieceType.Unit && v.Target.y > CampY + 0.6f
+                    && (best == null || v.Piece.Level > best.Piece.Level)) best = v;
+            if (best == null)
+                foreach (var v in _pieces.Values)
+                    if (v.Side == 0) { best = v; break; }
+            if (best != null) ShowInfo(best);
+        }
+
+        void HideCard()
+        {
+            _card.gameObject.SetActive(false);
+            _rangeFill.enabled = _rangeRing.enabled = false;
+            _cardT = 0;
+        }
+
+        void UpdateCard(float dt)
+        {
+            if (_cardT <= 0) return;
+            _cardT -= dt;
+            float pulse = 1f + 0.03f * Mathf.Sin(Time.time * 4f);
+            if (_rangeRing.enabled) _rangeRing.color = Color.white.A(0.6f + 0.25f * Mathf.Sin(Time.time * 5f));
+            _rangeFill.transform.localScale = _rangeRing.transform.localScale.x * pulse * Vector3.one;
+            if (_cardT <= 0 || (Input.GetMouseButtonDown(0) && _cardT < 3.8f)) HideCard();
+        }
+
+        // ─────────────────────────── 闲置提示 ───────────────────────────
+
+        /// <summary>原作玩家发呆时会画一条虚线：山寨里哪个字该放哪。</summary>
+        void UpdateIdleHint(float dt)
+        {
+            if (!InputEnabled || _drag != null || M.Over || M.Hold || Paused) { _idleT = 0; SetHint(false); return; }
+            _idleT += dt;
+            if (_idleT < 5f) { SetHint(false); return; }
+            _hintRecalc -= dt;
+            if (_hintRecalc <= 0)
+            {
+                _hintRecalc = 1f;
+                _hintOn = FindHint(out _hintFrom, out _hintTo);
+            }
+            SetHint(_hintOn);
+            if (!_hintOn) return;
+
+            var d = _hintTo - _hintFrom;
+            float len = d.magnitude;
+            const float gap = 0.3f;
+            int n = Mathf.Min(40, Mathf.FloorToInt(len / gap));
+            while (_hintDots.Count < n) _hintDots.Add(Gfx.Sprite(_root, Art.Circle, Color.white, Vector2.zero, Vector2.one * 0.1f, 70, "hintDot"));
+            float off = Mathf.Repeat(Time.time * 0.9f, gap);
+            for (int i = 0; i < _hintDots.Count; i++)
+            {
+                var dot = _hintDots[i];
+                dot.enabled = i < n;
+                if (i >= n) continue;
+                float t = (i * gap + off) / len;
+                dot.transform.localPosition = Vector2.Lerp(_hintFrom, _hintTo, t);
+                dot.color = Pal.Ink.A(0.75f * Mathf.Sin(t * Mathf.PI));
+            }
+            if (_hintBox == null) _hintBox = Gfx.Sprite(_root, Art.Dashed, Pal.Ink, Vector2.zero, Vector2.one * 0.95f, 70, "hintBox");
+            _hintBox.enabled = true;
+            _hintBox.transform.localPosition = _hintTo;
+            _hintBox.transform.localScale = Vector3.one * (0.95f + 0.06f * Mathf.Sin(Time.time * 6f));
+            _hintBox.color = Pal.Ink.A(0.6f + 0.3f * Mathf.Sin(Time.time * 6f));
+        }
+
+        void SetHint(bool on)
+        {
+            if (on) return;
+            foreach (var d in _hintDots) d.enabled = false;
+            if (_hintBox != null) _hintBox.enabled = false;
+        }
+
+        bool FindHint(out Vector2 from, out Vector2 to)
+        {
+            from = to = default;
+            var p = M.Player;
+            var b = p.Board;
+            for (int i = 0; i < p.Camp.Length; i++)
+            {
+                var q = p.Camp[i];
+                if (q == null) continue;
+                from = CampWorld(i);
+                if (q.Type == PieceType.Shovel)
+                {
+                    int best = -1;
+                    for (int c = 0; c < Board.Cols; c++)
+                        for (int r = 0; r < Board.Rows; r++)
+                        {
+                            if (!b.Diggable(c, r)) continue;
+                            int score = 0;
+                            foreach (var n in b.Neighbors4(new CellPos(c, r))) if (b.Cells[n.c, n.r] == Cell.Path) score += 2;
+                            foreach (var n in b.Neighbors4(new CellPos(c, r))) if (b.Placeable(n.c, n.r)) score++;
+                            if (score > best) { best = score; to = CellWorld(0, c, r); }
+                        }
+                    if (best >= 0) return true;
+                    continue;
+                }
+                for (int c = 0; c < Board.Cols; c++)
+                    for (int r = 0; r < Board.Rows; r++)
+                        if (Side.CanMerge(q, b.Pieces[c, r])) { to = CellWorld(0, c, r); return true; }
+            }
+            for (int i = 0; i < p.Camp.Length; i++)
+            {
+                var q = p.Camp[i];
+                if (q == null || q.Type != PieceType.Unit) continue;
+                for (int c = 0; c < Board.Cols; c++)
+                    for (int r = 0; r < Board.Rows; r++)
+                        if (b.Placeable(c, r) && b.Pieces[c, r] == null) { from = CampWorld(i); to = CellWorld(0, c, r); return true; }
+            }
+            return false;
+        }
+
+        // ─────────────────────────── 提示气泡 ───────────────────────────
 
         public void Tip(Vector2 pos, string s)
         {
@@ -988,16 +1462,19 @@ namespace Rescue
             public int Seen;
             public HeroInstance Hero;
 
-            readonly SpriteRenderer _tile, _shadow;
+            const float AnimDur = 0.34f;
+            const float WeaponSize = 0.82f;
+            readonly SpriteRenderer _tile, _shadow, _edge, _icon, _weapon;
             readonly TextMesh _glyph, _level;
             readonly Transform _glyphT;
+            Color _glyphColor = Pal.Ink;
             float _animT;
             UnitKind _animKind;
             Vector2 _animDir;
             float _punch;
             int _lastLevel = -1;
             bool _dragging;
-            int _baseOrder;
+            readonly int _baseOrder = 20;
 
             public PieceView(Transform parent, Piece p, int side)
             {
@@ -1005,40 +1482,58 @@ namespace Rescue
                 Side = side;
                 Root = new GameObject("piece" + p.Id).transform;
                 Root.SetParent(parent, false);
-                _baseOrder = 20;
                 _shadow = Gfx.Sprite(Root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.07f), new Vector2(0.86f, 0.86f), 20);
                 _tile = Gfx.Sprite(Root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.86f, 0.86f), 21);
-                string g = p.Glyph.ToString();
-                _glyph = Gfx.Text(Root, g, Fonts.Brush, 0.66f, Pal.Ink, new Vector2(0, -0.02f), 22);
+                _edge = Gfx.Sprite(Root, Art.Frame, Pal.Ink.A(0.22f), Vector2.zero, new Vector2(0.86f, 0.86f), 21);
+                _glyph = Gfx.Text(Root, p.Type == PieceType.Shovel ? "" : p.Glyph.ToString(), Fonts.Brush, 0.66f, Pal.Ink, new Vector2(0, -0.02f), 22);
                 _glyphT = _glyph.transform;
                 _level = Gfx.Text(Root, "", Fonts.Kai, 0.22f, Pal.InkSoft, new Vector2(0.29f, 0.29f), 23);
+                if (p.Type == PieceType.Shovel)
+                    _icon = Gfx.Sprite(Root, Art.Img("shovel"), Color.white, Vector2.zero, Vector2.one * 0.72f, 22);
+                if (p.Type == PieceType.Unit)
+                {
+                    _weapon = Gfx.Sprite(Root, Art.Img(WeaponImg(p.Kind)), Color.white, Vector2.zero, Vector2.one * WeaponSize, 24);
+                    _weapon.enabled = false;
+                }
                 Refresh();
             }
+
+            static string WeaponImg(UnitKind k) => k switch
+            {
+                UnitKind.Dao => "dao",
+                UnitKind.Qiang => "spear",
+                UnitKind.Gong => "bow",
+                _ => "horse",
+            };
 
             void Refresh()
             {
                 bool hero = Piece.Type == PieceType.HeroChar;
                 bool formed = Hero != null;
-                if (Piece.Type == PieceType.Chanzhang)
+                if (Piece.Type == PieceType.Shovel)
                 {
-                    _tile.color = Pal.Willow.A(0.25f) + Pal.Tile * 0.75f;
-                    _glyph.color = Pal.Willow;
+                    _tile.color = Color.Lerp(Pal.Tile, Pal.Raft, 0.35f);
+                    _edge.color = Pal.Willow.A(0.6f);
                     _level.text = "";
                     return;
                 }
                 _level.text = Piece.Level.ToString();
                 if (hero)
                 {
-                    _tile.color = formed ? Pal.TileHero : Pal.Tile;
-                    _glyph.color = formed ? Pal.RedDeep : Pal.Gold;
+                    bool disha = formed && Hero.Def.Disha;
+                    _tile.color = formed ? (disha ? Color.Lerp(Pal.Tile, Pal.Purple, 0.18f) : Pal.TileHero) : Pal.Tile;
+                    _edge.color = (formed ? (disha ? Pal.Purple : Pal.Gold) : Pal.GoldBright).A(formed ? 0.9f : 0.7f);
+                    _glyphColor = formed ? (disha ? Pal.Purple : Pal.RedDeep) : Pal.Gold;
                     _level.color = Pal.Gold;
                 }
                 else
                 {
                     _tile.color = Color.Lerp(Pal.Tile, Pal.ForLevel(Piece.Level), Piece.Level > 1 ? 0.08f : 0f);
-                    _glyph.color = Pal.ForLevel(Piece.Level);
+                    _edge.color = Pal.ForLevel(Piece.Level).A(Piece.Level > 1 ? 0.45f : 0.22f);
+                    _glyphColor = Pal.ForLevel(Piece.Level);
                     _level.color = Pal.ForLevel(Piece.Level);
                 }
+                _glyph.color = _glyphColor;
             }
 
             float _popK = 1f;
@@ -1051,7 +1546,7 @@ namespace Rescue
             {
                 _animT = 1f;
                 _animKind = kind;
-                _animDir = dir;
+                _animDir = dir.sqrMagnitude > 0.001f ? dir : Vector2.up;
             }
 
             public void SetDragging(bool on)
@@ -1060,8 +1555,11 @@ namespace Rescue
                 int o = on ? 60 : _baseOrder;
                 _shadow.sortingOrder = o;
                 _tile.sortingOrder = o + 1;
+                _edge.sortingOrder = o + 1;
                 _glyph.GetComponent<MeshRenderer>().sortingOrder = o + 2;
+                if (_icon != null) _icon.sortingOrder = o + 2;
                 _level.GetComponent<MeshRenderer>().sortingOrder = o + 3;
+                if (_weapon != null) _weapon.sortingOrder = o + 4;
                 Root.localScale = Vector3.one * (on ? 1.12f : 1f);
                 _shadow.transform.localPosition = on ? new Vector2(0.1f, -0.18f) : new Vector2(0.04f, -0.07f);
             }
@@ -1080,29 +1578,56 @@ namespace Rescue
                 float pop = _popK < 1f ? Tween.OutBack(_popK) : 1f;
                 Root.localScale = Vector3.one * ((_dragging ? 1.12f : 1f) * (1f + Mathf.Sin(_punch * 20f) * _punch * 0.5f) * pop);
 
-                Vector2 off = Vector2.zero;
-                float rot = 0, sx = 1, sy = 1;
-                if (_animT > 0)
+                float sx = 1, sy = 1, morph = 0;
+                if (_animT > 0 && _weapon != null)
                 {
-                    _animT = Mathf.Max(0, _animT - dt * 5f);
-                    float k = Mathf.Sin(_animT * Mathf.PI);
+                    _animT = Mathf.Max(0, _animT - dt / AnimDur);
+                    float k = 1f - _animT;
+                    morph = Mathf.Clamp01(Mathf.Min(k / 0.15f, _animT / 0.25f));
+                    float ang = Mathf.Atan2(_animDir.y, _animDir.x) * Mathf.Rad2Deg;
+                    Vector2 wp = Vector2.zero;
+                    float wr = 0, wsx = 1;
+                    bool flip = false;
                     switch (_animKind)
                     {
-                        case UnitKind.Dao: rot = -35f * k; sx = 1f + 0.1f * k; break;
-                        case UnitKind.Qiang: off = _animDir * 0.2f * k; sx = 1f + 0.25f * k * Mathf.Abs(_animDir.x); sy = 1f + 0.25f * k * Mathf.Abs(_animDir.y); break;
-                        case UnitKind.Gong: sx = 1f - 0.22f * k; sy = 1f + 0.08f * k; break;
-                        case UnitKind.Qi: off = _animDir * 0.3f * k; rot = -12f * k * Mathf.Sign(_animDir.x); break;
+                        case UnitKind.Dao:
+                            wr = ang - 45f + Mathf.Lerp(80f, -80f, Tween.OutCubic(k));
+                            wp = _animDir * 0.12f;
+                            break;
+                        case UnitKind.Qiang:
+                            wr = ang - 45f;
+                            wp = _animDir * Mathf.Sin(k * Mathf.PI) * 0.45f;
+                            break;
+                        case UnitKind.Gong:
+                            wr = ang - 180f;
+                            wsx = 1f - 0.28f * Mathf.Sin(Mathf.Min(1f, k * 1.6f) * Mathf.PI);
+                            break;
+                        default:
+                            flip = _animDir.x > 0;
+                            wp = _animDir * Mathf.Sin(k * Mathf.PI) * 0.35f + Vector2.up * Mathf.Abs(Mathf.Sin(k * Mathf.PI * 2f)) * 0.12f;
+                            wr = Mathf.Sin(k * Mathf.PI * 2f) * 10f;
+                            break;
                     }
+                    _weapon.enabled = morph > 0.01f;
+                    var wt = _weapon.transform;
+                    wt.localPosition = wp;
+                    wt.localRotation = Quaternion.Euler(0, 0, wr);
+                    float ws = WeaponSize * (0.6f + 0.4f * morph);
+                    wt.localScale = new Vector3(ws * wsx * (flip ? -1f : 1f), ws, 1);
+                    _weapon.color = Color.white.A(morph);
                 }
+                else if (_weapon != null) _weapon.enabled = false;
+
                 if (Piece.Type == PieceType.HeroChar && Hero == null && !_dragging)
                 {
                     float breathe = Mathf.Sin(Time.time * 2f + Piece.Id) * 0.04f;
                     sx += breathe;
                     sy += breathe;
                 }
-                _glyphT.localPosition = new Vector2(0, -0.02f) + off;
-                _glyphT.localRotation = Quaternion.Euler(0, 0, rot);
-                _glyphT.localScale = new Vector3(sx, sy, 1);
+                float g = 1f - morph * 0.85f;
+                _glyphT.localPosition = new Vector2(0, -0.02f);
+                _glyphT.localScale = new Vector3(sx * g, sy * g, 1);
+                _glyph.color = _glyphColor.A(1f - morph * 0.9f);
             }
 
             public void FadeOutAndDestroy()
@@ -1114,36 +1639,43 @@ namespace Rescue
 
         sealed class FrameView
         {
-            readonly SpriteRenderer _frame, _glow;
+            readonly SpriteRenderer _frame, _glow, _xpBg, _xpFg;
             readonly TextMesh _nick, _seal;
             readonly SpriteRenderer _sealBg;
             readonly Transform _root;
+            readonly Color _tint, _tintBright;
             public int Seen;
             float _pulse, _glowT;
+            float _barW;
 
             public FrameView(BattleView v, HeroInstance h, int side)
             {
                 _root = new GameObject("hero" + h.Id).transform;
                 _root.SetParent(v._root, false);
-                _glow = Gfx.Sprite(_root, Art.Frame, Pal.GoldBright.A(0f), Vector2.zero, Vector2.one, 17);
-                _frame = Gfx.Sprite(_root, Art.Frame, Pal.GoldBright, Vector2.zero, Vector2.one, 24);
-                _nick = Gfx.Text(_root, h.Def.Nick, Fonts.Kai, 0.2f, Pal.RedDeep, Vector2.zero, 25);
-                _sealBg = Gfx.Sprite(_root, Art.Rounded, Pal.Red, Vector2.zero, new Vector2(0.26f, 0.26f), 25);
-                _seal = Gfx.Text(_root, "义", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 26);
-                Place(h, side);
+                bool disha = h.Def.Disha;
+                _tint = disha ? Pal.Purple : Pal.Gold;
+                _tintBright = disha ? Pal.Hex("A57BD1") : Pal.GoldBright;
+                _glow = Gfx.Sprite(_root, Art.Frame, _tintBright.A(0f), Vector2.zero, Vector2.one, 17);
+                _frame = Gfx.Sprite(_root, Art.Frame, _tintBright, Vector2.zero, Vector2.one, 24);
+                _nick = Gfx.Text(_root, h.Def.Nick, Fonts.Kai, 0.2f, disha ? Pal.Purple : Pal.RedDeep, Vector2.zero, 25);
+                _sealBg = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.Red, Vector2.zero, new Vector2(0.26f, 0.26f), 25);
+                _seal = Gfx.Text(_root, disha ? "煞" : "罡", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 26);
+                _xpBg = Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.45f), Vector2.zero, new Vector2(1, 0.06f), 25);
+                _xpFg = Gfx.Sprite(_root, Art.White, _tintBright, Vector2.zero, new Vector2(1, 0.06f), 26);
+                _side = side;
+                Place(h);
                 Tween.Pop(_root, 0.4f);
                 _glowT = 1.5f;
             }
 
-            int _side;
+            readonly int _side;
 
-            void Place(HeroInstance h, int side)
+            void Place(HeroInstance h)
             {
-                _side = side;
                 Vector2 min = new Vector2(99, 99), max = new Vector2(-99, -99);
                 foreach (var c in h.Cells)
                 {
-                    var p = CellWorld(side, c.c, c.r);
+                    var p = CellWorld(_side, c.c, c.r);
                     min = Vector2.Min(min, p);
                     max = Vector2.Max(max, p);
                 }
@@ -1155,17 +1687,23 @@ namespace Rescue
                 _nick.transform.localPosition = new Vector2(0, -size.y * 0.5f + 0.02f);
                 _sealBg.transform.localPosition = new Vector2(size.x * 0.5f - 0.1f, size.y * 0.5f - 0.1f);
                 _seal.transform.localPosition = _sealBg.transform.localPosition;
+                _barW = size.x - 0.5f;
+                _xpBg.transform.localPosition = new Vector2(-0.12f, size.y * 0.5f - 0.03f);
+                _xpBg.transform.localScale = new Vector3(_barW, 0.06f, 1);
             }
 
             public void Update(HeroInstance h)
             {
-                Place(h, _side);
+                Place(h);
                 float dt = Time.deltaTime;
                 _pulse = Mathf.Max(0, _pulse - dt * 4f);
                 _glowT = Mathf.Max(0, _glowT - dt);
                 float a = Mathf.Max(_pulse * 0.5f, Mathf.Min(1, _glowT) * 0.8f, 0.15f + 0.1f * Mathf.Sin(Time.time * 3f));
-                _glow.color = Pal.GoldBright.A(a);
-                _frame.color = Color.Lerp(Pal.Gold, Pal.GoldBright, 0.5f + 0.5f * Mathf.Sin(Time.time * 3f));
+                _glow.color = _tintBright.A(a);
+                _frame.color = Color.Lerp(_tint, _tintBright, 0.5f + 0.5f * Mathf.Sin(Time.time * 3f));
+                float k = h.Level >= UnitDef.MaxLevel ? 1f : Mathf.Clamp01(h.Xp / HeroInstance.XpNeed(h.Level));
+                _xpFg.transform.localScale = new Vector3(_barW * k, 0.06f, 1);
+                _xpFg.transform.localPosition = _xpBg.transform.localPosition - new Vector3(_barW * (1 - k) * 0.5f, 0, 0);
             }
 
             public void Pulse() => _pulse = 1f;
@@ -1179,7 +1717,7 @@ namespace Rescue
             public readonly Transform Root;
             public int Seen;
             readonly TextMesh _glyph;
-            readonly SpriteRenderer _hpBg, _hpFg, _aura;
+            readonly SpriteRenderer _hpBg, _hpFg, _aura, _shadow;
             readonly float _barW;
             readonly Color _baseColor;
             float _flash;
@@ -1197,6 +1735,7 @@ namespace Rescue
                 uint hash = (uint)e.Id * 2654435761u;
                 _jitter = new Vector2(((hash >> 8) & 0xff) / 255f - 0.5f, ((hash >> 16) & 0xff) / 255f - 0.5f) * (_big ? 0f : 0.28f);
                 _baseColor = boss ? Pal.RedDeep : elite ? Pal.Hex("3B2050") : Pal.Ink;
+                _shadow = Gfx.Sprite(Root, Art.SoftDot, Pal.Shadow, new Vector2(0, -h * 0.45f), new Vector2(h * 1.1f, h * 0.35f), 29);
                 if (boss || elite)
                     _aura = Gfx.Sprite(Root, Art.Blob, (boss ? Pal.Red : Pal.Hex("3B2050")).A(0.35f), Vector2.zero, Vector2.one * (boss ? 1.6f : 0.95f), 30);
                 if (e.Def.Kind == EnemyKind.Jia)
@@ -1232,31 +1771,36 @@ namespace Rescue
             readonly BattleView _v;
             readonly int _side;
             readonly Transform _root;
-            readonly SpriteRenderer[] _hearts = new SpriteRenderer[3];
+            readonly List<SpriteRenderer> _hearts = new List<SpriteRenderer>();
             readonly TextMesh _danger, _glyph;
-            readonly SpriteRenderer _bubble;
+            readonly SpriteRenderer _bubble, _shield;
             readonly TextMesh _bubbleText;
             readonly SpriteRenderer _bg;
+            readonly float _heartY;
             float _hurt;
             float _bubbleT;
-            int _lastHearts = 3;
+            int _lastHearts;
 
             public GoalView(BattleView v, int side)
             {
                 _v = v;
                 _side = side;
-                var b = v.M.Sides[side].Board;
+                var s = v.M.Sides[side];
+                var b = s.Board;
                 var pos = CellWorld(side, b.Goal.c, b.Goal.r);
                 _root = new GameObject("goal" + side).transform;
                 _root.SetParent(v._root, false);
                 _root.localPosition = pos;
-                _bg = Gfx.Sprite(_root, Art.Rounded, Pal.RedDeep, Vector2.zero, new Vector2(0.95f, 0.95f), 25);
-                Gfx.Sprite(_root, Art.Frame, Pal.Ink, Vector2.zero, new Vector2(0.98f, 0.98f), 26);
-                _glyph = Gfx.Text(_root, "宋", Fonts.Brush, 0.7f, Pal.Paper, new Vector2(0, 0.02f), 27);
-                float hy = side == 0 ? 0.7f : -0.7f;
-                for (int i = 0; i < 3; i++)
-                    _hearts[i] = Gfx.Sprite(_root, Art.Heart, Pal.Red, new Vector2((i - 1) * 0.3f, hy), new Vector2(0.28f, 0.28f), 28);
-                _danger = Gfx.Text(_root, "危", Fonts.Brush, 0.6f, Pal.Red, new Vector2(-1.0f, 0), 29);
+                Gfx.Sprite(_root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.08f), new Vector2(0.95f, 0.95f), 24);
+                _bg = Gfx.Sprite(_root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.95f, 0.95f), 25);
+                Gfx.Sprite(_root, Art.Frame, Pal.RedDeep, Vector2.zero, new Vector2(0.98f, 0.98f), 26);
+                _glyph = Gfx.Text(_root, "宋", Fonts.Brush, 0.6f, Pal.RedDeep, new Vector2(0, -0.1f), 27);
+                Gfx.Sprite(_root, Art.Img("hat"), Color.white, new Vector2(0, 0.3f), Vector2.one * 0.92f, 28);
+                _shield = Gfx.Sprite(_root, Art.Swirl, Pal.Red.A(0.75f), Vector2.zero, Vector2.one * 1.9f, 29);
+                _shield.enabled = false;
+                _heartY = -0.43f;
+                _lastHearts = s.Hearts;
+                _danger = Gfx.Text(_root, "危", Fonts.Brush, 0.6f, Pal.Red, new Vector2(-1.0f, 0), 30);
                 _danger.gameObject.SetActive(false);
                 float by = side == 0 ? 1.45f : -1.45f;
                 _bubble = Gfx.Sprite(_root, Art.Rounded, Color.white, new Vector2(-1.2f, by), new Vector2(2.2f, 0.55f), 70);
@@ -1287,15 +1831,29 @@ namespace Rescue
             {
                 var s = _v.M.Sides[_side];
                 float dt = Time.deltaTime;
-                for (int i = 0; i < 3; i++)
+                int n = Mathf.Min(5, s.MaxHearts);
+                while (_hearts.Count < n)
+                    _hearts.Add(Gfx.Sprite(_root, Art.Heart, Pal.Red, Vector2.zero, new Vector2(0.28f, 0.28f), 28));
+                for (int i = 0; i < _hearts.Count; i++)
                 {
+                    var heart = _hearts[i];
+                    heart.enabled = i < n;
+                    heart.transform.localPosition = new Vector2((i - (n - 1) * 0.5f) * 0.19f, _heartY);
                     float fill = Mathf.Clamp01((s.Hp - i * Tuning.HeartHp) / (float)Tuning.HeartHp);
-                    _hearts[i].color = fill <= 0 ? Pal.Ink.A(0.25f) : Color.Lerp(Pal.Hex("E8A0A0"), Pal.Red, fill);
-                    _hearts[i].transform.localScale = Vector3.one * (0.18f + 0.1f * fill) * (1f + _hurt * 0.4f);
+                    heart.color = fill <= 0 ? Pal.Ink.A(0.25f) : Color.Lerp(Pal.Hex("E8A0A0"), Pal.Red, fill);
+                    heart.transform.localScale = Vector3.one * (0.13f + 0.07f * fill) * (1f + _hurt * 0.4f);
                 }
+                if (s.Hearts > _lastHearts) _lastHearts = s.Hearts;
                 _hurt = Mathf.Max(0, _hurt - dt * 3f);
-                _bg.color = Color.Lerp(Pal.RedDeep, Pal.Red, _hurt);
-                _glyph.transform.localPosition = new Vector2(Mathf.Sin(Time.time * 60f) * 0.06f * _hurt, 0.02f);
+                _bg.color = Color.Lerp(Pal.Tile, Pal.Hex("F2B8A8"), _hurt);
+                _glyph.transform.localPosition = new Vector2(Mathf.Sin(Time.time * 60f) * 0.06f * _hurt, -0.1f);
+
+                _shield.enabled = s.ShieldT > 0;
+                if (_shield.enabled)
+                {
+                    _shield.transform.localRotation = Quaternion.Euler(0, 0, -Time.time * 240f);
+                    _shield.color = Pal.Red.A(Mathf.Min(0.75f, s.ShieldT * 0.4f));
+                }
 
                 bool danger = false;
                 var goal = s.Board.Goal.Center;

@@ -5,7 +5,8 @@ namespace Rescue.Sim
 {
     public enum UnitKind { Dao, Qiang, Gong, Qi }
 
-    public enum PieceType { Unit, HeroChar, Chanzhang }
+    /// <summary>Shovel 是鲁智深的方便铲：拖到紧挨白地的草地上开出新地。</summary>
+    public enum PieceType { Unit, HeroChar, Shovel }
 
     public sealed class Piece
     {
@@ -21,13 +22,13 @@ namespace Rescue.Sim
 
         public static Piece Unit(UnitKind k, int level = 1) => new Piece { Type = PieceType.Unit, Kind = k, Level = level };
         public static Piece Hero(char c, int level = 1) => new Piece { Type = PieceType.HeroChar, Char = c, Level = level };
-        public static Piece Staff() => new Piece { Type = PieceType.Chanzhang };
+        public static Piece Shovel() => new Piece { Type = PieceType.Shovel };
 
         public char Glyph => Type switch
         {
             PieceType.Unit => UnitDef.Get(Kind).Glyph,
             PieceType.HeroChar => Char,
-            _ => '杖',
+            _ => '铲',
         };
     }
 
@@ -45,6 +46,8 @@ namespace Rescue.Sim
 
         public float DamageAt(int level) => Damage * (float)Math.Pow(Tuning.LevelMul, level - 1);
         public float CooldownAt(int level) => Cooldown * (1f - 0.06f * (level - 1));
+
+        public string TypeLabel => Pierce > 1 ? "穿透" : Splash > 0 ? "范围" : Knockback > 0 ? "击退" : "单体";
 
         static readonly UnitDef[] All =
         {
@@ -81,6 +84,11 @@ namespace Rescue.Sim
 
         public float DamageAt(int level) => Damage * (float)Math.Pow(Tuning.LevelMul, level - 1);
 
+        /// <summary>地煞星（紫框）；其余是天罡星（金框）。</summary>
+        public bool Disha => Id == HeroId.SunErNiang || Id == HeroId.HuSanNiang;
+
+        public string TypeLabel => NoAttack ? "辅助" : Pierce > 1 ? "穿透" : Splash > 0 ? "范围" : "单体";
+
         public static readonly HeroDef[] All =
         {
             new HeroDef { Id = HeroId.WuSong, Name = "武松", Nick = "行者", Range = 1.45f, Cooldown = 0.35f, Damage = 4.5f,
@@ -110,7 +118,7 @@ namespace Rescue.Sim
             new HeroDef { Id = HeroId.HuSanNiang, Name = "扈三娘", Nick = "一丈青", Range = 2.4f, Cooldown = 0.9f, Damage = 7f,
                 Skill = "红锦套索，命中定身", Ult = "一丈青：同时套住五人", Quote = "看索！", UltCooldown = 11f },
             new HeroDef { Id = HeroId.LuZhiShen, Name = "鲁智深", Nick = "花和尚", Range = 1.55f, Cooldown = 0.9f, Damage = 14f, Splash = 1.0f,
-                Skill = "禅杖横扫，击退敌人", Ult = "倒拔垂杨柳：拔掉一棵柳树开出新地", Quote = "洒家来也！", UltCooldown = 14f },
+                Skill = "禅杖横扫，范围重击", Ult = "方便铲：送一把铲子到山寨，开出新地", Quote = "洒家来也！", UltCooldown = 14f },
             new HeroDef { Id = HeroId.WuYong, Name = "吴用", Nick = "智多星", NoAttack = true,
                 Skill = "不出手；周围八格出手速度 +30%", Ult = "智取：全队出手速度翻倍三秒", Quote = "小生略施小计。", UltCooldown = 12f },
             new HeroDef { Id = HeroId.WuDaLang, Name = "武大郎", Nick = "三寸丁谷树皮", NoAttack = true, Hidden = true,
@@ -152,7 +160,8 @@ namespace Rescue.Sim
         public string SkillText;
     }
 
-    public enum Cell { Grass, Path, Water, Willow, Rock }
+    /// <summary>Grass/Marsh 未开垦不能摆；Tile/Water 是开好的地。</summary>
+    public enum Cell { Grass, Path, Water, Tile, Rock, Marsh }
 
     public sealed class ChapterDef
     {
@@ -170,16 +179,16 @@ namespace Rescue.Sim
         {
             new ChapterDef
             {
-                Index = 0, Name = "清风寨", RivalName = "燕顺", RivalSkill = 0.25f, RivalIncome = 0.7f,
+                Index = 0, Name = "清风寨", RivalName = "燕顺", RivalSkill = 0.25f, RivalIncome = 0.6f,
                 Story = "宋江夜看花灯，被清风寨知寨刘高认出，五花大绑押进寨中。花荣连夜点兵：救哥哥！",
                 Map = new[]
                 {
                     "S#######",
-                    ".T.....#",
+                    ".ooo...#",
                     ".#######",
-                    ".#....T.",
+                    ".#..ooo.",
                     ".######.",
-                    "T.....#G",
+                    "......#G",
                 },
                 Pool = new[] { HeroId.HuaRong, HeroId.QinMing, HeroId.WuSong, HeroId.YanQing, HeroId.WuDaLang },
                 Boss = new BossDef { Name = "刘高", Title = "清风寨知寨", Skill = BossSkill.Summon, Nemesis = HeroId.HuaRong, SkillText = "每隔几秒招来两个寨兵" },
@@ -190,11 +199,11 @@ namespace Rescue.Sim
                 Story = "浔阳楼上一首反诗，宋江被判斩首。午时三刻，十字路口，刽子手已经举刀——",
                 Map = new[]
                 {
-                    "S#....T.",
-                    ".#.####.",
-                    ".#.#..#.",
-                    ".###..#.",
-                    "T.....#.",
+                    "S#.....o",
+                    ".#o####.",
+                    ".#o#oo#.",
+                    ".###oo#.",
+                    "......#.",
                     "......#G",
                 },
                 Pool = new[] { HeroId.LiKui, HeroId.DaiZong, HeroId.LinChong, HeroId.HuaRong, HeroId.SunErNiang, HeroId.HuSanNiang, HeroId.WuDaLang },
@@ -208,9 +217,9 @@ namespace Rescue.Sim
                 {
                     "~~~~~~~S",
                     "########",
-                    "#.~~T.~.",
+                    "#.wwoo~.",
                     "########",
-                    "..~~~~.#",
+                    "..ww~~.#",
                     "G#######",
                 },
                 Pool = new[] { HeroId.ZhangShun, HeroId.ZhangHeng, HeroId.RuanXiaoEr, HeroId.RuanXiaoQi, HeroId.LiKui, HeroId.LuZhiShen, HeroId.WuYong },
@@ -230,7 +239,8 @@ namespace Rescue.Sim
         public const int StartCost = 8;
         public const int CostStep = 2;
         public const float HeroCharChance = 0.24f;
-        public const float StaffChance = 0.035f;
+        public const float ShovelChance = 0.12f;
+        public const int AdShovels = 2;
         public const int GoldPity = 5;
         public const float PairBias = 0.4f;
         public const int MaxWaveCount = 24;
@@ -239,6 +249,6 @@ namespace Rescue.Sim
         public const float FirstWaveAt = 4f;
         public const float WaveGap = 3.5f;
 
-        public static float WaveHp(int wave) => 5f * (float)Math.Pow(1.22, wave - 1);
+        public static float WaveHp(int wave) => 5f * (float)Math.Pow(1.18, wave - 1);
     }
 }

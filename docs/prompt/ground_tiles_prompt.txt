@@ -1,0 +1,4 @@
+A 3 columns x 1 row sheet of three square seamless top-down ground textures for a casual Chinese ink-style tower defense board, each filling its square completely edge to edge, separated by thin white gaps.
+(1) soft green grass meadow texture with small hand-painted grass tufts and a few tiny flowers, muted sage green, ink-wash watercolor style, flat top-down, (2) packed earth dirt road texture, warm pinkish brown clay with tiny pebbles and subtle brush texture, top-down, (3) grey stone brick wall top texture, light grey bricks with ink outlines, top-down.
+Even lighting, low contrast, no shadows from objects, no perspective, tileable look.
+NO TEXT, no labels, no writing anywhere in the image.

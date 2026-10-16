@@ -41,8 +41,9 @@ namespace Rescue.Sim
                         case 'S': Cells[c, r] = Cell.Path; Spawn = new CellPos(c, r); break;
                         case 'G': Cells[c, r] = Cell.Path; Goal = new CellPos(c, r); break;
                         case '#': Cells[c, r] = Cell.Path; break;
-                        case '~': Cells[c, r] = Cell.Water; break;
-                        case 'T': Cells[c, r] = Cell.Willow; break;
+                        case 'o': Cells[c, r] = Cell.Tile; break;
+                        case 'w': Cells[c, r] = Cell.Water; break;
+                        case '~': Cells[c, r] = Cell.Marsh; break;
                         case 'x': Cells[c, r] = Cell.Rock; break;
                         default: Cells[c, r] = Cell.Grass; break;
                     }
@@ -95,7 +96,37 @@ namespace Rescue.Sim
 
         public static bool InBounds(int c, int r) => c >= 0 && c < Cols && r >= 0 && r < Rows;
 
-        public bool Placeable(int c, int r) => InBounds(c, r) && (Cells[c, r] == Cell.Grass || Cells[c, r] == Cell.Water);
+        public bool Placeable(int c, int r) => InBounds(c, r) && (Cells[c, r] == Cell.Tile || Cells[c, r] == Cell.Water);
+
+        /// <summary>草地、苇荡要先用方便铲开出来才能摆字。</summary>
+        public bool Diggable(int c, int r) => InBounds(c, r) && (Cells[c, r] == Cell.Grass || Cells[c, r] == Cell.Marsh);
+
+        public bool Dig(int c, int r)
+        {
+            if (!Diggable(c, r)) return false;
+            Cells[c, r] = Cells[c, r] == Cell.Marsh ? Cell.Water : Cell.Tile;
+            return true;
+        }
+
+        public bool AnyDiggable()
+        {
+            for (int c = 0; c < Cols; c++)
+                for (int r = 0; r < Rows; r++)
+                    if (Diggable(c, r)) return true;
+            return false;
+        }
+
+        public int PlaceableCount
+        {
+            get
+            {
+                int n = 0;
+                for (int c = 0; c < Cols; c++)
+                    for (int r = 0; r < Rows; r++)
+                        if (Placeable(c, r)) n++;
+                return n;
+            }
+        }
 
         public IEnumerable<CellPos> Neighbors4(CellPos p)
         {
@@ -105,22 +136,6 @@ namespace Rescue.Sim
             if (p.r < Rows - 1) yield return new CellPos(p.c, p.r + 1);
         }
 
-        public bool HasWillow()
-        {
-            for (int c = 0; c < Cols; c++)
-                for (int r = 0; r < Rows; r++)
-                    if (Cells[c, r] == Cell.Willow) return true;
-            return false;
-        }
-
-        public bool TryFindWillow(out CellPos pos)
-        {
-            for (int r = Rows - 1; r >= 0; r--)
-                for (int c = 0; c < Cols; c++)
-                    if (Cells[c, r] == Cell.Willow) { pos = new CellPos(c, r); return true; }
-            pos = default;
-            return false;
-        }
     }
 
     public sealed class HeroInstance
@@ -135,6 +150,9 @@ namespace Rescue.Sim
         public float Cd;
         public float UltCd;
         public bool OnWater;
+        public float Xp;
+
+        public static int XpNeed(int level) => 10 + 12 * level;
 
         public V2 Pos
         {

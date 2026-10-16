@@ -149,9 +149,29 @@ namespace Rescue
             float t = 0;
             while (_battle != null && !_battle.M.Over && t < 150f)
             {
-                yield return new WaitForSecondsRealtime(15f);
-                t += 15f;
-                yield return Shot("battle");
+                yield return new WaitForSecondsRealtime(5f);
+                t += 5f;
+                if (t % 15f < 0.1f) yield return Shot("battle");
+                if (Mathf.Approximately(t, 20f))
+                {
+                    _battle.View.ShowInfoForAnyPiece();
+                    yield return new WaitForSecondsRealtime(0.4f);
+                    yield return Shot("info");
+                }
+                if (Mathf.Approximately(t, 35f))
+                {
+                    _battle.View.ShovelAd();
+                    yield return new WaitForSecondsRealtime(1.0f);
+                    yield return Shot("ad");
+                    yield return new WaitForSecondsRealtime(1.6f);
+                    yield return Shot("shovels");
+                }
+                if (Mathf.Approximately(t, 70f))
+                {
+                    _battle.View.RescueAd();
+                    yield return new WaitForSecondsRealtime(2.6f);
+                    yield return Shot("rescue");
+                }
             }
             if (_battle != null) _battle.ForceEnd(true);
             yield return new WaitForSecondsRealtime(2.6f);

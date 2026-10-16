@@ -29,6 +29,9 @@ namespace Rescue.Sim
         public bool Stele;
         public int MengHan;
         public int TianShu;
+        public int Baozi;
+        public bool Xuming;
+        public int Shovels;
     }
 
     public sealed class Side
@@ -47,8 +50,14 @@ namespace Rescue.Sim
         public int Buns = Tuning.StartBuns;
         public int RecruitCost = Tuning.StartCost;
         public int Recruits;
+        public int MaxHp = Tuning.MaxHp;
         public int Hp = Tuning.MaxHp;
         public int Kills;
+        /// <summary>山寨塞不下的铲子先存着，有空位自动补进去。</summary>
+        public int ShovelStock;
+        public bool RescueUsed;
+        public float ShieldT;
+        HeroInstance _curHero;
         public int Rains;
         /// <summary>击杀收入倍率：对手难度的主要旋钮。</summary>
         public float IncomeMul = 1f;
@@ -89,6 +98,79 @@ namespace Rescue.Sim
             _charWeights.Sort((a, b) => a.Key.CompareTo(b.Key));
 
             if (Items.Gang) Buns += 20;
+            if (Items.Xuming) AddMaxHp(10);
+            ShovelStock = Items.Shovels;
+            FillShovels();
+        }
+
+        public int MaxHearts => (MaxHp + Tuning.HeartHp - 1) / Tuning.HeartHp;
+
+        public void AddMaxHp(int n)
+        {
+            MaxHp += n;
+            Hp += n;
+        }
+
+        /// <summary>危急：官兵快摸到宋江，或者只剩最后一颗心。</summary>
+        public bool InDanger
+        {
+            get
+            {
+                if (Dead || M.Over) return false;
+                if (Hearts <= 1) return true;
+                int near = 0;
+                var goal = Board.Goal.Center;
+                foreach (var e in Enemies)
+                    if (!e.Dead && V2.Dist(e.Pos, goal) < 2.2f) near++;
+                return near >= 3;
+            }
+        }
+
+        public void GrantShovels(int n)
+        {
+            ShovelStock += n;
+            FillShovels();
+            Emit(new SimEvent { Type = Ev.Shovels, Val = n });
+        }
+
+        void FillShovels()
+        {
+            for (int i = 0; i < Camp.Length && ShovelStock > 0; i++)
+                if (Camp[i] == null) { Camp[i] = Piece.Shovel(); ShovelStock--; }
+        }
+
+        bool HasShovel()
+        {
+            if (ShovelStock > 0) return true;
+            foreach (var p in Camp) if (p != null && p.Type == PieceType.Shovel) return true;
+            return false;
+        }
+
+        /// <summary>看广告请公孙胜作法：清掉场上小兵、头目掉三成血，之后十二秒宋江不掉血。一局一次。</summary>
+        public bool Rescue()
+        {
+            if (RescueUsed || Dead || M.Over) return false;
+            RescueUsed = true;
+            ShieldT = 12f;
+            foreach (var e in Enemies)
+            {
+                if (e.Dead) continue;
+                Hit(e, e.IsBig ? e.MaxHp * 0.3f : e.Hp + 1f, null);
+            }
+            Emit(new SimEvent { Type = Ev.Rescue, P = Board.Goal.Center });
+            return true;
+        }
+
+        /// <summary>孙二娘的包子：五成五回一颗心，四成五吃坏肚子掉一颗心（不会因此丧命）。</summary>
+        public bool UseBaozi()
+        {
+            if (Items.Baozi <= 0 || M.Over || Dead) return false;
+            Items.Baozi--;
+            bool good = _rng.Chance(0.55f);
+            int before = Hp;
+            Hp = good ? Math.Min(MaxHp, Hp + Tuning.HeartHp) : Math.Max(1, Hp - Tuning.HeartHp);
+            Emit(new SimEvent { Type = Ev.Baozi, Flag = good ? 1 : 0, Val = Hp - before, P = Board.Goal.Center });
+            return true;
         }
 
         // ───────────── 玩家 / AI 操作 ─────────────
@@ -104,8 +186,14 @@ namespace Rescue.Sim
         {
             if (!CanRecruit) return false;
             Buns -= RecruitCost;
+            FillShovels();
+            bool needShovel = EmptyCells() == 0 && !HasShovel() && Board.AnyDiggable();
             for (int i = 0; i < Camp.Length; i++)
-                if (Camp[i] == null) Camp[i] = Roll();
+            {
+                if (Camp[i] != null) continue;
+                if (needShovel) { Camp[i] = Piece.Shovel(); needShovel = false; }
+                else Camp[i] = Roll();
+            }
             Recruits++;
             RecruitCost += Tuning.CostStep;
             Emit(new SimEvent { Type = Ev.Recruit });
@@ -115,7 +203,7 @@ namespace Rescue.Sim
         Piece Roll()
         {
             bool gold = _sinceGold >= Tuning.GoldPity;
-            if (!gold && Board.HasWillow() && _rng.Chance(Tuning.StaffChance)) return Piece.Staff();
+            if (!gold && Board.AnyDiggable() && _rng.Chance(Tuning.ShovelChance * (EmptyCells() == 0 ? 2.5f : 1f))) return Piece.Shovel();
             if (gold || _rng.Chance(Tuning.HeroCharChance))
             {
                 _sinceGold = 0;
@@ -143,7 +231,16 @@ namespace Rescue.Sim
             return n > 0;
         }
 
-        public static int DismissRefund(Piece p) => p == null || p.Type == PieceType.Chanzhang ? 1 : 2 * p.Level;
+        public int EmptyCells()
+        {
+            int n = 0;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (Board.Placeable(c, r) && Board.Pieces[c, r] == null) n++;
+            return n;
+        }
+
+        public static int DismissRefund(Piece p) => p == null || p.Type == PieceType.Shovel ? 1 : 2 * p.Level;
 
         /// <summary>遣散：把字拖到聚义按钮上，返还少量炊饼。</summary>
         public bool DismissCamp(int slot)
@@ -152,6 +249,7 @@ namespace Rescue.Sim
             if (p == null || M.Over) return false;
             Camp[slot] = null;
             Refund(p, new V2(-1, -1));
+            FillShovels();
             return true;
         }
 
@@ -189,7 +287,7 @@ namespace Rescue.Sim
         public static bool CanMerge(Piece a, Piece b)
         {
             if (a == null || b == null || ReferenceEquals(a, b)) return false;
-            if (a.Type != b.Type || a.Type == PieceType.Chanzhang) return false;
+            if (a.Type != b.Type || a.Type == PieceType.Shovel) return false;
             if (a.Level != b.Level || a.Level >= UnitDef.MaxLevel) return false;
             return a.Type == PieceType.Unit ? a.Kind == b.Kind : a.Char == b.Char;
         }
@@ -198,12 +296,12 @@ namespace Rescue.Sim
         {
             var p = Camp[slot];
             if (p == null || M.Over) return false;
-            if (p.Type == PieceType.Chanzhang)
+            if (p.Type == PieceType.Shovel)
             {
-                if (!Board.InBounds(c, r) || Board.Cells[c, r] != Cell.Willow) return false;
-                Board.Cells[c, r] = Cell.Grass;
+                if (!Board.Dig(c, r)) return false;
                 Camp[slot] = null;
-                Emit(new SimEvent { Type = Ev.StaffUsed, P = new CellPos(c, r).Center });
+                FillShovels();
+                Emit(new SimEvent { Type = Ev.Dig, P = new CellPos(c, r).Center, Flag = Board.Cells[c, r] == Cell.Water ? 1 : 0 });
                 return true;
             }
             if (!Board.Placeable(c, r)) return false;
@@ -271,7 +369,7 @@ namespace Rescue.Sim
             }
             else
             {
-                if (t.Type == PieceType.Chanzhang) return false;
+                if (t.Type == PieceType.Shovel) return false;
                 Camp[slot] = p;
                 Board.Pieces[c, r] = t;
             }
@@ -380,6 +478,7 @@ namespace Rescue.Sim
             EnemySlowT = Math.Max(0, EnemySlowT - dt);
             HasteAllT = Math.Max(0, HasteAllT - dt);
             _steleCd = Math.Max(0, _steleCd - dt);
+            ShieldT = Math.Max(0, ShieldT - dt);
 
             MoveEnemies(dt);
             if (Dead) return;
@@ -413,6 +512,11 @@ namespace Rescue.Sim
 
         void Leak(Enemy e)
         {
+            if (ShieldT > 0)
+            {
+                Emit(new SimEvent { Type = Ev.Leak, A = e.Id, Val = 0, P = e.Pos, Flag = 1 });
+                return;
+            }
             int heartsBefore = Hearts;
             Hp = Math.Max(0, Hp - e.LeakDamage);
             Emit(new SimEvent { Type = Ev.Leak, A = e.Id, Val = e.LeakDamage, P = e.Pos });
@@ -501,9 +605,11 @@ namespace Rescue.Sim
                 h.Cd -= dt;
                 h.UltCd -= dt;
                 var pos = h.Pos;
+                _curHero = h;
 
                 if (h.UltCd <= 0 && TryUlt(h, pos)) h.UltCd = def.UltCooldown;
 
+                if (def.NoAttack) GainXp(h, dt * 0.35f);
                 if (def.NoAttack || h.Cd > 0) continue;
                 var target = FindTarget(pos, def.Range, def.Id == HeroId.HuaRong);
                 if (target == null) { h.Cd = 0; continue; }
@@ -521,7 +627,22 @@ namespace Rescue.Sim
                 }
                 if (def.Id == HeroId.HuSanNiang) target.StunT = Math.Max(target.StunT, 0.6f);
                 if (def.Id == HeroId.LuZhiShen && !target.IsBig) Knock(target, 0.4f);
+                GainXp(h, 0.2f);
             }
+            _curHero = null;
+        }
+
+        /// <summary>好汉打仗涨经验，攒满后名字里每个字都升一级（最高五级）。</summary>
+        void GainXp(HeroInstance h, float xp)
+        {
+            if (h.Level >= UnitDef.MaxLevel) return;
+            h.Xp += xp;
+            if (h.Xp < HeroInstance.XpNeed(h.Level)) return;
+            h.Xp = 0;
+            int next = h.Level + 1;
+            foreach (var p in h.Pieces) p.Level = Math.Max(p.Level, next);
+            h.Level = next;
+            Emit(new SimEvent { Type = Ev.HeroLevel, A = h.Id, B = (int)h.Def.Id, Val = next, P = h.Pos, Text = h.Def.Name });
         }
 
         bool TryUlt(HeroInstance h, V2 pos)
@@ -646,12 +767,10 @@ namespace Rescue.Sim
                     break;
                 }
                 case HeroId.LuZhiShen:
-                    if (Board.TryFindWillow(out var willow))
+                    if (Board.AnyDiggable() && !HasShovel())
                     {
-                        Board.Cells[willow.c, willow.r] = Cell.Grass;
-                        Emit(new SimEvent { Type = Ev.StaffUsed, P = willow.Center, Flag = 1 });
+                        GrantShovels(1);
                         radius = 0.5f;
-                        pos = willow.Center;
                         break;
                     }
                     radius = 2f;
@@ -759,6 +878,7 @@ namespace Rescue.Sim
             _incomeAcc -= reward;
             Buns += reward;
             Kills++;
+            if (_curHero != null) GainXp(_curHero, e.Boss != null ? 15f : e.IsBig ? 5f : 1f);
             Emit(new SimEvent { Type = Ev.Kill, A = e.Id, Val = reward, P = e.Pos, Flag = e.Boss != null ? 2 : e.IsBig ? 1 : 0 });
         }
 
