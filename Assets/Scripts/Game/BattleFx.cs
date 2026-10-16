@@ -95,7 +95,7 @@ namespace Rescue
         void Impact(Vector2 pos, float size, Color ink, Color lines, int drops = 3)
         {
             Ink("fx_burst", ink, pos, size, 0.32f, Rnd(0, 360), 43, 0.35f);
-            Ink("fx_lines", lines, pos, size * 1.45f, 0.2f, Rnd(0, 360), 45, 0.6f, 0f, 0.2f);
+            Ink("fx_lines", lines, pos, size * 1.25f, 0.2f, Rnd(0, 360), 45, 0.6f, 0f, 0.2f);
             if (drops > 0) InkDrops(pos, drops);
         }
 
@@ -107,7 +107,7 @@ namespace Rescue
             for (int layer = 0; layer < 2; layer++)
             {
                 bool back = layer == 0;
-                float sz = size * (back ? 1.16f : 1f);
+                float sz = size * (back ? 1.1f : 1f);
                 var c = back ? rim : ink;
                 var fx = NewSpriteFx(Art.Img("fx_crescent"), c, pos, Vector2.one * sz, order + layer, life, (f, k) =>
                 {
@@ -121,18 +121,18 @@ namespace Rescue
             }
         }
 
-        /// <summary>一道由粗到尖的笔锋（枪芒、刺击、水箭）。从 from 向 to 方向长出去。</summary>
-        void Streak(Vector2 from, Vector2 to, float extra, float thick, Color ink, Color rim, float life = 0.22f, int order = 43)
+        /// <summary>一道由粗到尖的笔锋（枪芒、刺击、水箭）。从 from 向 to 方向长出去；rimK 为 0 时只画一层细线。</summary>
+        void Streak(Vector2 from, Vector2 to, float extra, float thick, Color ink, Color rim, float life = 0.22f, int order = 43, float rimK = 1.3f)
         {
             var d = to - from;
             var n = d.sqrMagnitude > 1e-4f ? d.normalized : Vector2.up;
             float len = d.magnitude + extra;
             float rot = Ang(n);
             const float aspect = 89f / 288f;
-            for (int layer = 0; layer < 2; layer++)
+            for (int layer = rimK > 0f ? 0 : 1; layer < 2; layer++)
             {
                 bool back = layer == 0;
-                float th = thick * (back ? 1.55f : 1f);
+                float th = thick * (back ? rimK : 1f);
                 float ln = len * (back ? 1.04f : 1f);
                 var c = back ? rim : ink;
                 var fx = NewSpriteFx(Art.Img("fx_thrust"), c, from, new Vector2(0.01f, th / aspect), order + layer, life, (f, k) =>
@@ -156,7 +156,7 @@ namespace Rescue
             Vector2 At(float k) => Vector2.Lerp(from, to, k) + Vector2.up * Mathf.Sin(k * Mathf.PI) * arc;
             float RotAt(float k) => Ang(d + Vector2.up * (arc * Mathf.PI * Mathf.Cos(k * Mathf.PI)));
 
-            var trail = NewSpriteFx(Art.Img("fx_thrust"), rim.A(0.7f), from, new Vector2(0.01f, size * 0.5f), 41, flight, (f, k) =>
+            NewSpriteFx(Art.Img("fx_thrust"), rim.A(0.45f), from, new Vector2(0.01f, size * 0.3f), 41, flight, (f, k) =>
             {
                 var p = At(k);
                 var tail = At(Mathf.Max(0f, k - 0.45f));
@@ -164,13 +164,13 @@ namespace Rescue
                 float l = Mathf.Max(0.01f, seg.magnitude);
                 f.Go.transform.localPosition = (p + tail) * 0.5f;
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(seg) + 180f);
-                f.Go.transform.localScale = new Vector3(l, size * 0.75f, 1);
+                f.Go.transform.localScale = new Vector3(l, size * 0.4f, 1);
             });
 
             for (int layer = 0; layer < 2; layer++)
             {
                 bool back = layer == 0;
-                float sz = size * (back ? 1.22f : 1f);
+                float sz = size * (back ? 1.14f : 1f);
                 bool last = layer == 1;
                 NewSpriteFx(Art.Img("fx_arrow"), back ? rim : ink, from, Vector2.one * sz, 42 + layer, flight, (f, k) =>
                 {
@@ -222,20 +222,20 @@ namespace Rescue
             };
             horse.A = from;
 
-            NewSpriteFx(Art.Img("fx_thrust"), Steel.A(0.75f), from, new Vector2(0.01f, 0.5f), 45, 0.2f, (f, k) =>
+            NewSpriteFx(Art.Img("fx_thrust"), Steel.A(0.5f), from, new Vector2(0.01f, 0.3f), 45, 0.2f, (f, k) =>
             {
                 var p = horse.A;
                 var seg = p - from;
                 float l = Mathf.Max(0.01f, seg.magnitude);
                 f.Go.transform.localPosition = (p + from) * 0.5f;
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(n) + 180f);
-                f.Go.transform.localScale = new Vector3(l, 0.9f * (1f - k), 1);
-                f.Sr.color = f.C.A(0.75f * (1f - k));
+                f.Go.transform.localScale = new Vector3(l, 0.45f * (1f - k), 1);
+                f.Sr.color = f.C.A(0.5f * (1f - k));
             });
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 2; i++)
             {
-                float t = 0.04f + i * 0.05f;
+                float t = 0.05f + i * 0.07f;
                 var p = Vector2.Lerp(from, end, (t / 0.17f) * (t / 0.17f) * 0.8f) + new Vector2(Rnd(-0.1f, 0.1f), -0.22f);
                 After(t, () => DustPuff(p, Rnd(0.38f, 0.5f)));
             }
@@ -359,24 +359,25 @@ namespace Rescue
             var lvc = Pal.ForLevel(lv);
             var ink = Color.Lerp(Pal.Ink, lvc, 0.55f);
             var rim = lv >= 4 ? Color.Lerp(Pal.GoldBright, Color.white, 0.35f) : Steel;
-            float grow = 1f + (lv - 1) * 0.1f;
+            float grow = 1f + (lv - 1) * 0.07f;
+            bool mine = ev.Side == 0;
             switch (kind)
             {
                 case UnitKind.Dao:
-                    Crescent(to, n, 0.95f * grow, ink, rim, UnityEngine.Random.value < 0.5f);
-                    if (lv >= 3) After(0.06f, () => Crescent(to, n, 0.85f * grow, ink, rim, true, 0.2f));
+                    if (mine) Sfx.Play(Snd.Dao, 0.3f, 1.05f - lv * 0.03f);
+                    Crescent(to, n, 0.82f * grow, ink, rim, UnityEngine.Random.value < 0.5f, 0.22f);
                     After(0.05f, () =>
                     {
-                        Impact(to, 0.55f * grow, Pal.Ink.A(0.75f), rim, 3);
+                        Impact(to, 0.42f * grow, Pal.Ink.A(0.7f), rim, 2);
                         Kick(to, n, 0.12f);
                     });
                     break;
                 case UnitKind.Qiang:
-                    Streak(from + n * 0.25f, to, 0.7f, 0.2f * grow, ink, rim, 0.24f);
-                    After(0.05f, () =>
+                    if (mine) Sfx.Play(Snd.Spear, 0.3f, 1.05f - lv * 0.03f);
+                    After(0.05f, () => Streak(from + n * 0.7f, to, 0.25f, 0.07f * grow, rim.A(0.8f), rim, 0.15f, 43, 0f));
+                    After(0.1f, () =>
                     {
-                        Ink("fx_lines", rim, to, 0.75f * grow, 0.18f, Ang(n), 45, 0.5f);
-                        Ink("fx_burst", Pal.Ink.A(0.7f), to, 0.42f * grow, 0.26f, Rnd(0, 360), 43);
+                        Ink("fx_lines", rim, to, 0.6f * grow, 0.16f, Ang(n), 45, 0.5f);
                         foreach (var v in _enemies.Values)
                         {
                             var p = (Vector2)v.Root.localPosition;
@@ -388,18 +389,21 @@ namespace Rescue
                     });
                     break;
                 case UnitKind.Gong:
-                    InkArrow(from + n * 0.2f, to, ink, rim, 0.62f * grow, 0.13f + dir.magnitude * 0.03f, () =>
+                    if (mine) Sfx.Play(Snd.Bow, 0.28f);
+                    InkArrow(from + n * 0.2f, to, ink, rim, 0.52f * grow, 0.13f + dir.magnitude * 0.03f, () =>
                     {
-                        StuckArrow(to, n, ink, 0.62f * grow);
-                        Impact(to, 0.48f * grow, Pal.Ink.A(0.7f), rim, 2);
+                        if (mine) Sfx.Play(Snd.ArrowHit, 0.22f);
+                        StuckArrow(to, n, ink, 0.52f * grow);
+                        Impact(to, 0.36f * grow, Pal.Ink.A(0.65f), rim, 1);
                         Kick(to, n, 0.08f);
                     });
                     break;
                 case UnitKind.Qi:
+                    if (mine) Sfx.Play(Snd.Horse, 0.32f);
                     Charge(from, to, 0.85f * (0.9f + lv * 0.06f), Color.Lerp(Color.white, lvc, lv > 1 ? 0.25f : 0f), () =>
                     {
-                        Impact(to, 0.6f * grow, Pal.Ink.A(0.75f), Steel, 3);
-                        DustPuff(to + Vector2.down * 0.15f, 0.55f);
+                        Impact(to, 0.46f * grow, Pal.Ink.A(0.7f), Steel, 2);
+                        DustPuff(to + Vector2.down * 0.15f, 0.45f);
                         Kick(to, n, 0.28f);
                     });
                     break;
@@ -421,17 +425,17 @@ namespace Rescue
 
             if (ev.Flag == 2)
             {
-                WeaponFlash(from, "bow", n, UnitKind.Gong, 1.2f);
-                InkArrow(from, to, Pal.Red, Pal.GoldBright, 1.35f, 0.24f, () =>
+                WeaponFlash(from, "bow", n, UnitKind.Gong, 1.1f);
+                InkArrow(from, to, Pal.Red, Pal.GoldBright, 1.1f, 0.24f, () =>
                 {
-                    StuckArrow(to, n, Pal.Red, 1.2f);
-                    Impact(to, 1.6f, Pal.RedDeep.A(0.85f), Pal.GoldBright, 10);
-                    Ink("fx_crack", Pal.RedDeep.A(0.7f), to, 1.6f, 0.7f, Rnd(0, 360), 31, 0.5f, 0f, 0.5f);
-                    Ring(to, 2.4f, Pal.Red, 0.45f, 46);
+                    StuckArrow(to, n, Pal.Red, 1.0f);
+                    Impact(to, 1.3f, Pal.RedDeep.A(0.85f), Pal.GoldBright, 6);
+                    Ink("fx_crack", Pal.RedDeep.A(0.7f), to, 1.4f, 0.7f, Rnd(0, 360), 31, 0.5f, 0f, 0.5f);
+                    Ring(to, 2.2f, Pal.Red, 0.45f, 46);
                     Kick(to, n, 0.35f);
-                    if (mine) { _shake = Mathf.Max(_shake, 0.8f); HitStop(0.08f); }
+                    if (mine) { _shake = Mathf.Max(_shake, 0.8f); HitStop(0.08f); Sfx.Play(Snd.Crit, 0.6f); }
                 });
-                if (mine) Sfx.Play(Snd.Ult, 0.6f, 1.3f);
+                if (mine) Sfx.Play(Snd.Bow, 0.6f, 0.85f);
                 if (_frames.TryGetValue(ev.A, out var uf)) uf.Pulse();
                 return;
             }
@@ -440,13 +444,14 @@ namespace Rescue
             {
                 case HeroId.WuSong:
                 {
+                    if (mine) Sfx.Play(Snd.Fist, 0.45f);
                     for (int i = 0; i < 2; i++)
                     {
                         var off = new Vector2(Rnd(-0.18f, 0.18f), Rnd(-0.18f, 0.18f));
                         After(i * 0.08f, () =>
                         {
-                            Streak(to - n * 0.9f + off, to + off, 0.1f, 0.3f, Pal.Ink, glow, 0.16f);
-                            Impact(to + off, 0.85f, Pal.Ink.A(0.85f), gold, 3);
+                            Streak(to - n * 0.8f + off, to + off, 0.1f, 0.18f, Pal.Ink, glow, 0.15f);
+                            Impact(to + off, 0.68f, Pal.Ink.A(0.8f), gold, 2);
                             Kick(to, n, 0.1f);
                         });
                     }
@@ -455,27 +460,28 @@ namespace Rescue
                 case HeroId.YanQing:
                 {
                     bool crit = ev.Flag == 1;
-                    Streak(to - n * 0.7f, to, 0.1f, crit ? 0.32f : 0.22f, Pal.Ink, glow, 0.15f);
+                    if (mine) Sfx.Play(Snd.Dart, 0.4f);
+                    Streak(to - n * 0.7f, to, 0.1f, crit ? 0.2f : 0.13f, Pal.Ink, glow, 0.15f);
                     if (crit)
                     {
-                        Impact(to, 1.25f, Pal.RedDeep.A(0.85f), gold, 7);
-                        Ink("fx_lines", gold, to, 2.1f, 0.3f, Rnd(0, 360), 46, 0.5f);
+                        Impact(to, 1.05f, Pal.RedDeep.A(0.85f), gold, 4);
                         FloatText(to + new Vector2(0, 0.7f), "暴击！", Pal.Red, 0.4f, 0.7f);
                         Kick(to, n, 0.3f);
-                        if (mine) { _shake = Mathf.Max(_shake, 0.4f); HitStop(0.06f); }
+                        if (mine) { _shake = Mathf.Max(_shake, 0.4f); HitStop(0.06f); Sfx.Play(Snd.Crit, 0.5f); }
                     }
                     else
                     {
-                        Impact(to, 0.6f, Pal.Ink.A(0.8f), glow, 2);
+                        Impact(to, 0.5f, Pal.Ink.A(0.75f), glow, 1);
                         Kick(to, n, 0.1f);
                     }
                     break;
                 }
                 case HeroId.LinChong:
                 {
+                    if (mine) Sfx.Play(Snd.Spear, 0.5f, 0.85f);
                     WeaponFlash(from, "spear", n, UnitKind.Qiang, 1.1f);
                     var tip = to + n * 1.4f;
-                    Streak(from + n * 0.3f, to, 1.4f, 0.34f, Pal.Hex("16263F"), glow, 0.3f);
+                    Streak(from + n * 0.75f, to, 1.4f, 0.1f, glow.A(0.85f), glow, 0.2f, 43, 0f);
                     After(0.05f, () =>
                     {
                         foreach (var v in _enemies.Values)
@@ -486,21 +492,20 @@ namespace Rescue
                             if (along < 0f || along > (tip - from).magnitude) continue;
                             if ((rel - n * along).sqrMagnitude > 0.25f) continue;
                             v.Kick(n, 0.18f);
-                            Ink("fx_lines", gold, p, 0.9f, 0.2f, Ang(n), 46, 0.5f);
-                            Ink("fx_burst", Pal.Ink.A(0.7f), p, 0.5f, 0.28f, Rnd(0, 360), 43);
+                            Ink("fx_lines", gold, p, 0.75f, 0.2f, Ang(n), 46, 0.5f);
                         }
                     });
                     break;
                 }
                 case HeroId.LiKui:
                 {
-                    Crescent(to + new Vector2(-0.15f, 0), n, 1.35f, Pal.Ink, glow, false, 0.26f);
-                    After(0.07f, () => Crescent(to + new Vector2(0.15f, 0), n, 1.35f, Pal.Ink, glow, true, 0.26f));
+                    if (mine) Sfx.Play(Snd.Axe, 0.45f);
+                    Crescent(to + new Vector2(-0.15f, 0), n, 1.15f, Pal.Ink, glow, false, 0.24f);
+                    After(0.07f, () => Crescent(to + new Vector2(0.15f, 0), n, 1.15f, Pal.Ink, glow, true, 0.24f));
                     After(0.08f, () =>
                     {
-                        Ink("fx_cross", Pal.Ink.A(0.85f), to, 1.1f, 0.32f, Rnd(-15, 15), 44, 0.4f);
-                        Ink("fx_enso", Pal.Ink.A(0.55f), to, 2.4f, 0.4f, Rnd(0, 360), 42, 0.4f, -200f);
-                        InkDrops(to, 7);
+                        Ink("fx_cross", Pal.Ink.A(0.8f), to, 0.95f, 0.3f, Rnd(-15, 15), 44, 0.4f);
+                        InkDrops(to, 4);
                         foreach (var v in _enemies.Values)
                         {
                             var p = (Vector2)v.Root.localPosition;
@@ -511,27 +516,30 @@ namespace Rescue
                     break;
                 }
                 case HeroId.HuaRong:
+                    if (mine) Sfx.Play(Snd.Bow, 0.45f);
                     WeaponFlash(from, "bow", n, UnitKind.Gong, 0.95f);
-                    InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.95f, 0.18f, () =>
+                    InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.8f, 0.18f, () =>
                     {
-                        StuckArrow(to, n, Pal.Hex("8A1C1C"), 0.9f);
-                        Impact(to, 0.85f, Pal.RedDeep.A(0.8f), gold, 4);
+                        if (mine) Sfx.Play(Snd.ArrowHit, 0.4f);
+                        StuckArrow(to, n, Pal.Hex("8A1C1C"), 0.75f);
+                        Impact(to, 0.7f, Pal.RedDeep.A(0.8f), gold, 3);
                         Kick(to, n, 0.18f);
                     });
                     break;
                 case HeroId.QinMing:
                 {
-                    Streak(to + new Vector2(0, 1.6f), to, 0.05f, 0.36f, Pal.Ink, Fire, 0.16f);
+                    if (mine) Sfx.Play(Snd.FireHit, 0.45f);
+                    Streak(to + new Vector2(0, 1.6f), to, 0.05f, 0.22f, Pal.Ink, Fire, 0.16f);
                     After(0.06f, () =>
                     {
-                        GroundSmash(to, 1.7f, Pal.Ink, mine);
-                        FireBurst(to, 1.0f);
-                        Impact(to, 0.9f, Pal.Ink.A(0.75f), FireCore, 4);
+                        GroundSmash(to, 1.5f, Pal.Ink, mine);
+                        FireBurst(to, 0.9f);
                     });
                     break;
                 }
                 case HeroId.ZhangShun:
                 case HeroId.RuanXiaoEr:
+                    if (mine) Sfx.Play(Snd.Water, 0.4f);
                     WaveTo(from, to, 1.45f, () =>
                     {
                         Splash(to, 0.95f);
@@ -539,6 +547,7 @@ namespace Rescue
                     });
                     break;
                 case HeroId.ZhangHeng:
+                    if (mine) Sfx.Play(Snd.Water, 0.4f, 0.9f);
                     WaveTo(from, to, 1.55f, () =>
                     {
                         Splash(to, 1.1f);
@@ -547,7 +556,8 @@ namespace Rescue
                     });
                     break;
                 case HeroId.RuanXiaoQi:
-                    Streak(from + n * 0.3f, to, 0.4f, 0.26f, WaterDeep, Ice, 0.2f);
+                    if (mine) Sfx.Play(Snd.Water, 0.35f, 1.15f);
+                    Streak(from + n * 0.3f, to, 0.4f, 0.17f, WaterDeep, Ice, 0.2f);
                     After(0.05f, () =>
                     {
                         Splash(to, 0.75f);
@@ -555,26 +565,28 @@ namespace Rescue
                     });
                     break;
                 case HeroId.SunErNiang:
-                    Crescent(to, n, 1.2f, Pal.Hex("5A1A12"), Pal.Hex("F2C6B8"), UnityEngine.Random.value < 0.5f);
+                    if (mine) Sfx.Play(Snd.Poison, 0.4f);
+                    Crescent(to, n, 1.0f, Pal.Hex("5A1A12"), Pal.Hex("F2C6B8"), UnityEngine.Random.value < 0.5f);
                     After(0.05f, () =>
                     {
-                        Impact(to, 0.75f, Pal.RedDeep.A(0.75f), Pal.Hex("F2C6B8"), 3);
+                        Impact(to, 0.6f, Pal.RedDeep.A(0.75f), Pal.Hex("F2C6B8"), 2);
                         Ink("fx_dust", Pal.Purple.A(0.35f), to, 0.8f, 0.6f, Rnd(0, 360), 30, 0.4f);
                         Kick(to, n, 0.12f);
                     });
                     break;
                 case HeroId.HuSanNiang:
+                    if (mine) Sfx.Play(Snd.Lasso, 0.4f);
                     Lasso(from, to, Pal.Red);
                     After(0.15f, () => Kick(to, -n, 0.12f));
                     break;
                 case HeroId.LuZhiShen:
                 {
-                    Crescent(to, n, 1.9f, Pal.Ink, glow, false, 0.32f);
+                    if (mine) Sfx.Play(Snd.Smash, 0.5f);
+                    Crescent(to, n, 1.6f, Pal.Ink, glow, false, 0.3f);
                     After(0.08f, () =>
                     {
-                        Ink("fx_enso", Pal.Ink.A(0.7f), to, 2.3f, 0.45f, Rnd(0, 360), 42, 0.4f, 260f);
-                        GroundSmash(to, 1.8f, Pal.Ink, mine);
-                        Impact(to, 1.1f, Pal.Ink.A(0.8f), gold, 6);
+                        GroundSmash(to, 1.6f, Pal.Ink, mine);
+                        Impact(to, 0.85f, Pal.Ink.A(0.8f), gold, 3);
                         foreach (var v in _enemies.Values)
                         {
                             var p = (Vector2)v.Root.localPosition;
@@ -584,8 +596,9 @@ namespace Rescue
                     break;
                 }
                 default:
-                    Crescent(to, n, 1.2f, ev.Flag == 1 ? Pal.Red : Pal.Ink, glow, false);
-                    After(0.05f, () => Impact(to, 0.7f, Pal.Ink.A(0.8f), gold, 3));
+                    if (mine) Sfx.Play(Snd.Dao, 0.4f, 0.9f);
+                    Crescent(to, n, 1.05f, ev.Flag == 1 ? Pal.Red : Pal.Ink, glow, false);
+                    After(0.05f, () => Impact(to, 0.6f, Pal.Ink.A(0.8f), gold, 2));
                     break;
             }
             if (mine)
@@ -599,6 +612,19 @@ namespace Rescue
         }
 
         // ─────────────────────────── 好汉大招 ───────────────────────────
+
+        static Snd UltSound(HeroId id) => id switch
+        {
+            HeroId.WuSong => Snd.Fist,
+            HeroId.LinChong or HeroId.DaiZong => Snd.UltWind,
+            HeroId.LiKui => Snd.UltWhirl,
+            HeroId.QinMing => Snd.UltFire,
+            HeroId.ZhangShun or HeroId.ZhangHeng or HeroId.RuanXiaoEr or HeroId.RuanXiaoQi => Snd.UltWater,
+            HeroId.SunErNiang or HeroId.WuYong => Snd.UltMagic,
+            HeroId.HuSanNiang => Snd.Lasso,
+            HeroId.HuaRong => Snd.Bow,
+            _ => Snd.UltSmash,
+        };
 
         /// <summary>大招按好汉定制；返回 false 时走通用墨旋风。</summary>
         bool HeroUltFx(SimEvent ev)
@@ -623,7 +649,8 @@ namespace Rescue
                         {
                             var off = new Vector2(Rnd(-0.3f, 0.3f), Rnd(-0.3f, 0.3f));
                             Impact(at + off, idx == 11 ? 1.8f : 0.7f, Pal.Ink.A(0.85f), Pal.GoldBright, idx == 11 ? 10 : 1);
-                            if (mine && idx % 3 == 0) Sfx.Play(Snd.Hit, 0.3f, 1.1f + idx * 0.03f);
+                            if (mine && idx % 2 == 0 && idx < 11) Sfx.Play(Snd.Fist, 0.35f, 1.1f + idx * 0.02f);
+                            if (mine && idx == 11) Sfx.Play(Snd.Crit, 0.7f, 0.9f);
                             if (idx == 11 && mine) { _shake = Mathf.Max(_shake, 0.9f); HitStop(0.08f); }
                         });
                     }
@@ -681,9 +708,8 @@ namespace Rescue
                         After(i * 0.09f, () =>
                         {
                             Streak(t + new Vector2(Rnd(-0.4f, 0.4f), 2.5f), t, 0f, 0.3f, FireCore, Color.white, 0.18f, 46);
-                            FireBurst(t, 1.3f);
-                            Ink("fx_crack", Pal.Ink.A(0.8f), t, 1.4f, 0.8f, Rnd(0, 360), 31, 0.5f, 0f, 0.6f);
-                            Impact(t, 1f, Pal.RedDeep.A(0.7f), FireCore, 3);
+                            FireBurst(t, 1.2f);
+                            Ink("fx_crack", Pal.Ink.A(0.8f), t, 1.3f, 0.8f, Rnd(0, 360), 31, 0.5f, 0f, 0.6f);
                             if (mine && idx == 0) HitStop(0.07f);
                         });
                     }
@@ -694,9 +720,9 @@ namespace Rescue
                 case HeroId.ZhangHeng:
                 case HeroId.RuanXiaoEr:
                 {
-                    for (int i = 0; i < 7; i++)
+                    for (int i = 0; i < 5; i++)
                     {
-                        float a = i / 7f * Mathf.PI * 2f;
+                        float a = i / 5f * Mathf.PI * 2f;
                         var p = pos + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r * 0.6f;
                         bool flip = Mathf.Cos(a) < 0;
                         After(i * 0.05f, () =>

@@ -67,7 +67,7 @@ namespace Rescue
             FitCamera();
 
             Ui.Init(transform);
-            if (_shots != null) StartCoroutine(Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : AutoShots());
+            if (_shots != null) StartCoroutine(Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : AutoShots());
             else ShowHome();
         }
 
@@ -245,6 +245,9 @@ namespace Rescue
                 }
                 if (Mathf.Approximately(t, 35f))
                 {
+                    _battle.View.ShowShovelOffer();
+                    yield return new WaitForSecondsRealtime(0.8f);
+                    yield return Shot("shovelOffer");
                     _battle.View.ShovelAd();
                     yield return new WaitForSecondsRealtime(1.0f);
                     yield return Shot("ad");
@@ -262,6 +265,33 @@ namespace Rescue
             yield return new WaitForSecondsRealtime(2.6f);
             yield return Shot("result");
             yield return new WaitForSecondsRealtime(0.5f);
+            Application.Quit();
+        }
+
+        /// <summary>点选射程对照：-shots DIR -range 1。圆画在我方棋盘中央。</summary>
+        IEnumerator RangeShots()
+        {
+            StartBattle(0, true);
+            yield return new WaitForSecondsRealtime(9f);
+            var view = _battle.View;
+            view.Speed = 0f;
+            var at = new Vector2(0f, BattleView.MyBottom + 3.2f);
+            foreach (UnitKind k in Enum.GetValues(typeof(UnitKind)))
+            {
+                view.PreviewRange(UnitDef.Get(k).Range, at);
+                yield return new WaitForSecondsRealtime(0.6f);
+                yield return Shot("range_" + k);
+            }
+            view.PreviewRange(UnitDef.Get(UnitKind.Gong).Range, new Vector2(BattleView.Left + 0.5f, BattleView.MyBottom + 0.5f));
+            yield return new WaitForSecondsRealtime(0.6f);
+            yield return Shot("range_corner");
+            foreach (var id in new[] { HeroId.WuSong, HeroId.LinChong, HeroId.HuSanNiang, HeroId.LuZhiShen, HeroId.HuaRong })
+            {
+                var d = HeroDef.Get(id);
+                view.PreviewRange(d.Range, at, true, d.Disha);
+                yield return new WaitForSecondsRealtime(0.6f);
+                yield return Shot("range_" + id);
+            }
             Application.Quit();
         }
 

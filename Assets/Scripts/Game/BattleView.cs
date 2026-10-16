@@ -18,7 +18,6 @@ namespace Rescue
         const int MaxShovelAds = 3;
         const float RecruitW = 2.7f;
         const float RecruitH = 1.0f;
-        const int RangeSegs = 42;
 
         public Match M;
         public bool Paused;
@@ -48,23 +47,26 @@ namespace Rescue
         readonly List<Fx> _fx = new List<Fx>();
         readonly SpriteRenderer[] _campSlots = new SpriteRenderer[Tuning.CampSlots];
 
-        SpriteRenderer _recruitBtn, _recruitFill, _pauseBtn, _mengBtn, _shuBtn, _baoziBtn, _fuBtn, _trapBtn, _shovelAdBtn, _rescueBtn;
-        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _fuText, _trapText, _rivalText, _titleText, _shovelAdText;
+        SpriteRenderer _recruitBtn, _recruitFill, _pauseBtn, _mengBtn, _shuBtn, _baoziBtn, _fuBtn, _trapBtn, _rescueBtn;
+        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _fuText, _trapText, _rivalText, _titleText;
+        Transform _shovelRoot;
+        float _shovelShowT, _shovelSlide, _shovelCd = 18f;
+        const float ShovelOfferX = 3.68f;
         Transform _bunIcon, _rescueRoot;
         static readonly Vector3 _bunIconScale = new Vector3(0.5f, 0.5f, 1f);
         int _shovelAds;
         TextMesh _tipText;
         SpriteRenderer _tipBg;
         float _tipT;
+        float _recruitShown;
+        float _recruitFlash;
+        bool _recruitWasFull;
 
         // 点选属性卡 + 攻击范围
         Transform _card;
         SpriteRenderer _cardBg;
-        readonly SpriteRenderer[] _rangeSegs = new SpriteRenderer[RangeSegs];
         TextMesh _cardTitle, _cardLevel, _cardBody;
         float _cardT;
-        Vector2 _rangeCenter;
-        float _rangeR;
         PieceView _picked;
 
         // 闲置提示
@@ -238,6 +240,55 @@ namespace Rescue
             Gfx.Sprite(_rescueRoot, Art.Img("ui_video"), Color.white, new Vector2(-0.2f, -0.34f), Vector2.one * 0.26f, 53);
             Gfx.Text(_rescueRoot, "广告", Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0.12f, -0.34f), 53);
             _rescueRoot.gameObject.SetActive(false);
+
+            _shovelRoot = new GameObject("shovelOffer").transform;
+            _shovelRoot.SetParent(_root, false);
+            _shovelRoot.localPosition = new Vector2(ShovelOfferX, CampY);
+            Gfx.Sprite(_shovelRoot, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.07f), new Vector2(0.84f, 0.92f), 49);
+            Gfx.Sprite(_shovelRoot, Art.Rounded, Pal.Hex("E89A2C"), Vector2.zero, new Vector2(0.84f, 0.92f), 50, "shovelAd");
+            Gfx.Sprite(_shovelRoot, Art.Rounded, Pal.Hex("FFC94A"), new Vector2(0, 0.03f), new Vector2(0.74f, 0.8f), 51);
+            Gfx.Sprite(_shovelRoot, Art.Img("shovel"), Color.white, new Vector2(0.04f, -0.02f), Vector2.one * 0.62f, 52);
+            Gfx.Sprite(_shovelRoot, Art.Img("ui_video"), Color.white, new Vector2(-0.24f, 0.27f), Vector2.one * 0.3f, 53);
+            Gfx.Text(_shovelRoot, "x" + Tuning.AdShovels, Fonts.Kai, 0.26f, Pal.Ink, new Vector2(0.23f, -0.27f), 53);
+            Gfx.Text(_shovelRoot, "x" + Tuning.AdShovels, Fonts.Kai, 0.26f, Color.white, new Vector2(0.21f, -0.25f), 54);
+            _shovelRoot.gameObject.SetActive(false);
+        }
+
+        /// <summary>营寨栏右端的看广告送铲子：地快摆满、草地还能开时滑出来，晃一晃招手，十几秒没点就收回去。</summary>
+        void TickShovelOffer(float dt, bool rescue)
+        {
+            var p = M.Player;
+            bool campShovel = false;
+            foreach (var q in p.Camp) if (q != null && q.Type == PieceType.Shovel) campShovel = true;
+            bool eligible = _shovelAds < MaxShovelAds && !M.Over && !rescue && !campShovel && p.Board.AnyDiggable();
+            bool shown = _shovelRoot.gameObject.activeSelf;
+            if (shown)
+            {
+                _shovelShowT -= dt;
+                if (!eligible || _shovelShowT <= 0f)
+                {
+                    _shovelRoot.gameObject.SetActive(false);
+                    _shovelCd = 25f;
+                    return;
+                }
+                _shovelSlide = Mathf.Min(1f, _shovelSlide + dt / 0.35f);
+                float x = Mathf.Lerp(ShovelOfferX + 1.4f, ShovelOfferX, Tween.OutBack(_shovelSlide));
+                float wiggle = Mathf.Sin(Time.time * 9f) * 7f * (Mathf.Sin(Time.time * 1.6f) > 0.4f ? 1f : 0f);
+                _shovelRoot.localPosition = new Vector2(x, CampY + Mathf.Sin(Time.time * 3f) * 0.03f);
+                _shovelRoot.localRotation = Quaternion.Euler(0, 0, wiggle);
+                return;
+            }
+            _shovelCd -= dt;
+            if (_shovelCd > 0f || !eligible || (p.EmptyCells() > 1 && M.Wave < 2)) return;
+            ShowShovelOffer();
+        }
+
+        public void ShowShovelOffer()
+        {
+            _shovelShowT = 15f;
+            _shovelSlide = 0f;
+            _shovelRoot.gameObject.SetActive(true);
+            _shovelRoot.localPosition = new Vector2(ShovelOfferX + 1.4f, CampY);
         }
 
         void BuildHud()
@@ -265,13 +316,6 @@ namespace Rescue
 
             _titleText = Gfx.Text(_root, M.Chapter.Name, Fonts.Brush, 0.46f, Pal.Ink, new Vector2(0.1f, TopY + 0.2f), 52);
             _waveText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(0.1f, TopY - 0.27f), 52);
-
-            _shovelAdBtn = Gfx.Sprite(_root, Art.Circle, Pal.Paper, new Vector2(1.75f, TopY), new Vector2(0.8f, 0.8f), 50, "shovelAd");
-            Gfx.Sprite(_root, Art.Ring, Pal.Ink, new Vector2(1.75f, TopY), new Vector2(0.84f, 0.84f), 51);
-            Gfx.Sprite(_root, Art.Img("shovel"), Color.white, new Vector2(1.75f, TopY + 0.04f), Vector2.one * 0.6f, 52);
-            Gfx.Sprite(_root, Art.Rounded, Pal.Red, new Vector2(1.75f, TopY - 0.42f), new Vector2(0.72f, 0.24f), 52);
-            _shovelAdText = Gfx.Text(_root, "广告+2", Fonts.Kai, 0.16f, Pal.Paper, new Vector2(1.75f, TopY - 0.42f), 53);
-            Gfx.Sprite(_root, Art.Img("ui_video"), Color.white, new Vector2(2.08f, TopY + 0.3f), Vector2.one * 0.36f, 54, "adIcon");
 
             _rivalText = Gfx.Text(_root, "对手·" + M.Chapter.RivalName, Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(4.0f, TopY), 52, TextAnchor.MiddleRight);
 
@@ -307,11 +351,7 @@ namespace Rescue
 
         void BuildCard()
         {
-            for (int i = 0; i < RangeSegs; i++)
-            {
-                _rangeSegs[i] = Gfx.Sprite(_root, Art.Stroke, Pal.InkSoft, Vector2.zero, new Vector2(0.2f, 0.22f), 16, "rangeSeg");
-                _rangeSegs[i].enabled = false;
-            }
+            BuildRange();
             _card = new GameObject("card").transform;
             _card.SetParent(_root, false);
             _cardBg = Gfx.Sprite(_card, Art.Rounded, Pal.Ink.A(0.92f), Vector2.zero, new Vector2(3.6f, 2f), 82);
@@ -354,6 +394,7 @@ namespace Rescue
             TickMap(Time.deltaTime);
             UpdateTip(Time.deltaTime);
             UpdateCard(Time.deltaTime);
+            TickRange(Time.deltaTime);
             UpdateIdleHint(Time.deltaTime);
 
             _shake = Mathf.Max(0, _shake - Time.deltaTime * 2.5f);
@@ -384,22 +425,30 @@ namespace Rescue
             bool over = dismiss && OverRecruit(PointerWorld());
             bool can = p.CanRecruit && !dismiss;
             float ratio = p.RecruitCost <= 0 ? 0f : Mathf.Clamp01(p.Buns / (float)p.RecruitCost);
+            if (ratio < _recruitShown - 0.02f) _recruitShown = ratio;
+            else _recruitShown = Mathf.MoveTowards(_recruitShown, ratio, Time.deltaTime * 2.4f);
+            bool full = _recruitShown >= 0.999f && ratio >= 0.999f;
+            if (full && !_recruitWasFull) _recruitFlash = 1f;
+            _recruitWasFull = full;
+            _recruitFlash = Mathf.Max(0f, _recruitFlash - Time.deltaTime * 2.2f);
             float pulse = can ? 1f + Mathf.Sin(Time.time * 6f) * 0.025f : over ? 1.08f : 1f;
             _recruitBtn.size = new Vector2(RecruitW, RecruitH) * pulse;
             _recruitBtn.color = dismiss ? (over ? Pal.Ink : Pal.InkSoft) : Pal.Hex("3A342C");
-            _recruitFill.enabled = !dismiss && ratio > 0.03f;
+            _recruitFill.enabled = !dismiss && _recruitShown > 0.02f;
             if (_recruitFill.enabled)
             {
-                bool full = ratio >= 0.999f;
                 var sprite = full ? Art.Rounded : Art.Progress;
                 if (_recruitFill.sprite != sprite) _recruitFill.sprite = sprite;
-                float w = Mathf.Max(0.36f, RecruitW * ratio) * pulse;
+                float w = (full ? RecruitW : Mathf.Max(0.36f, RecruitW * _recruitShown)) * pulse;
                 float h = RecruitH * pulse;
                 float left = 0.2f - RecruitW * pulse * 0.5f;
                 _recruitFill.size = new Vector2(w, h);
                 _recruitFill.transform.localPosition = new Vector2(left + w * 0.5f, ButtonY);
-                _recruitFill.color = full && can ? Color.Lerp(Pal.Red, Pal.Hex("D24A3A"), 0.5f + 0.5f * Mathf.Sin(Time.time * 6f))
-                    : full ? Pal.Hex("A56B3C") : Pal.Hex("C4894A");
+                var body = Pal.Hex("8A5649");
+                var ready = Pal.Hex("BD6247");
+                var hot = Pal.Hex("E88862");
+                float breathe = can ? 0.5f + 0.5f * Mathf.Sin(Time.time * 4.5f) : 0f;
+                _recruitFill.color = full ? Color.Lerp(ready, hot, Mathf.Max(_recruitFlash, breathe)) : body;
             }
             _recruitLabel.text = dismiss ? "遣散" : p.EmptyCampSlots == 0 ? "寨满" : "聚  义";
             _recruitCost.text = dismiss ? "+" + Side.DismissRefund(_drag.Piece) : p.RecruitCost.ToString();
@@ -411,11 +460,8 @@ namespace Rescue
             SetItem(_trapBtn, _trapText, p.Items.Trap, "陷阱");
             PlaceItems();
 
-            bool adLeft = _shovelAds < MaxShovelAds && !M.Over;
-            _shovelAdBtn.color = adLeft ? Pal.Paper : Pal.PaperDark;
-            _shovelAdText.text = adLeft ? "广告+" + Tuning.AdShovels : "已用完";
-
             bool rescue = p.InDanger && !p.RescueUsed;
+            if (!Paused) TickShovelOffer(Time.deltaTime, rescue);
             if (rescue != _rescueRoot.gameObject.activeSelf)
             {
                 _rescueRoot.gameObject.SetActive(rescue);
@@ -628,7 +674,11 @@ namespace Rescue
                 case Ev.Hit:
                     if (_enemies.TryGetValue(ev.A, out var hv)) hv.Flash();
                     if (mine) DamageNumber(World(ev.Side, ev.P), ev.Val, ev.Flag);
-                    if (mine) Sfx.Play(Snd.Hit, ev.Flag > 0 ? 0.45f : 0.22f);
+                    if (mine)
+                    {
+                        bool heavy = ev.Flag == 1 || ev.Flag == 2;
+                        Sfx.Play(heavy ? Snd.Crit : Snd.Hit, heavy ? 0.3f : 0.1f, ev.Flag == 3 ? 0.7f : 1f);
+                    }
                     break;
                 case Ev.Kill:
                 {
@@ -679,7 +729,12 @@ namespace Rescue
                         Ring(pos, 4.2f, Pal.RedDeep, 0.55f, 46);
                         if (_enemies.TryGetValue(ev.A, out var bossView)) bossView.Flash();
                     }
-                    if (mine && !boss) { Sfx.Play(Snd.Ult, 0.9f); _shake = Mathf.Max(_shake, 0.9f); }
+                    if (mine && !boss)
+                    {
+                        Sfx.Play(Snd.Ult, 0.45f);
+                        Sfx.Play(UltSound((HeroId)ev.B), 0.85f, (HeroId)ev.B == HeroId.SunErNiang ? 0.8f : 1f);
+                        _shake = Mathf.Max(_shake, 0.9f);
+                    }
                     if (_frames.TryGetValue(ev.A, out var fv)) fv.Glow();
                     break;
                 }
@@ -1079,7 +1134,7 @@ namespace Rescue
                 if (_shuBtn.gameObject.activeSelf && In(w, _shuBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseTianShu(); return; }
                 if (_fuBtn.gameObject.activeSelf && In(w, _fuBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseFu(); return; }
                 if (_trapBtn.gameObject.activeSelf && In(w, _trapBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseTrap(); return; }
-                if (In(w, _shovelAdBtn.transform.localPosition, new Vector2(0.95f, 1.1f))) { ShovelAd(); return; }
+                if (_shovelRoot.gameObject.activeSelf && In(w, _shovelRoot.localPosition, new Vector2(0.95f, 1.1f))) { ShovelAd(); return; }
                 if (_rescueRoot.gameObject.activeSelf && In(w, _rescueRoot.localPosition, new Vector2(0.95f, 1.2f))) { RescueAd(); return; }
 
                 int slot = CampAt(w);
@@ -1111,8 +1166,11 @@ namespace Rescue
         {
             var p = M.Player;
             if (M.Over) return;
-            if (_shovelAds >= MaxShovelAds) { Tip(_shovelAdBtn.transform.localPosition + Vector3.down * 1f, "这一局的铲子广告看完了"); return; }
-            if (!p.Board.AnyDiggable()) { Tip(_shovelAdBtn.transform.localPosition + Vector3.down * 1f, "地已经全开出来了"); return; }
+            var tipAt = new Vector2(ShovelOfferX - 0.8f, CampY + 1f);
+            if (_shovelAds >= MaxShovelAds) { Tip(tipAt, "这一局的铲子广告看完了"); return; }
+            if (!p.Board.AnyDiggable()) { Tip(tipAt, "地已经全开出来了"); return; }
+            _shovelRoot.gameObject.SetActive(false);
+            _shovelCd = 25f;
             ShowAd("鲁智深送铲子", () =>
             {
                 _shovelAds++;
@@ -1211,6 +1269,13 @@ namespace Rescue
                 }
             for (int i = 0; i < _campPlus.Length; i++)
                 _campPlus[i].text = M.Player.Camp[i] == null ? "+" : "";
+            if (_dragMoved && piece.Type == PieceType.Unit && hasHover && b.Placeable(hc, hr))
+            {
+                var d = UnitDef.Get(piece.Kind);
+                float range = p.Items.Far && d.Range >= 2f ? d.Range * 2f : d.Range;
+                ShowRange(CellWorld(0, hc, hr), range, RangeStyle.Unit, true);
+            }
+            else if (_rangeFromDrag) HideRange();
             DrawDragLine(w);
         }
 
@@ -1308,6 +1373,7 @@ namespace Rescue
                     _hlMark[c, r].text = "";
                 }
             for (int i = 0; i < _campPlus.Length; i++) if (_campPlus[i] != null) _campPlus[i].text = "";
+            if (_rangeFromDrag) HideRange();
             HideDragLine();
         }
 
@@ -1318,13 +1384,14 @@ namespace Rescue
             var piece = v.Piece;
             string title, level, body;
             float range = 0;
+            var style = RangeStyle.Unit;
             Vector2 center = v.Root.localPosition;
             if (piece.Type == PieceType.Unit)
             {
                 var d = UnitDef.Get(piece.Kind);
                 title = d.Glyph + "兵";
                 level = $"Lv.{piece.Level}";
-                range = M.Player.Items.Far && d.Range >= 2.2f ? d.Range * 2f : d.Range;
+                range = M.Player.Items.Far && d.Range >= 2f ? d.Range * 2f : d.Range;
                 body = $"类型：{d.TypeLabel}　射程：{range:0.#}格\n攻击力：{d.DamageAt(piece.Level):0.#}　攻速：{1f / d.CooldownAt(piece.Level):0.0}次/秒\n满级{UnitDef.MaxLevel}级 · {d.Role}";
             }
             else if (piece.Type == PieceType.Shovel)
@@ -1346,7 +1413,8 @@ namespace Rescue
                 string atk = d.NoAttack ? "不出手" : $"攻击力：{d.DamageAt(h.Level) * (h.OnWater ? d.WaterBonus : 1f) * wmul:0.#}　攻速：{1f / d.Cooldown:0.0}次/秒";
                 string gear = armed ? $"\n兵器 {d.Weapon}　伤害 +35%" : "";
                 body = $"{(d.Disha ? "地煞星" : "天罡星")}·{d.Nick}　类型：{d.TypeLabel}\n{atk}\n{xp}　满级{UnitDef.MaxLevel}级\n{d.Skill}{gear}";
-                range = d.RangeWith(M.Player.Items.Far);
+                range = d.NoAttack ? 0f : d.RangeWith(M.Player.Items.Far);
+                style = d.Disha ? RangeStyle.Disha : RangeStyle.Hero;
             }
             else
             {
@@ -1382,34 +1450,18 @@ namespace Rescue
             Tween.Pop(_card, 0.2f);
 
             SetPicked(v);
-            bool showRange = range > 0 && range < 20f && piece.Type != PieceType.Shovel;
-            _rangeCenter = center;
-            _rangeR = showRange ? range : 0f;
-            PlaceRange(1f);
+            if (range > 0f && piece.Type != PieceType.Shovel) ShowRange(center, range, style, false);
+            else HideRange();
             _cardT = 4f;
             v.Punch(0.15f);
             Sfx.Play(Snd.Tap, 0.6f);
         }
 
-        /// <summary>淡墨细线圈出射程。笔画粗细固定，不随圈的大小变粗。</summary>
-        void PlaceRange(float breathe)
+        /// <summary>验收截图：在指定位置画出某个射程圆。</summary>
+        public void PreviewRange(float range, Vector2 center, bool hero = false, bool disha = false)
         {
-            bool on = _rangeR > 0f;
-            float arc = Mathf.PI * 2f / RangeSegs;
-            for (int i = 0; i < RangeSegs; i++)
-            {
-                var seg = _rangeSegs[i];
-                seg.enabled = on;
-                if (!on) continue;
-                float wob = 1f + 0.028f * Mathf.Sin(i * 1.7f + 0.4f) + 0.012f * Mathf.Sin(i * 0.55f);
-                float a = (i + 0.5f) * arc;
-                float radius = _rangeR * breathe * wob;
-                seg.transform.localPosition = _rangeCenter + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius;
-                seg.transform.localRotation = Quaternion.Euler(0, 0, a * Mathf.Rad2Deg + 90f);
-                float len = _rangeR * arc * breathe * 1.12f;
-                seg.transform.localScale = new Vector3(len, 0.32f, 1f);
-                seg.color = Pal.InkSoft.A(0.88f);
-            }
+            HideRange();
+            ShowRange(center, range, disha ? RangeStyle.Disha : hero ? RangeStyle.Hero : RangeStyle.Unit, false);
         }
 
         void SetPicked(PieceView v)
@@ -1435,8 +1487,7 @@ namespace Rescue
         void HideCard()
         {
             _card.gameObject.SetActive(false);
-            _rangeR = 0f;
-            PlaceRange(1f);
+            if (!_rangeFromDrag) HideRange();
             SetPicked(null);
             _cardT = 0;
         }
@@ -1445,7 +1496,6 @@ namespace Rescue
         {
             if (_cardT <= 0) return;
             _cardT -= dt;
-            if (_rangeR > 0f) PlaceRange(1f + 0.012f * Mathf.Sin(Time.time * 3f));
             if (_cardT <= 0 || (Input.GetMouseButtonDown(0) && _cardT < 3.8f)) HideCard();
         }
 
@@ -1786,7 +1836,7 @@ namespace Rescue
                             break;
                         case UnitKind.Qiang:
                             wr = ang - 45f;
-                            wp = _animDir * Mathf.Sin(k * Mathf.PI) * 0.45f;
+                            wp = _animDir * Mathf.Sin(k * Mathf.PI) * 0.55f;
                             break;
                         case UnitKind.Gong:
                             wr = ang - 180f;

@@ -16,6 +16,7 @@ namespace Rescue
         public int tutorial;
         public int stamina = Stamina.Max;
         public long staminaAt;
+        public int staminaRule;
         public string shopDay = "";
         public List<int> shopOffer = new List<int>();
         public List<int> shopSold = new List<int>();
@@ -85,6 +86,11 @@ namespace Rescue
             if (D.weapons == null) D.weapons = new List<int>();
             if (D.armed == null) D.armed = new List<int>();
             D.armed.RemoveAll(id => WeaponCount(id) <= 0 || id < 0 || id >= HeroDef.All.Length);
+            if (D.staminaRule < 1)
+            {
+                if (D.stamina < Stamina.Max) D.stamina = Stamina.Max;
+                D.staminaRule = 1;
+            }
             Sfx.On = D.sfx;
         }
 
@@ -223,7 +229,8 @@ namespace Rescue
 
     public static class Stamina
     {
-        public const int Max = 10;
+        public const int Max = 30;
+        public const int Cost = 5;
         public const int RegenSeconds = 300;
 
         static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -260,9 +267,9 @@ namespace Rescue
         public static bool Spend()
         {
             Tick();
-            if (Save.D.stamina <= 0) return false;
+            if (Save.D.stamina < Cost) return false;
             if (Save.D.stamina >= Max) Save.D.staminaAt = Now;
-            Save.D.stamina--;
+            Save.D.stamina -= Cost;
             Save.Write();
             return true;
         }

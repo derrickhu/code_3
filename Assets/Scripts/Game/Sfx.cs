@@ -3,9 +3,14 @@ using UnityEngine;
 
 namespace Rescue
 {
-    public enum Snd { Tap, Recruit, Place, Merge, Hero, Hit, Kill, Leak, Rain, Ult, Win, Lose, Staff, Warn }
+    public enum Snd
+    {
+        Tap, Recruit, Place, Merge, Hero, Hit, Kill, Leak, Rain, Ult, Win, Lose, Staff, Warn,
+        Dao, Spear, Bow, ArrowHit, Horse, Axe, Smash, Water, FireHit, Lasso, Fist, Dart, Poison, Crit,
+        UltFire, UltWater, UltWind, UltWhirl, UltMagic, UltSmash,
+    }
 
-    /// <summary>程序合成的音效：木鱼、锣、鼓、铜钱，全部运行时生成。</summary>
+    /// <summary>界面音是程序合成的木鱼、锣、鼓、铜钱；兵器和招式音从 Resources/Sfx 读录音，读不到时退回合成音。</summary>
     public sealed class Sfx : MonoBehaviour
     {
         const int Rate = 22050;
@@ -27,7 +32,7 @@ namespace Rescue
         public static void Play(Snd s, float vol = 1f, float pitch = 1f)
         {
             if (_i == null || !On) return;
-            float minGap = s == Snd.Hit || s == Snd.Kill ? 0.06f : 0.03f;
+            float minGap = s == Snd.Hit || s == Snd.Kill ? 0.06f : s >= Snd.Dao && s < Snd.UltFire ? 0.07f : 0.03f;
             if (_i._last.TryGetValue(s, out var t) && Time.unscaledTime - t < minGap) return;
             _i._last[s] = Time.unscaledTime;
             var src = _i._src[_i._next++ % _i._src.Length];
@@ -37,7 +42,7 @@ namespace Rescue
 
         void Build()
         {
-            _src = new AudioSource[10];
+            _src = new AudioSource[16];
             for (int i = 0; i < _src.Length; i++)
             {
                 _src[i] = gameObject.AddComponent<AudioSource>();
@@ -65,6 +70,33 @@ namespace Rescue
             _clips[Snd.Lose] = Clip("lose", 1.4f, (t, k) => Arp(t, new[] { 659f, 587f, 523f, 440f, 392f }, 0.22f));
             _clips[Snd.Staff] = Clip("staff", 0.5f, (t, k) => Wood(t, 0) * 1.2f + Noise() * Env(t - 0.05f, 0.05f, 0.3f) * 0.25f);
             _clips[Snd.Warn] = Clip("warn", 0.8f, (t, k) => Sine(440, t) * Env(t, 0.005f, 0.12f) * 0.4f + Sine(440, t) * Env(t - 0.25f, 0.005f, 0.12f) * 0.4f);
+
+            Load(Snd.Dao, "dao", Snd.Hit);
+            Load(Snd.Spear, "spear", Snd.Hit);
+            Load(Snd.Bow, "bow", Snd.Tap);
+            Load(Snd.ArrowHit, "arrow_hit", Snd.Hit);
+            Load(Snd.Horse, "horse", Snd.Leak);
+            Load(Snd.Axe, "axe", Snd.Hit);
+            Load(Snd.Smash, "staff", Snd.Leak);
+            Load(Snd.Water, "water", Snd.Kill);
+            Load(Snd.FireHit, "fire", Snd.Ult);
+            Load(Snd.Lasso, "lasso", Snd.Kill);
+            Load(Snd.Fist, "fist", Snd.Hit);
+            Load(Snd.Dart, "dart", Snd.Tap);
+            Load(Snd.Poison, "poison", Snd.Kill);
+            Load(Snd.Crit, "crit", Snd.Ult);
+            Load(Snd.UltFire, "ult_fire", Snd.Ult);
+            Load(Snd.UltWater, "ult_water", Snd.Ult);
+            Load(Snd.UltWind, "ult_wind", Snd.Ult);
+            Load(Snd.UltWhirl, "ult_whirl", Snd.Ult);
+            Load(Snd.UltMagic, "ult_magic", Snd.Merge);
+            Load(Snd.UltSmash, "ult_smash", Snd.Ult);
+        }
+
+        void Load(Snd s, string file, Snd fallback)
+        {
+            var c = Resources.Load<AudioClip>("Sfx/" + file);
+            _clips[s] = c != null ? c : _clips[fallback];
         }
 
         static float _noiseSeed = 1;

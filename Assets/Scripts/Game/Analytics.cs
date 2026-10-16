@@ -41,7 +41,7 @@ namespace Rescue
             Ensure();
             if (_sessionStarted) return;
             _sessionStarted = true;
-            Track("session_start", Param.Str("entry", "main").Bool("with_user_id", false));
+            Track("session_start", Param.Of("entry", "main").Bool("with_user_id", false));
             Flush();
         }
 
@@ -92,7 +92,7 @@ namespace Rescue
         static void Ad(string name, string scene, bool? ended)
         {
             if (!_sessionStarted) return;
-            Param p = Param.Str("ad_unit_id", "reward")
+            Param p = Param.Of("ad_unit_id", "reward")
                 .Str("ad_type", "reward")
                 .Str("scene", string.IsNullOrEmpty(scene) ? "unknown" : scene);
             if (_levelOpen) p.Num("level_id", _levelId);
@@ -103,7 +103,7 @@ namespace Rescue
         static Param LevelParams(string reason, int wave, int kills)
         {
             int duration = Mathf.Max(0, Mathf.RoundToInt((Time.realtimeSinceStartup - _levelAt) * 1000f));
-            Param p = Param.Num("level_id", _levelId).Str("level_name", _levelName).Str("mode", "chapter");
+            Param p = Param.Of("level_id", _levelId).Str("level_name", _levelName).Str("mode", "chapter");
             if (reason != null) p.Num("duration_ms", duration).Str("reason", reason).Num("wave", wave).Num("kills", kills);
             else if (!_levelOpen) p.Num("duration_ms", duration).Num("wave", wave).Num("kills", kills);
             return p;
@@ -136,7 +136,7 @@ namespace Rescue
                 return;
             }
             _lastEndAt = Time.realtimeSinceStartup;
-            Track("session_end", Param.Str("reason", reason));
+            Track("session_end", Param.Of("reason", reason));
             Flush();
         }
 
@@ -323,10 +323,11 @@ namespace Rescue
             readonly StringBuilder _sb = new StringBuilder("{");
             bool _first = true;
 
-            public static Param Str(string k, string v) => new Param().Str(k, v);
-            public static Param Bool(string k, bool v) => new Param().Bool(k, v);
+            public static Param Of(string k, string v) => new Param().Str(k, v);
+            public static Param Of(string k, bool v) => new Param().Bool(k, v);
+            public static Param Of(string k, int v) => new Param().Num(k, v);
 
-            public Param Str(string key, string v) { Add(key); _sb.Append(Json(v)); return this; }
+            public Param Str(string key, string v) { Add(key); _sb.Append(Analytics.Json(v)); return this; }
             public Param Num(string key, int v) { Add(key); _sb.Append(v.ToString(CultureInfo.InvariantCulture)); return this; }
             public Param Bool(string key, bool v) { Add(key); _sb.Append(v ? "true" : "false"); return this; }
 
@@ -334,7 +335,7 @@ namespace Rescue
             {
                 if (!_first) _sb.Append(',');
                 _first = false;
-                _sb.Append(Json(key)).Append(':');
+                _sb.Append(Analytics.Json(key)).Append(':');
             }
 
             public string Json()

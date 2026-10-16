@@ -163,12 +163,12 @@ namespace Rescue
             coins = Ui.Label(tl, "", 46, Pal.Hex("FFE7A8"), new Vector2(x + 30, -92), new Vector2(220, 80));
             coins.fontStyle = FontStyle.Bold;
 
-            Ui.Box(tl, new Vector2(290, 80), new Vector2(x + 6, -198), Pal.Hex("3B2A20").A(0.92f), null, "staBar");
-            Ui.Icon(tl, "ui_bolt", 80, new Vector2(x - 132, -198));
-            stamina = Ui.Label(tl, "", 40, Pal.Hex("FFE7A8"), new Vector2(x - 6, -198), new Vector2(220, 80));
+            Ui.Box(tl, new Vector2(340, 80), new Vector2(x + 20, -198), Pal.Hex("3B2A20").A(0.92f), null, "staBar");
+            Ui.Icon(tl, "ui_bolt", 80, new Vector2(x - 140, -198));
+            stamina = Ui.Label(tl, "", 40, Pal.Hex("FFE7A8"), new Vector2(x + 4, -198), new Vector2(250, 80));
             stamina.fontStyle = FontStyle.Bold;
             stamina.supportRichText = true;
-            var plus = Ui.Icon(tl, "ui_plus", 66, new Vector2(x + 126, -198));
+            var plus = Ui.Icon(tl, "ui_plus", 66, new Vector2(x + 158, -198));
             Ui.Tap(plus, () =>
             {
                 if (Stamina.Current >= Stamina.Max) { Toast("体力已满"); return; }
@@ -254,7 +254,7 @@ namespace Rescue
             var label = Ui.Label(holder, "开始游戏", 64, Pal.Paper, new Vector2(-30, 0), new Vector2(400, 120), TextAnchor.MiddleCenter, Fonts.Brush);
             Ui.Stroke(label, Pal.Hex("6B1A12"), 3f);
             Ui.Icon(holder, "ui_bolt", 64, new Vector2(190, 0));
-            Ui.Label(holder, "-1", 28, Pal.Hex("FFE7A8"), new Vector2(226, -30), new Vector2(60, 40));
+            Ui.Label(holder, "-" + Stamina.Cost, 28, Pal.Hex("FFE7A8"), new Vector2(226, -30), new Vector2(60, 40));
             var swords = Ui.Icon(holder, "ui_swords", 120, new Vector2(0, 112));
             Bob(swords.transform, 0.3f);
             face.raycastTarget = true;

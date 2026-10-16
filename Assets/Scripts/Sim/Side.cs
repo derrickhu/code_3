@@ -633,7 +633,7 @@ namespace Rescue.Sim
                     if (cd > 0) { _unitCd[p.Id] = cd; continue; }
                     var def = UnitDef.Get(p.Kind);
                     var pos = new CellPos(c, r).Center;
-                    float range = Items.Far && def.Range >= 2.2f ? def.Range * 2f : def.Range;
+                    float range = Items.Far && def.Range >= 2f ? def.Range * 2f : def.Range;
                     var target = FindTarget(pos, range, false);
                     if (target == null) { _unitCd[p.Id] = 0; continue; }
                     _unitCd[p.Id] = def.CooldownAt(p.Level) * CdMul(c, r);

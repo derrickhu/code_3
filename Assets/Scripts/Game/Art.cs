@@ -76,6 +76,7 @@ namespace Rescue
         public static Sprite Frame => Get("frame", () => RoundRect(64, 18, 7));
         public static Sprite Circle => Get("circle", () => Disc(64, 0f));
         public static Sprite SoftDot => Get("softdot", () => Disc(64, 0.9f));
+        public static Sprite RangeFill => Get("rangefill", RangeFillTex);
         public static Sprite Ring => Get("ring", () => RingTex(128, 0.86f));
         public static Sprite Blob => Get("blob", () => InkBlob(128, 7));
         public static Sprite Blob2 => Get("blob2", () => InkBlob(128, 99));
@@ -166,17 +167,13 @@ namespace Rescue
                     float pxX = x + 0.5f, pxY = y + 0.5f;
                     float d;
                     if (pxX >= radius)
-                    {
-                        float inset = pxY < radius ? radius - pxY : pxY > n - radius ? pxY - (n - radius) : 0f;
-                        d = inset;
-                    }
+                        d = -1f;
                     else
                     {
                         float cy = Mathf.Clamp(pxY, radius, n - radius);
                         d = Vector2.Distance(new Vector2(pxX, pxY), new Vector2(radius, cy)) - radius;
                     }
-                    float a = Mathf.Clamp01(0.6f - d);
-                    if (pxX > n - 3f) a *= 0.92f + 0.08f * (n - pxX) / 3f;
+                    float a = d <= 0f ? 1f : Mathf.Clamp01(0.5f - d);
                     px[y * n + x] = new Color(1, 1, 1, a);
                 }
             t.SetPixels(px);
@@ -194,6 +191,65 @@ namespace Rescue
                     float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(r, r)) / r;
                     float a = soft > 0 ? Mathf.Clamp01(1f - d) * Mathf.Clamp01(1f - d) * 1.6f : Mathf.Clamp01((1f - d) * r);
                     px[y * n + x] = new Color(1, 1, 1, Mathf.Clamp01(a));
+                }
+            t.SetPixels(px);
+            return Make(t);
+        }
+
+        /// <summary>射程圆面：边缘抗锯齿的实心圆，半径正好铺满贴图。</summary>
+        static Sprite RangeFillTex()
+        {
+            int n = 256;
+            var t = NewTex(n, n);
+            var px = new Color[n * n];
+            float rad = n * 0.5f;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float d = Mathf.Sqrt((x + 0.5f - rad) * (x + 0.5f - rad) + (y + 0.5f - rad) * (y + 0.5f - rad));
+                    px[y * n + x] = new Color(1f, 1f, 1f, Mathf.Clamp01(rad - 1.5f - d + 0.5f));
+                }
+            t.SetPixels(px);
+            return Make(t);
+        }
+
+        /// <summary>
+        /// 射程边：线宽按世界单位算，所以每个半径单独出图（按 0.05 取整缓存），大圆小圆的线一样细。
+        /// 贴图外沿 = 圆外 OuterPad；圈内是白线 + 往里淡出的光晕，圈外一窄条深色投影，浅色地面上也压得住。
+        /// </summary>
+        public static Sprite RangeRim(float r)
+        {
+            float rq = Mathf.Max(0.3f, Mathf.Round(r * 20f) / 20f);
+            return Get("rangerim" + rq.ToString("0.00"), () => RangeRimTex(rq));
+        }
+
+        public const float RangeRimPad = 0.08f;
+
+        static Sprite RangeRimTex(float r)
+        {
+            int n = 512;
+            var t = NewTex(n, n);
+            var px = new Color[n * n];
+            float half = n * 0.5f;
+            float wpp = (r + RangeRimPad) / half;
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float dx = x + 0.5f - half, dy = y + 0.5f - half;
+                    float e = r - Mathf.Sqrt(dx * dx + dy * dy) * wpp;
+                    Color col;
+                    if (e >= 0f)
+                    {
+                        float line = Mathf.Clamp01((0.028f - Mathf.Abs(e - 0.026f)) / wpp + 0.5f);
+                        float glow = e < 0.4f ? 0.42f * (1f - e / 0.4f) * (1f - e / 0.4f) : 0f;
+                        col = new Color(1f, 1f, 1f, Mathf.Max(line, glow));
+                    }
+                    else
+                    {
+                        float s = Mathf.Clamp01(1f + e / 0.07f);
+                        col = new Color(0f, 0f, 0f, 0.38f * s * s);
+                    }
+                    px[y * n + x] = col;
                 }
             t.SetPixels(px);
             return Make(t);
