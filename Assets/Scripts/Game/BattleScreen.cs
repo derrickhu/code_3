@@ -88,6 +88,7 @@ namespace Rescue
         {
             _started = true;
             M.Hold = false;
+            Analytics.LevelStart(M.Chapter.Index + 1, M.Chapter.Name);
             if (_tutorialRun && !Save.Tut((int)Tut.Recruit))
             {
                 M.Hold = true;
@@ -483,6 +484,9 @@ namespace Rescue
                 r.Formed.Add(id);
                 if (!Save.D.heroes.Contains((int)id)) r.NewHeroes.Add(id);
             }
+            if (quit) Analytics.LevelFail("quit", M.Wave, M.Player.Kills);
+            else if (win) Analytics.LevelClear(M.Wave, M.Player.Kills);
+            else Analytics.LevelFail("lose", M.Wave, M.Player.Kills);
             Banner(win ? "对手的宋江倒了！" : "宋江被押走了", win ? "这一阵，赢了" : "再来！", win ? Pal.Gold : Pal.Ink, 1.2f);
             Tween.Run(this, 1.6f, k => { }, () => _done?.Invoke(r));
         }

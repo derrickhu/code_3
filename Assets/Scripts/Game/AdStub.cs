@@ -12,6 +12,9 @@ namespace Rescue
 
         public static void Show(string reason, Action onReward, Action onCancel = null)
         {
+            string scene = Analytics.Scene(reason);
+            Analytics.AdRequest(scene);
+            Analytics.AdShow(scene);
             var layer = Ui.Fill(Ui.Root, Color.black, true, "ad");
             var video = Ui.Box(layer, new Vector2(1080, 1300), new Vector2(0, 120), Color.white, Art.Img("home_bg2"), "video");
             video.type = Image.Type.Simple;
@@ -45,6 +48,7 @@ namespace Rescue
             {
                 if (closed) return;
                 closed = true;
+                Analytics.AdClose(scene, reward);
                 UnityEngine.Object.Destroy(layer.gameObject);
                 if (reward) onReward?.Invoke();
                 else onCancel?.Invoke();

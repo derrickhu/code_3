@@ -39,6 +39,7 @@ namespace Rescue
             }
             Tween.Init(gameObject);
             Sfx.Init(gameObject);
+            if (_shots == null) Analytics.Begin();
 
             _cam = Camera.main;
             if (_cam == null)
