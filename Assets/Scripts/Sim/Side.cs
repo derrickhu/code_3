@@ -32,6 +32,13 @@ namespace Rescue.Sim
         public int Baozi;
         public bool Xuming;
         public int Shovels;
+        public int Fu;
+        public int Trap;
+        public bool Far;
+        /// <summary>带进这一局的兵器，元素是 HeroId。</summary>
+        public List<int> Armed;
+        /// <summary>与 HeroId 下标对齐的兵器阶数。0 表示没装备。</summary>
+        public int[] WeaponLv;
     }
 
     public sealed class Side
@@ -64,6 +71,7 @@ namespace Rescue.Sim
         float _incomeAcc;
         public float EnemySlowT;
         public float HasteAllT;
+        public float ItemHasteT;
         float _steleCd;
 
         readonly Rng _rng;
@@ -97,7 +105,7 @@ namespace Rescue.Sim
             foreach (var kv in weights) _charWeights.Add(kv);
             _charWeights.Sort((a, b) => a.Key.CompareTo(b.Key));
 
-            if (Items.Gang) Buns += 20;
+            if (Items.Gang) Buns += 30;
             if (Items.Xuming) AddMaxHp(10);
             ShovelStock = Items.Shovels;
             FillShovels();
@@ -399,12 +407,54 @@ namespace Rescue.Sim
             Emit(new SimEvent { Type = Ev.Merge, A = target.Id, Val = target.Level, P = at });
         }
 
+        public bool UseFu()
+        {
+            if (Items.Fu <= 0 || M.Over) return false;
+            Items.Fu--;
+            ItemHasteT = 12f;
+            Emit(new SimEvent { Type = Ev.ItemUsed, Text = "攻速符", Flag = 3 });
+            return true;
+        }
+
+        float WeaponMul(HeroDef def)
+        {
+            if (!Armed(def)) return 1f;
+            int lv = 1;
+            if (Items.WeaponLv != null)
+            {
+                int i = (int)def.Id;
+                if (i >= 0 && i < Items.WeaponLv.Length && Items.WeaponLv[i] > 0) lv = Items.WeaponLv[i];
+            }
+            return HeroDef.ArmedMul(lv);
+        }
+
+        bool Armed(HeroDef def)
+        {
+            if (Index != 0 || string.IsNullOrEmpty(def.Weapon) || Items.Armed == null) return false;
+            return Items.Armed.Contains((int)def.Id);
+        }
+
         public bool UseMengHan()
         {
             if (Items.MengHan <= 0 || M.Over) return false;
             Items.MengHan--;
             foreach (var e in Enemies) e.StunT = Math.Max(e.StunT, 3f);
             Emit(new SimEvent { Type = Ev.ItemUsed, Text = "蒙汗药" });
+            return true;
+        }
+
+        /// <summary>陷阱：官兵跌回去，一时爬不上来。头目跌得近一些。</summary>
+        public bool UseTrap()
+        {
+            if (Items.Trap <= 0 || M.Over) return false;
+            Items.Trap--;
+            foreach (var e in Enemies)
+            {
+                if (e.Dead) continue;
+                Knock(e, e.IsBig ? 0.9f : 1.8f);
+                e.StunT = Math.Max(e.StunT, e.IsBig ? 1.2f : 1.8f);
+            }
+            Emit(new SimEvent { Type = Ev.ItemUsed, Text = "陷阱", Flag = 4 });
             return true;
         }
 
@@ -477,6 +527,7 @@ namespace Rescue.Sim
             if (Dead) return;
             EnemySlowT = Math.Max(0, EnemySlowT - dt);
             HasteAllT = Math.Max(0, HasteAllT - dt);
+            ItemHasteT = Math.Max(0, ItemHasteT - dt);
             _steleCd = Math.Max(0, _steleCd - dt);
             ShieldT = Math.Max(0, ShieldT - dt);
 
@@ -491,13 +542,13 @@ namespace Rescue.Sim
 
         void MoveEnemies(float dt)
         {
-            float globalMul = (EnemySlowT > 0 ? 0.5f : 1f) * (Items.Marsh ? 0.85f : 1f);
+            float globalMul = (EnemySlowT > 0 ? 0.5f : 1f) * (Items.Marsh ? 0.75f : 1f);
             foreach (var e in Enemies)
             {
                 if (e.Dead) continue;
                 e.HasteT = Math.Max(0, e.HasteT - dt);
                 if (e.StunT > 0) { e.StunT -= dt; continue; }
-                float spd = e.Def.Speed * globalMul * (e.HasteT > 0 ? 1.45f : 1f);
+                float spd = e.Def.Speed * globalMul * (e.HasteT > 0 ? 1.65f : 1f);
                 e.Progress += spd * dt;
                 if (e.Progress >= Board.PathLength)
                 {
@@ -540,19 +591,20 @@ namespace Rescue.Sim
                 switch (e.Boss.Skill)
                 {
                     case BossSkill.Summon:
-                        e.SkillT = 6f;
-                        for (int k = 0; k < 2; k++)
-                            M.SpawnOn(this, EnemyKind.Zu, Math.Max(0, e.Progress - 0.35f * (k + 1)));
-                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 0.8f, Text = e.Boss.Name + "：来人！" , Flag = 1 });
+                        e.SkillT = 5.5f;
+                        for (int k = 0; k < 3; k++)
+                            M.SpawnOn(this, EnemyKind.Zu, Math.Max(0, e.Progress - 0.4f * (k + 1)));
+                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 1.8f, Text = e.Boss.Name + "：来人！", Flag = 1 });
                         break;
                     case BossSkill.Haste:
-                        e.SkillT = 5f;
+                        e.SkillT = 4.5f;
                         foreach (var o in Enemies)
-                            if (V2.Dist(o.Pos, e.Pos) < 2.2f) o.HasteT = 2.5f;
-                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 2.2f, Text = e.Boss.Name + "：快！快！", Flag = 1 });
+                            if (!o.Dead && V2.Dist(o.Pos, e.Pos) < 3.4f) o.HasteT = 3.2f;
+                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 3.4f, Text = e.Boss.Name + "：快！快！", Flag = 1 });
                         break;
                     default:
-                        e.SkillT = 999f;
+                        e.SkillT = 5.5f;
+                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 2.6f, Text = e.Boss.Name + "：铁布衫", Flag = 1 });
                         break;
                 }
             }
@@ -564,6 +616,7 @@ namespace Rescue.Sim
             if (_daizong) m *= 0.85f;
             if (_wuyongAura[c, r]) m *= 0.7f;
             if (HasteAllT > 0) m *= 0.5f;
+            if (ItemHasteT > 0) m *= 0.71f;
             return m;
         }
 
@@ -580,13 +633,14 @@ namespace Rescue.Sim
                     if (cd > 0) { _unitCd[p.Id] = cd; continue; }
                     var def = UnitDef.Get(p.Kind);
                     var pos = new CellPos(c, r).Center;
-                    var target = FindTarget(pos, def.Range, false);
+                    float range = Items.Far && def.Range >= 2.2f ? def.Range * 2f : def.Range;
+                    var target = FindTarget(pos, range, false);
                     if (target == null) { _unitCd[p.Id] = 0; continue; }
                     _unitCd[p.Id] = def.CooldownAt(p.Level) * CdMul(c, r);
                     float dmg = def.DamageAt(p.Level);
                     Emit(new SimEvent { Type = Ev.Attack, A = p.Id, B = (int)p.Kind, P = pos, Q = target.Pos, Val = p.Level });
 
-                    if (def.Pierce > 1) PierceLine(pos, target.Pos, def.Range, def.Pierce, dmg, null);
+                    if (def.Pierce > 1) PierceLine(pos, target.Pos, range, def.Pierce, dmg, null);
                     else
                     {
                         Hit(target, dmg, null);
@@ -611,15 +665,16 @@ namespace Rescue.Sim
 
                 if (def.NoAttack) GainXp(h, dt * 0.35f);
                 if (def.NoAttack || h.Cd > 0) continue;
-                var target = FindTarget(pos, def.Range, def.Id == HeroId.HuaRong);
+                float range = def.RangeWith(Items.Far);
+                var target = FindTarget(pos, range, def.Id == HeroId.HuaRong);
                 if (target == null) { h.Cd = 0; continue; }
                 h.Cd = def.Cooldown * CdMul(h.Cells[0].c, h.Cells[0].r);
-                float dmg = def.DamageAt(h.Level) * (h.OnWater ? def.WaterBonus : 1f);
+                float dmg = def.DamageAt(h.Level) * (h.OnWater ? def.WaterBonus : 1f) * WeaponMul(def);
                 int crit = 0;
                 if (def.Id == HeroId.YanQing && _rng.Chance(0.3f)) { dmg *= 3f; crit = 1; }
                 Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = target.Pos, Flag = crit });
 
-                if (def.Pierce > 1) PierceLine(pos, target.Pos, def.Range, def.Pierce, dmg, def);
+                if (def.Pierce > 1) PierceLine(pos, target.Pos, range, def.Pierce, dmg, def);
                 else
                 {
                     Hit(target, dmg, def, crit == 1);
@@ -648,7 +703,7 @@ namespace Rescue.Sim
         bool TryUlt(HeroInstance h, V2 pos)
         {
             var def = h.Def;
-            float dmg = def.DamageAt(h.Level) * (h.OnWater ? def.WaterBonus : 1f);
+            float dmg = def.DamageAt(h.Level) * (h.OnWater ? def.WaterBonus : 1f) * WeaponMul(def);
             bool any = Enemies.Count > 0;
             float radius = 0;
             switch (def.Id)
@@ -858,12 +913,16 @@ namespace Rescue.Sim
         void Hit(Enemy e, float dmg, HeroDef src, bool crit = false)
         {
             if (e.Dead) return;
-            if (Items.Flag) dmg *= 1.1f;
+            if (Items.Flag) dmg *= 1.22f;
             int flag = crit ? 1 : 0;
             if (e.Boss != null)
             {
                 if (src != null && src.Id == e.Boss.Nemesis) { dmg *= Tuning.BossNemesisMul; flag = 2; }
-                else if (e.Boss.Skill == BossSkill.Resist) dmg *= 0.5f;
+                else if (e.Boss.Skill == BossSkill.Resist)
+                {
+                    dmg *= 0.5f;
+                    if (flag == 0) flag = 3;
+                }
             }
             if (e.Def.Armor > 0 && src == null) dmg *= 1f - e.Def.Armor;
             e.Hp -= dmg;

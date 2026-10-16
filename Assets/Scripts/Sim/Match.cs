@@ -117,7 +117,7 @@ namespace Rescue.Sim
                 Def = def,
                 Hp = hp,
                 MaxHp = hp,
-                RewardMul = scale,
+                RewardMul = Tuning.KillGold,
                 LeakDamage = (int)Math.Round(def.LeakDamage * scale),
                 Progress = progress,
                 Glyph = def.Glyph,

@@ -163,6 +163,50 @@ namespace Rescue
 
         public static void SetText(Button b, string s) => b.transform.Find("text").GetComponent<Text>().text = s;
 
+        /// <summary>卡通描边块：底下一层深色描边，上面一层面色。返回面色那层。</summary>
+        public static Image Framed(Transform parent, Vector2 size, Vector2 pos, Color face, Color edge, float thick = 6f, string name = "framed")
+        {
+            var holder = Rect(parent, name);
+            holder.sizeDelta = size;
+            holder.anchoredPosition = pos;
+            Box(holder, size + Vector2.one * thick * 2f, Vector2.zero, edge, Art.Rounded, "edge");
+            return Box(holder, size, Vector2.zero, face, Art.Rounded, "face");
+        }
+
+        public static Text Stroke(Text t, Color c, float d = 3f)
+        {
+            var a = t.gameObject.AddComponent<Outline>();
+            a.effectColor = c;
+            a.effectDistance = new Vector2(d, -d);
+            var b = t.gameObject.AddComponent<Outline>();
+            b.effectColor = c;
+            b.effectDistance = new Vector2(-d, d);
+            return t;
+        }
+
+        public static Image Icon(Transform parent, string img, float size, Vector2 pos, string name = "icon")
+        {
+            var i = Box(parent, Vector2.one * size, pos, Color.white, Art.Img(img), name);
+            i.type = Image.Type.Simple;
+            i.preserveAspect = true;
+            return i;
+        }
+
+        /// <summary>给任意一块加点击，带按压回弹。</summary>
+        public static void Tap(Graphic g, Action onClick)
+        {
+            g.raycastTarget = true;
+            var b = g.gameObject.AddComponent<Button>();
+            b.transition = Selectable.Transition.None;
+            var t = g.transform.parent != null && g.transform.parent.name.StartsWith("framed") ? g.transform.parent : g.transform;
+            b.onClick.AddListener(() =>
+            {
+                Sfx.Play(Snd.Tap);
+                Tween.Punch(t, 0.12f);
+                onClick?.Invoke();
+            });
+        }
+
         public static void Anchor(RectTransform rt, float x, float y)
         {
             rt.anchorMin = rt.anchorMax = new Vector2(x, y);

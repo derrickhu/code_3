@@ -89,6 +89,55 @@ namespace Rescue.Sim
 
         public string TypeLabel => NoAttack ? "辅助" : Pierce > 1 ? "穿透" : Splash > 0 ? "范围" : "单体";
 
+        /// <summary>局外兵器。空字符串表示这名好汉没有兵器。</summary>
+        public string Weapon => WeaponOf(Id);
+
+        public string WeaponTag
+        {
+            get
+            {
+                var w = Weapon;
+                return string.IsNullOrEmpty(w) ? "" : w.Substring(w.Length - 1);
+            }
+        }
+
+        /// <summary>装备兵器的伤害。一阶就比空手猛，每多缴获一阶再加，五阶封顶。</summary>
+        public static float ArmedMul(int copies)
+        {
+            if (copies <= 0) return 1f;
+            int lv = copies > 5 ? 5 : copies;
+            return 1.45f + 0.18f * (lv - 1);
+        }
+
+        /// <summary>御敌千里：远程射程翻倍。全图射程不再放大。</summary>
+        public float RangeWith(bool far)
+        {
+            if (NoAttack || Range >= 50f) return Range;
+            if (far && Range >= 2f) return Range * 2f;
+            return Range;
+        }
+
+        public static string WeaponOf(HeroId id)
+        {
+            switch (id)
+            {
+                case HeroId.WuSong: return "戒刀";
+                case HeroId.LinChong: return "蛇矛";
+                case HeroId.LiKui: return "板斧";
+                case HeroId.HuaRong: return "铁弓";
+                case HeroId.YanQing: return "铁拳";
+                case HeroId.QinMing: return "狼牙棒";
+                case HeroId.ZhangShun: return "鱼叉";
+                case HeroId.ZhangHeng: return "朴刀";
+                case HeroId.RuanXiaoEr: return "朴刀";
+                case HeroId.RuanXiaoQi: return "鱼叉";
+                case HeroId.SunErNiang: return "厨刀";
+                case HeroId.HuSanNiang: return "套索";
+                case HeroId.LuZhiShen: return "禅杖";
+                default: return "";
+            }
+        }
+
         public static readonly HeroDef[] All =
         {
             new HeroDef { Id = HeroId.WuSong, Name = "武松", Nick = "行者", Range = 1.45f, Cooldown = 0.35f, Damage = 4.5f,
@@ -191,7 +240,7 @@ namespace Rescue.Sim
                     "......#G",
                 },
                 Pool = new[] { HeroId.HuaRong, HeroId.QinMing, HeroId.WuSong, HeroId.YanQing, HeroId.WuDaLang },
-                Boss = new BossDef { Name = "刘高", Title = "清风寨知寨", Skill = BossSkill.Summon, Nemesis = HeroId.HuaRong, SkillText = "每隔几秒招来两个寨兵" },
+                Boss = new BossDef { Name = "刘高", Title = "清风寨知寨", Skill = BossSkill.Summon, Nemesis = HeroId.HuaRong, SkillText = "每隔几秒大喝来人，招来三个寨兵" },
             },
             new ChapterDef
             {
@@ -207,7 +256,7 @@ namespace Rescue.Sim
                     "......#G",
                 },
                 Pool = new[] { HeroId.LiKui, HeroId.DaiZong, HeroId.LinChong, HeroId.HuaRong, HeroId.SunErNiang, HeroId.HuSanNiang, HeroId.WuDaLang },
-                Boss = new BossDef { Name = "蔡九", Title = "江州知府", Skill = BossSkill.Haste, Nemesis = HeroId.LiKui, SkillText = "催促身边官兵加速冲锋" },
+                Boss = new BossDef { Name = "蔡九", Title = "江州知府", Skill = BossSkill.Haste, Nemesis = HeroId.LiKui, SkillText = "喝令周围官兵加速猛冲" },
             },
             new ChapterDef
             {
@@ -217,9 +266,9 @@ namespace Rescue.Sim
                 {
                     "~~~~~~~S",
                     "########",
-                    "#.wwoo~.",
+                    "#.ooooo.",
                     "########",
-                    "..ww~~.#",
+                    ".......#",
                     "G#######",
                 },
                 Pool = new[] { HeroId.ZhangShun, HeroId.ZhangHeng, HeroId.RuanXiaoEr, HeroId.RuanXiaoQi, HeroId.LiKui, HeroId.LuZhiShen, HeroId.WuYong },
@@ -235,8 +284,10 @@ namespace Rescue.Sim
         public const int CampSlots = 5;
         public const int MaxHp = 30;
         public const int HeartHp = 10;
-        public const int StartBuns = 22;
-        public const int StartCost = 8;
+        public const int StartBuns = 12;
+        public const int StartCost = 12;
+        /// <summary>杀敌入账倍率。原作第 3 波进度约一半、第 6 波约四成，按这个压过每只都 +1 的进账。</summary>
+        public const float KillGold = 0.4f;
         public const int CostStep = 2;
         public const float HeroCharChance = 0.24f;
         public const float ShovelChance = 0.12f;
@@ -250,5 +301,38 @@ namespace Rescue.Sim
         public const float WaveGap = 3.5f;
 
         public static float WaveHp(int wave) => 5f * (float)Math.Pow(1.18, wave - 1);
+    }
+
+    /// <summary>座次：胜加星，满五星再胜升阶；败掉星，零星再败掉一阶并落到四星。</summary>
+    public static class RankRules
+    {
+        public const int Stars = 5;
+
+        public static void Apply(ref int tier, ref int stars, bool win, int tierCount, out bool promoted, out bool demoted)
+        {
+            promoted = demoted = false;
+            if (tierCount < 1) return;
+            if (tier < 0) tier = 0;
+            if (tier >= tierCount) tier = tierCount - 1;
+            if (stars < 0) stars = 0;
+            if (stars > Stars) stars = Stars;
+            if (win)
+            {
+                if (stars >= Stars && tier < tierCount - 1)
+                {
+                    tier++;
+                    stars = 0;
+                    promoted = true;
+                }
+                else stars = Math.Min(Stars, stars + 1);
+            }
+            else if (stars > 0) stars--;
+            else if (tier > 0)
+            {
+                tier--;
+                stars = Stars - 1;
+                demoted = true;
+            }
+        }
     }
 }

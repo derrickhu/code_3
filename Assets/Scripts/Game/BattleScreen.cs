@@ -35,6 +35,7 @@ namespace Rescue
         Tut? _tut;
         float _tutT;
         float _ringT;
+        float _bossSay;
         Vector2 _ringPos;
         bool _tutorialRun;
 
@@ -148,6 +149,9 @@ namespace Rescue
             if (l.Baozi > 0) parts.Add("包子×" + l.Baozi);
             if (l.Xuming) parts.Add("续命丹");
             if (l.Shovels > 0) parts.Add("铲子×" + l.Shovels);
+            if (l.Fu > 0) parts.Add("攻速符×" + l.Fu);
+            if (l.Trap > 0) parts.Add("陷阱×" + l.Trap);
+            if (l.Far) parts.Add("御敌千里");
             return string.Join("、", parts);
         }
 
@@ -181,7 +185,15 @@ namespace Rescue
                     Banner("捕头来袭", "戴面具的捕头血厚，集中火力", Pal.Hex("3B2050"), 0.8f);
                     break;
                 case Ev.ItemUsed when mine:
-                    Banner(ev.Text + "！", "", Pal.Willow, 0.7f);
+                {
+                    string sub = ev.Flag == 3 ? "十二秒内全军出手快四成" : ev.Flag == 4 ? "官兵跌进去，一时爬不上来" : "";
+                    Banner(ev.Text + "！", sub, ev.Flag == 3 ? Pal.Gold : Pal.Willow, 0.9f);
+                    break;
+                }
+                case Ev.Ult when ev.Flag == 1:
+                    if (Time.unscaledTime < _bossSay) break;
+                    _bossSay = Time.unscaledTime + 7f;
+                    Banner(ev.Text, M.Chapter.Boss.SkillText, Pal.RedDeep, 0.95f);
                     break;
                 case Ev.Shovels when mine && ev.Val == 1:
                     Banner("方便铲！", "鲁智深送来一把铲子，拖到草地上开荒", Pal.Willow, 0.8f);

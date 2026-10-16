@@ -87,6 +87,8 @@ namespace Rescue
         public static Sprite Swirl => Get("swirl", SwirlTex);
         public static Sprite ArrowShaft => Get("arrow", ArrowTex);
         public static Sprite Dashed => Get("dashed", DashedTex);
+        /// <summary>左侧圆角、右侧齐边的进度条，用来嵌进聚义按钮。</summary>
+        public static Sprite Progress => Get("progress", ProgressCap);
 
         /// <summary>Resources/Art 下的手绘图（生成后抠图），长边 = 1 个世界单位。</summary>
         public static Sprite Img(string name) => Get("img_" + name, () => Resources.Load<Sprite>("Art/" + name) ?? Rounded);
@@ -149,6 +151,36 @@ namespace Rescue
             t.SetPixels(px);
             float b = radius + 2;
             return Make(t, new Vector4(b, b, b, b));
+        }
+
+        /// <summary>左圆右齐。九宫格拉宽时只拉中间，左端圆角保持住。</summary>
+        static Sprite ProgressCap()
+        {
+            int n = 64;
+            float radius = 16f;
+            var t = NewTex(n, n);
+            var px = new Color[n * n];
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float pxX = x + 0.5f, pxY = y + 0.5f;
+                    float d;
+                    if (pxX >= radius)
+                    {
+                        float inset = pxY < radius ? radius - pxY : pxY > n - radius ? pxY - (n - radius) : 0f;
+                        d = inset;
+                    }
+                    else
+                    {
+                        float cy = Mathf.Clamp(pxY, radius, n - radius);
+                        d = Vector2.Distance(new Vector2(pxX, pxY), new Vector2(radius, cy)) - radius;
+                    }
+                    float a = Mathf.Clamp01(0.6f - d);
+                    if (pxX > n - 3f) a *= 0.92f + 0.08f * (n - pxX) / 3f;
+                    px[y * n + x] = new Color(1, 1, 1, a);
+                }
+            t.SetPixels(px);
+            return Make(t, new Vector4(radius + 2, radius + 2, 2, radius + 2));
         }
 
         static Sprite Disc(int n, float soft)

@@ -377,6 +377,50 @@ namespace Rescue.Tests
         }
 
         [Test]
+        public void RankDropsStarAndTier()
+        {
+            int tier = 2, stars = 0;
+            RankRules.Apply(ref tier, ref stars, false, 7, out bool up, out bool down);
+            Assert.IsFalse(up);
+            Assert.IsTrue(down);
+            Assert.AreEqual(1, tier);
+            Assert.AreEqual(4, stars);
+
+            RankRules.Apply(ref tier, ref stars, false, 7, out up, out down);
+            Assert.IsFalse(down);
+            Assert.AreEqual(1, tier);
+            Assert.AreEqual(3, stars);
+
+            tier = 0;
+            stars = 0;
+            RankRules.Apply(ref tier, ref stars, false, 7, out up, out down);
+            Assert.IsFalse(down);
+            Assert.AreEqual(0, tier);
+            Assert.AreEqual(0, stars);
+
+            tier = 1;
+            stars = 5;
+            RankRules.Apply(ref tier, ref stars, true, 7, out up, out down);
+            Assert.IsTrue(up);
+            Assert.AreEqual(2, tier);
+            Assert.AreEqual(0, stars);
+
+            tier = 6;
+            stars = 5;
+            RankRules.Apply(ref tier, ref stars, true, 7, out up, out down);
+            Assert.IsFalse(up);
+            Assert.AreEqual(6, tier);
+            Assert.AreEqual(5, stars);
+
+            tier = 1;
+            stars = 4;
+            RankRules.Apply(ref tier, ref stars, true, 7, out up, out down);
+            Assert.IsFalse(up);
+            Assert.AreEqual(1, tier);
+            Assert.AreEqual(5, stars);
+        }
+
+        [Test]
         public void DismissRefundsBuns()
         {
             var m = new Match(ChapterDef.All[0], 3);
@@ -386,6 +430,58 @@ namespace Rescue.Tests
             Assert.IsTrue(s.DismissCamp(0));
             Assert.IsNull(s.Camp[0]);
             Assert.AreEqual(before + Side.DismissRefund(Piece.Unit(UnitKind.Dao, 3)), s.Buns);
+        }
+
+        [Test]
+        public void ArmedWeaponScalesAndNeverWeakerThanBare()
+        {
+            Assert.AreEqual(1f, HeroDef.ArmedMul(0), 0.001f);
+            Assert.Greater(HeroDef.ArmedMul(1), 1.35f);
+            Assert.Greater(HeroDef.ArmedMul(5), HeroDef.ArmedMul(4));
+            Assert.AreEqual(HeroDef.ArmedMul(5), HeroDef.ArmedMul(9), 0.001f);
+        }
+
+        [Test]
+        public void TrapDropsEnemiesAndStunsThem()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            m.SpawnOn(s, EnemyKind.Zu, 4f);
+            var e = s.Enemies[0];
+            s.Items.Trap = 1;
+            Assert.IsTrue(s.UseTrap());
+            Assert.AreEqual(0, s.Items.Trap);
+            Assert.Less(e.Progress, 3f);
+            Assert.GreaterOrEqual(e.StunT, 1.5f);
+            Assert.IsFalse(s.UseTrap());
+        }
+
+        [Test]
+        public void ResistBossHitIsMarkedHalf()
+        {
+            var m = NewMatch(2);
+            var s = m.Player;
+            Clear(s);
+            m.SpawnOn(s, EnemyKind.Boss, 2f);
+            var boss = s.Enemies[0];
+            float hp = boss.Hp;
+            s.Board.Pieces[5, 3] = Piece.Hero('李');
+            s.Board.Pieces[6, 3] = Piece.Hero('逵');
+            s.RecomputeHeroes();
+            Assert.AreEqual(1, s.Heroes.Count, "白龙庙应能凑出李逵");
+            s.Heroes[0].UltCd = 999f;
+            m.Events.Clear();
+            m.Step(0.05f);
+            bool found = false;
+            foreach (var ev in m.Events)
+            {
+                if (ev.Type != Ev.Hit) continue;
+                found = true;
+                Assert.AreEqual(3, ev.Flag, "铁布衫的伤害应标成半伤");
+            }
+            Assert.IsTrue(found, "李逵应打到黄文炳");
+            float full = HeroDef.Get(HeroId.LiKui).DamageAt(1);
+            Assert.AreEqual(hp - full * 0.5f, boss.Hp, 0.05f);
         }
     }
 }
