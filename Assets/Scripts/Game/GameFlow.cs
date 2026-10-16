@@ -119,7 +119,7 @@ namespace Rescue
         IEnumerator MatchThenFight(int chapter)
         {
             var layer = BuildMatch(chapter);
-            yield return new WaitForSecondsRealtime(1.35f);
+            yield return new WaitForSecondsRealtime(1.8f);
             if (layer) Destroy(layer.gameObject);
             OpenBattle(chapter, false);
         }
@@ -127,31 +127,59 @@ namespace Rescue
         RectTransform BuildMatch(int chapter)
         {
             var ch = ChapterDef.All[chapter];
-            var layer = Ui.Fill(Ui.Root, Pal.Hex("1A1612"), true, "match");
-            Ui.Label(layer, "匹配完成", 92, Pal.GoldBright, new Vector2(0, 560), new Vector2(900, 140), TextAnchor.MiddleCenter, Fonts.Brush);
+            var layer = Ui.Fill(Ui.Root, Color.white, true, "match");
+            var bg = layer.GetComponent<Image>();
+            bg.sprite = Art.Img("home_bg2");
+            Ui.Fill(layer, new Color(0.08f, 0.06f, 0.04f, 0.72f), false, "dim");
+            var title = Ui.Title(layer, "匹配完成", new Vector2(0, 600), 110, Pal.GoldBright);
+            Tween.Pop(title.transform, 0.35f);
             float mine = Save.D.battles <= 0 ? 0f : (float)Save.D.wins / Save.D.battles;
             float rivalRate = Mathf.Clamp01(0.36f + ch.RivalSkill * 0.42f);
             int rivalTier = Mathf.Clamp(Save.D.tier + (ch.RivalSkill >= 0.55f ? 1 : 0), 0, Save.Tiers.Length - 1);
-            Banner(layer, new Vector2(0, 180), Save.RankName, StarLine(Save.D.stars), "胜率 " + (mine * 100f).ToString("0.0") + "%", Pal.Tile);
-            Banner(layer, new Vector2(0, -160), ch.RivalName, Save.Tiers[rivalTier] + "  " + StarLine(Mathf.RoundToInt(ch.RivalSkill * RankRules.Stars)), "胜率 " + (rivalRate * 100f).ToString("0.0") + "%", Pal.Hex("F3E2D0"));
-            Ui.Label(layer, "对阵  " + ch.Name, 40, Pal.Paper.A(0.8f), new Vector2(0, -480), new Vector2(800, 70));
-            Tween.Pop(layer, 0.2f);
+            var me = Banner(layer, new Vector2(0, 250), "我", Save.RankName, Save.D.stars, mine, Ui.BtnBlue, null);
+            var rival = Banner(layer, new Vector2(0, -250), ch.RivalName, Save.Tiers[rivalTier], Mathf.RoundToInt(ch.RivalSkill * RankRules.Stars), rivalRate,
+                Pal.Hex("D9452F"), ch.RivalName.Substring(0, 1));
+            SlideIn(me, -1200f);
+            SlideIn(rival, 1200f);
+            var vs = Ui.Icon(layer, "ui_swords", 220, new Vector2(0, 0));
+            var vsText = Ui.Label(layer, "VS", 96, Pal.Hex("FFE36A"), new Vector2(0, -10), new Vector2(240, 130), TextAnchor.MiddleCenter, Fonts.Kai);
+            vsText.fontStyle = FontStyle.Bold;
+            Ui.Stroke(vsText, Ui.Edge, 5f);
+            Tween.Pop(vs.transform, 0.35f, 0.3f);
+            Tween.Pop(vsText.transform, 0.35f, 0.35f);
+            Ui.Label(layer, "对阵 · " + ch.Name, 44, Pal.Paper.A(0.9f), new Vector2(0, -520), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
             return layer;
         }
 
-        static void Banner(RectTransform layer, Vector2 pos, string name, string rank, string rate, Color bg)
+        static RectTransform Banner(RectTransform layer, Vector2 pos, string name, string tier, int stars, float rate, Color bg, string glyph)
         {
-            Ui.Box(layer, new Vector2(860, 220), pos, bg);
-            Ui.Label(layer, name, 72, Pal.Ink, new Vector2(-180, pos.y + 30), new Vector2(460, 100), TextAnchor.MiddleLeft, Fonts.Brush);
-            Ui.Label(layer, rank, 36, Pal.Gold, new Vector2(-80, pos.y - 45), new Vector2(500, 50), TextAnchor.MiddleLeft);
-            Ui.Label(layer, rate, 36, Pal.InkSoft, new Vector2(280, pos.y), new Vector2(240, 80));
+            var holder = Ui.Rect(layer, "banner");
+            holder.anchoredPosition = pos;
+            var face = Ui.Framed(holder, new Vector2(900, 250), Vector2.zero, bg, Ui.Edge, 7f, "frame");
+            var t = face.transform;
+            Ui.Box(t, new Vector2(860, 30), new Vector2(0, 86), Color.white.A(0.18f), null, "gloss");
+            if (glyph == null) Ui.Icon(t, "ui_avatar", 190, new Vector2(-330, 0));
+            else
+            {
+                var av = Ui.Framed(t, new Vector2(176, 176), new Vector2(-330, 0), Pal.Tile, Ui.Edge, 5f, "avatar");
+                av.pixelsPerUnitMultiplier = 1.2f;
+                Ui.Label(av.transform, glyph, 120, Pal.Ink, new Vector2(0, 6), new Vector2(176, 176), TextAnchor.MiddleCenter, Fonts.Brush);
+            }
+            Ui.Stroke(Ui.Label(t, name, 66, Pal.Paper, new Vector2(-70, 50), new Vector2(400, 90), TextAnchor.MiddleLeft, Fonts.Brush), Ui.Edge, 3f);
+            Ui.Stroke(Ui.Label(t, tier, 42, Pal.Hex("FFE36A"), new Vector2(-70, -14), new Vector2(400, 60), TextAnchor.MiddleLeft, Fonts.Brush), Ui.Edge, 2.5f);
+            var st = Ui.Label(t, Ui.Stars(stars, RankRules.Stars), 48, Color.white, new Vector2(-70, -72), new Vector2(400, 60), TextAnchor.MiddleLeft);
+            st.supportRichText = true;
+            Ui.Stroke(st, Ui.Edge, 2f);
+            Ui.Label(t, "胜率", 32, Pal.Paper.A(0.85f), new Vector2(300, 36), new Vector2(200, 50));
+            Ui.Stroke(Ui.Label(t, (rate * 100f).ToString("0.0") + "%", 56, Pal.Paper, new Vector2(300, -28), new Vector2(240, 80)), Ui.Edge, 3f).fontStyle = FontStyle.Bold;
+            return holder;
         }
 
-        static string StarLine(int n)
+        static void SlideIn(RectTransform t, float from)
         {
-            string s = "";
-            for (int i = 0; i < RankRules.Stars; i++) s += i < n ? "★" : "☆";
-            return s;
+            var end = t.anchoredPosition;
+            t.anchoredPosition = end + new Vector2(from, 0);
+            Tween.Run(t, 0.35f, k => { if (t) t.anchoredPosition = end + new Vector2(from * (1f - Tween.OutBack(k)), 0); });
         }
 
         static string Arg(string name)
@@ -213,13 +241,13 @@ namespace Rescue
                     _battle.View.ShovelAd();
                     yield return new WaitForSecondsRealtime(1.0f);
                     yield return Shot("ad");
-                    yield return new WaitForSecondsRealtime(1.6f);
+                    yield return new WaitForSecondsRealtime(3.0f);
                     yield return Shot("shovels");
                 }
                 if (Mathf.Approximately(t, 70f))
                 {
                     _battle.View.RescueAd();
-                    yield return new WaitForSecondsRealtime(2.6f);
+                    yield return new WaitForSecondsRealtime(4.2f);
                     yield return Shot("rescue");
                 }
             }
@@ -236,9 +264,34 @@ namespace Rescue
             Save.D.coins = 117;
             Save.D.stars = 4;
             Save.D.tier = 2;
+            Save.D.unlocked = 2;
+            Save.D.claimDay = Save.Today;
+            Save.D.claimTier = 2;
+            Save.D.claimStars = 3;
+            Save.D.claimTaken = false;
+            foreach (var id in new[] { HeroId.WuSong, HeroId.LinChong, HeroId.LiKui, HeroId.HuaRong, HeroId.SunErNiang, HeroId.LuZhiShen })
+                Save.D.heroes.Add((int)id);
+            Save.D.weapons.AddRange(new[] { (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.LinChong, (int)HeroId.LiKui, (int)HeroId.LiKui, (int)HeroId.HuaRong });
+            Save.D.armed.Add((int)HeroId.WuSong);
             ShowHome();
+            _home.ShowDaily();
             yield return new WaitForSecondsRealtime(1.2f);
+            yield return Shot("daily");
+            Destroy(_home.gameObject);
+            Save.D.claimTaken = true;
+            ShowHome();
+            yield return new WaitForSecondsRealtime(1.0f);
             yield return Shot("home");
+            Save.D.claimTaken = false;
+
+            yield return Page(() => _home.ShowBoard(), "board");
+            yield return Page(() => _home.ShowArmory(), "armory");
+            yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.WuSong); }, "armory_detail");
+            yield return Page(() => _home.ShowCodex(), "codex");
+
+            Destroy(_home.gameObject);
+            ShowHome();
+            Save.D.coins = 117;
             _home.ShowShop();
             yield return new WaitForSecondsRealtime(0.8f);
             yield return Shot("shop");
@@ -250,8 +303,63 @@ namespace Rescue
             _home.ShowShop();
             yield return new WaitForSecondsRealtime(0.8f);
             yield return Shot("shop_bought");
-            yield return new WaitForSecondsRealtime(0.3f);
+            _home.ShowShop(true);
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return Shot("lotto");
+            _home.DebugSpin();
+            yield return new WaitForSecondsRealtime(3.2f);
+            yield return Shot("lotto_win");
+
+            Destroy(_home.gameObject);
+            _home = null;
+            var match = BuildMatch(1);
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("match");
+            Destroy(match.gameObject);
+
+            OpenBattle(1, false);
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return Shot("intro");
+            _battle.ShotItem();
+            yield return new WaitForSecondsRealtime(0.4f);
+            yield return Shot("item");
+            yield return new WaitForSecondsRealtime(1.2f);
+            _battle.ShotPause();
+            yield return new WaitForSecondsRealtime(0.6f);
+            yield return Shot("pause");
+            Destroy(_battle.gameObject);
+            _battle = null;
+
+            var win = new BattleResult { Chapter = 1, Win = true, Wave = 12, Kills = 230, Rains = 2 };
+            win.Formed.Add(HeroId.WuSong);
+            win.Formed.Add(HeroId.ZhangShun);
+            win.NewHeroes.Add(HeroId.ZhangShun);
+            Save.D.stars = 2;
+            ResultPanel.Show(win, null);
+            yield return new WaitForSecondsRealtime(2.0f);
+            yield return Shot("result_win");
+            Destroy(Ui.Root.Find("result").gameObject);
+            Save.D.stars = 3;
+            ResultPanel.Show(new BattleResult { Chapter = 1, Win = false, Wave = 7, Kills = 96 }, null);
+            yield return new WaitForSecondsRealtime(2.0f);
+            yield return Shot("result_lose");
+            Destroy(Ui.Root.Find("result").gameObject);
+
+            AdStub.Show("双倍铜钱", null);
+            yield return new WaitForSecondsRealtime(0.5f);
+            yield return Shot("ad");
+            yield return new WaitForSecondsRealtime(1.5f);
             Application.Quit();
+        }
+
+        IEnumerator Page(Action open, string name)
+        {
+            Destroy(_home.gameObject);
+            ShowHome();
+            yield return null;
+            open();
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return Shot(name);
         }
 
         IEnumerator DelayedShot(string name, float delay)

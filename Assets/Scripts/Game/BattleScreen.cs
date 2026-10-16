@@ -27,7 +27,7 @@ namespace Rescue
 
         Action<BattleResult> _done;
         RivalAI _rival, _auto;
-        RectTransform _overlay, _bannerLayer, _hint;
+        RectTransform _overlay, _bannerLayer, _hint, _intro;
         Text _hintText;
         readonly Queue<Action> _banners = new Queue<Action>();
         float _bannerCd;
@@ -113,7 +113,8 @@ namespace Rescue
         void ShowIntro(ChapterDef ch, Loadout items)
         {
             var layer = Ui.Fill(_overlay, new Color(0.08f, 0.06f, 0.04f, 0.78f), true, "intro");
-            var card = Ui.Box(layer, new Vector2(920, 1180), new Vector2(0, 40), Pal.Paper);
+            _intro = layer;
+            var card = Ui.WoodPanel(layer, new Vector2(940, 1200), new Vector2(0, 40), Pal.Hex("8C6B4E"), Pal.Paper);
             Ui.Label(card.transform, "第" + BattleView.ToCn(ch.Index + 1) + "回", 44, Pal.InkSoft, new Vector2(0, 470), new Vector2(800, 70));
             Ui.Label(card.transform, ch.Name, 150, Pal.Ink, new Vector2(0, 340), new Vector2(860, 180), TextAnchor.MiddleCenter, Fonts.Brush);
             Ui.Label(card.transform, ch.Story, 40, Pal.InkSoft, new Vector2(0, 150), new Vector2(780, 220), TextAnchor.MiddleLeft);
@@ -128,12 +129,12 @@ namespace Rescue
             if (items != null && ItemSummary(items).Length > 0)
                 Ui.Label(card.transform, "随身：" + ItemSummary(items), 34, Pal.Willow, new Vector2(0, -320), new Vector2(800, 60));
 
-            Ui.Btn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Pal.Red, () =>
+            Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -455), Ui.BtnRed, () =>
             {
                 Destroy(layer.gameObject);
                 Begin();
                 Banner("官兵来了！", "守住宋江，别让他们碰到哥哥", Pal.Red, 0.9f);
-            }, 64, Pal.Paper, Fonts.Brush);
+            }, 68);
             Tween.Pop(card.transform, 0.4f);
         }
 
@@ -250,9 +251,13 @@ namespace Rescue
                 layer.anchoredPosition = new Vector2(0, 260);
                 var g = layer.gameObject.AddComponent<CanvasGroup>();
                 g.blocksRaycasts = false;
-                Ui.Box(layer, new Vector2(980, 280), Vector2.zero, Pal.Paper);
+                Ui.Box(layer, new Vector2(1000, 296), new Vector2(0, -12), Pal.Shadow.A(0.5f), null, "shadow");
+                Ui.Framed(layer, new Vector2(980, 280), Vector2.zero, Pal.Hex("F6EEDA"), Ui.Edge, 6f, "frame");
+                Ui.Box(layer, new Vector2(18, 220), new Vector2(-470, 0), color, null, "ribbonL").pixelsPerUnitMultiplier = 1f;
+                Ui.Box(layer, new Vector2(18, 220), new Vector2(470, 0), color, null, "ribbonR").pixelsPerUnitMultiplier = 1f;
                 int size = Mathf.Min(120, 900 / Mathf.Max(1, title.Length));
                 var t = Ui.Label(layer, title, size, color, new Vector2(0, 30), new Vector2(1000, 160), TextAnchor.MiddleCenter, Fonts.Brush);
+                Ui.Stroke(t, Pal.Hex("FFF6E2"), 2.5f);
                 if (!string.IsNullOrEmpty(sub)) Ui.Label(layer, sub, 38, Pal.Ink, new Vector2(0, -80), new Vector2(980, 60));
                 Tween.Pop(t.transform, 0.3f);
                 Tween.FadeGroup(g, 0, 1, 0.12f);
@@ -394,27 +399,64 @@ namespace Rescue
         {
             if (M.Over || !_started) return;
             View.Paused = true;
-            var layer = Ui.Fill(_overlay, new Color(0, 0, 0, 0.7f), true, "pause");
-            var card = Ui.Box(layer, new Vector2(760, 720), Vector2.zero, Pal.Paper);
-            Ui.Label(card.transform, "歇 口 气", 110, Pal.Ink, new Vector2(0, 230), new Vector2(700, 150), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Btn(card.transform, "继续厮杀", new Vector2(480, 120), new Vector2(0, 60), Pal.Red, () => { View.Paused = false; Destroy(layer.gameObject); }, 50, Pal.Paper);
-            Button sfx = null;
-            sfx = Ui.Btn(card.transform, Sfx.On ? "音效：开" : "音效：关", new Vector2(480, 110), new Vector2(0, -90), Pal.InkSoft, () =>
+            var layer = Ui.Fill(_overlay, new Color(0, 0, 0, 0.62f), true, "pause");
+            var card = Ui.WoodPanel(layer, new Vector2(840, 920), new Vector2(0, 80), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
+            Ui.Title(card, "暂停", new Vector2(0, 450), 90);
+            var gear = Ui.Icon(card, "ui_gear", 96, new Vector2(330, 370));
+            var gearState = Ui.Label(card, Sfx.On ? "音效开" : "音效关", 26, Pal.InkSoft, new Vector2(330, 305), new Vector2(160, 40));
+            gearState.fontStyle = FontStyle.Bold;
+            Ui.Tap(gear, () =>
             {
                 Sfx.On = !Sfx.On;
                 Save.D.sfx = Sfx.On;
                 Save.Write();
-                Ui.SetText(sfx, Sfx.On ? "音效：开" : "音效：关");
-            }, 44, Pal.Paper);
-            Ui.Btn(card.transform, "撤回山寨（算输）", new Vector2(480, 110), new Vector2(0, -230), Pal.PaperDark, () =>
+                gearState.text = Sfx.On ? "音效开" : "音效关";
+            });
+
+            string mine = ItemSummary(M.Player.Items);
+            int winCoins = 30 + 10 * M.Chapter.Index;
+            SpoilBox(card, new Vector2(0, 205), "对手战利品：", mine.Length > 0 ? "你身上的：" + mine : "无");
+            SpoilBox(card, new Vector2(0, -45), "战利品：", $"铜钱 ×{winCoins}　兵器（撑过四波有机会）");
+
+            Ui.CartoonBtn(card, "耻辱撤退", new Vector2(340, 120), new Vector2(-190, -240), Ui.BtnBlue, () =>
             {
                 Destroy(layer.gameObject);
                 View.Paused = false;
                 M.Over = true;
                 M.Winner = 1;
                 OnEnd(false, true);
-            }, 40, Pal.Ink);
-            Tween.Pop(card.transform, 0.25f);
+            }, 54);
+            Ui.Label(card, "投降没有战利品", 28, Pal.InkSoft, new Vector2(-190, -330), new Vector2(340, 44));
+            Ui.CartoonBtn(card, "死战不休", new Vector2(340, 120), new Vector2(190, -240), Ui.BtnRed, () => { View.Paused = false; Destroy(layer.gameObject); }, 54);
+            Ui.Label(card, "胜利者拿走所有战利品", 28, Pal.InkSoft, new Vector2(190, -330), new Vector2(360, 44));
+            Tween.Pop(card, 0.25f);
+        }
+
+        static void SpoilBox(RectTransform card, Vector2 pos, string title, string body)
+        {
+            var box = Ui.Box(card, new Vector2(720, 210), pos, Pal.Hex("E2D2AE"), null, "spoil");
+            box.pixelsPerUnitMultiplier = 1f;
+            Ui.Stroke(Ui.Label(card, title, 40, Pal.Hex("D9822B"), pos + new Vector2(0, 62), new Vector2(700, 56), TextAnchor.MiddleCenter, Fonts.Brush), Pal.Hex("FFF6E2"), 2f);
+            Ui.Label(card, body, 34, Pal.Ink, pos + new Vector2(0, -24), new Vector2(680, 110));
+        }
+
+        /// <summary>验收截图用：跳过开场，塞一张攻速符和一个陷阱，立刻用掉攻速符。</summary>
+        public void ShotItem()
+        {
+            if (_intro) Destroy(_intro.gameObject);
+            if (!_started) Begin();
+            M.Player.Items.Fu = 1;
+            M.Player.Items.Trap = 1;
+            M.Player.Items.MengHan = 2;
+            M.Player.UseFu();
+        }
+
+        /// <summary>验收截图用：跳过开场直接打开暂停面板。</summary>
+        public void ShotPause()
+        {
+            if (_intro) Destroy(_intro.gameObject);
+            if (!_started) Begin();
+            ShowPause();
         }
 
         /// <summary>验收截图用：直接判定结局。</summary>

@@ -231,8 +231,9 @@ namespace Rescue
             _rescueBtn = Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.GoldBright, Vector2.zero, new Vector2(0.84f, 1.08f), 50);
             Gfx.Sprite(_rescueRoot, Art.Frame, Pal.Gold, Vector2.zero, new Vector2(0.84f, 1.08f), 51);
             Gfx.Text(_rescueRoot, "救", Fonts.Brush, 0.5f, Pal.RedDeep, new Vector2(0, 0.12f), 52);
-            Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Red, new Vector2(0, -0.34f), new Vector2(0.7f, 0.26f), 52);
-            Gfx.Text(_rescueRoot, "看广告", Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0, -0.34f), 53);
+            Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Red, new Vector2(0, -0.34f), new Vector2(0.78f, 0.28f), 52);
+            Gfx.Sprite(_rescueRoot, Art.Img("ui_video"), Color.white, new Vector2(-0.2f, -0.34f), Vector2.one * 0.26f, 53);
+            Gfx.Text(_rescueRoot, "广告", Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0.12f, -0.34f), 53);
             _rescueRoot.gameObject.SetActive(false);
         }
 
@@ -247,14 +248,13 @@ namespace Rescue
             _recruitCost = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(0.32f, ButtonY - 0.27f), 52);
             Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-0.06f, ButtonY - 0.27f), Vector2.one * 0.26f, 52);
 
-            _mengBtn = ItemButton(new Vector2(-3.4f, ButtonY), out _mengText);
-            _baoziBtn = ItemButton(new Vector2(-2.15f, ButtonY), out _baoziText);
-            _shuBtn = ItemButton(new Vector2(2.55f, ButtonY), out _shuText);
-            _fuBtn = ItemButton(new Vector2(3.85f, ButtonY), out _fuText);
-            _trapBtn = ItemButton(new Vector2(3.85f, ButtonY), out _trapText);
+            _mengBtn = ItemButton(new Vector2(-3.4f, ButtonY), "it_menghan", "蒙汗药", Pal.Hex("C9A6EE"), out _mengText);
+            _baoziBtn = ItemButton(new Vector2(-2.15f, ButtonY), "bun", "包子", Pal.Hex("A4D8F2"), out _baoziText);
+            _shuBtn = ItemButton(new Vector2(2.55f, ButtonY), "it_tianshu", "天书", Pal.Hex("F6C46B"), out _shuText);
+            _fuBtn = ItemButton(new Vector2(3.85f, ButtonY), "it_fu", "攻速符", Pal.Hex("C9A6EE"), out _fuText);
+            _trapBtn = ItemButton(new Vector2(3.85f, ButtonY), "it_trap", "陷阱", Pal.Hex("C5E08A"), out _trapText);
 
-            _pauseBtn = Gfx.Sprite(_root, Art.Circle, Pal.Ink.A(0.85f), new Vector2(-3.6f, TopY), new Vector2(0.75f, 0.75f), 50, "pause");
-            Gfx.Text(_root, "停", Fonts.Brush, 0.38f, Pal.Paper, new Vector2(-3.6f, TopY), 52);
+            _pauseBtn = Gfx.Sprite(_root, Art.Img("ui_pause"), Color.white, new Vector2(-3.6f, TopY), new Vector2(0.8f, 0.8f), 50, "pause");
 
             Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-2.15f, TopY), new Vector2(1.7f, 0.62f), 49);
             _bunIcon = Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-2.8f, TopY), Vector2.one * 0.5f, 51, "bun").transform;
@@ -268,6 +268,7 @@ namespace Rescue
             Gfx.Sprite(_root, Art.Img("shovel"), Color.white, new Vector2(1.75f, TopY + 0.04f), Vector2.one * 0.6f, 52);
             Gfx.Sprite(_root, Art.Rounded, Pal.Red, new Vector2(1.75f, TopY - 0.42f), new Vector2(0.72f, 0.24f), 52);
             _shovelAdText = Gfx.Text(_root, "广告+2", Fonts.Kai, 0.16f, Pal.Paper, new Vector2(1.75f, TopY - 0.42f), 53);
+            Gfx.Sprite(_root, Art.Img("ui_video"), Color.white, new Vector2(2.08f, TopY + 0.3f), Vector2.one * 0.36f, 54, "adIcon");
 
             _rivalText = Gfx.Text(_root, "对手·" + M.Chapter.RivalName, Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(4.0f, TopY), 52, TextAnchor.MiddleRight);
 
@@ -276,10 +277,20 @@ namespace Rescue
             _midText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.Ink, new Vector2(0, WallY), 13);
         }
 
-        SpriteRenderer ItemButton(Vector2 pos, out TextMesh text)
+        /// <summary>圆形道具钮：稀有度色圆底 + 图标 + 右上角红色数量角标 + 底部名字条，外圈金环。</summary>
+        SpriteRenderer ItemButton(Vector2 pos, string icon, string name, Color disc, out TextMesh text)
         {
-            var btn = Gfx.Sprite(_root, Art.Rounded, Pal.InkSoft, pos, new Vector2(1.18f, 0.8f), 50, "item");
-            text = Gfx.Text(_root, "", Fonts.Kai, 0.22f, Pal.Paper, pos, 52);
+            var btn = Gfx.Sprite(_root, Art.Circle, disc, pos, Vector2.one, 50, "item");
+            var t = btn.transform;
+            Gfx.Sprite(t, Art.Circle, Pal.Shadow, new Vector2(0.03f, -0.07f), Vector2.one * 1.04f, 47);
+            Gfx.Sprite(t, Art.Circle, Pal.Ink, Vector2.zero, Vector2.one * 1.04f, 48);
+            Gfx.Sprite(t, Art.Ring, Pal.GoldBright, Vector2.zero, Vector2.one * 1.12f, 49, "ring");
+            Gfx.Sprite(t, Art.Img(icon), Color.white, new Vector2(0, 0.06f), Vector2.one * 0.78f, 51);
+            Gfx.Sprite(t, Art.Rounded, Pal.Ink.A(0.82f), new Vector2(0, -0.38f), new Vector2(0.9f, 0.26f), 52);
+            Gfx.Text(t, name, Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0, -0.38f), 53);
+            Gfx.Sprite(t, Art.Circle, Pal.Paper, new Vector2(0.38f, 0.36f), Vector2.one * 0.36f, 53);
+            Gfx.Sprite(t, Art.Circle, Pal.Hex("D7362B"), new Vector2(0.38f, 0.36f), Vector2.one * 0.31f, 54);
+            text = Gfx.Text(t, "", Fonts.Kai, 0.22f, Pal.Paper, new Vector2(0.38f, 0.35f), 55);
             return btn;
         }
 
@@ -416,9 +427,9 @@ namespace Rescue
 
         static void SetItem(SpriteRenderer btn, TextMesh text, int n, string name)
         {
-            btn.gameObject.SetActive(n > 0);
-            text.gameObject.SetActive(n > 0);
-            text.text = name + "×" + n;
+            if (btn.gameObject.activeSelf != n > 0) btn.gameObject.SetActive(n > 0);
+            text.text = n.ToString();
+            if (n > 0) btn.transform.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 4f) * 0.025f);
         }
 
         void PlaceItems()
@@ -431,7 +442,6 @@ namespace Rescue
                 new Vector2(3.75f, ButtonY),
             };
             var btns = new[] { _mengBtn, _baoziBtn, _shuBtn, _fuBtn, _trapBtn };
-            var texts = new[] { _mengText, _baoziText, _shuText, _fuText, _trapText };
             int s = 0;
             for (int i = 0; i < btns.Length; i++)
             {
@@ -439,11 +449,9 @@ namespace Rescue
                 if (s >= slots.Length)
                 {
                     btns[i].gameObject.SetActive(false);
-                    texts[i].gameObject.SetActive(false);
                     continue;
                 }
                 btns[i].transform.localPosition = slots[s];
-                texts[i].transform.localPosition = slots[s];
                 s++;
             }
         }
@@ -710,6 +718,7 @@ namespace Rescue
                         FloatText(new Vector2(0f, MyBottom + 3.1f), "跌进陷阱", Pal.Ink, 0.42f, 1.1f);
                     }
                     if (mine) { Sfx.Play(Snd.Ult); _shake = Mathf.Max(_shake, ev.Flag == 4 ? 1.25f : 0.6f); }
+                    if (mine && ev.Flag != 1) ItemSplash(ev.Text);
                     break;
                 case Ev.BossSpawn:
                     Sfx.Play(Snd.Warn);
@@ -719,6 +728,48 @@ namespace Rescue
                     Sfx.Play(Snd.Warn, 0.6f);
                     break;
             }
+        }
+
+        /// <summary>道具发动：图标从按钮飞到我方棋盘中间放大，背后光芒转一圈，落地一圈冲击波。</summary>
+        void ItemSplash(string name)
+        {
+            string icon;
+            SpriteRenderer btn;
+            switch (name)
+            {
+                case "攻速符": icon = "it_fu"; btn = _fuBtn; break;
+                case "蒙汗药": icon = "it_menghan"; btn = _mengBtn; break;
+                case "陷阱": icon = "it_trap"; btn = _trapBtn; break;
+                case "天书": icon = "it_tianshu"; btn = _shuBtn; break;
+                default: return;
+            }
+            Vector2 from = btn.transform.localPosition;
+            var to = new Vector2(0f, MyBottom + 3f);
+            var holder = new GameObject("itemSplash").transform;
+            holder.SetParent(_fxRoot, false);
+            holder.localPosition = from;
+            var rays = Gfx.Sprite(holder, Art.Img("ui_rays"), Color.white.A(0.75f), Vector2.zero, Vector2.one * 0.1f, 90, "rays");
+            var ic = Gfx.Sprite(holder, Art.Img(icon), Color.white, Vector2.zero, Vector2.one * 0.8f, 91, "icon");
+            bool landed = false;
+            Tween.Run(holder, 1.15f, k =>
+            {
+                if (!holder) return;
+                float fly = Mathf.Clamp01(k / 0.3f);
+                holder.localPosition = Vector2.Lerp(from, to, Tween.OutCubic(fly));
+                float s = k < 0.3f ? Mathf.Lerp(0.8f, 2.2f, Tween.OutBack(fly)) : 2.2f + (k - 0.3f) * 0.5f;
+                ic.transform.localScale = Vector3.one * s;
+                rays.transform.localScale = Vector3.one * (s * 1.7f * fly);
+                rays.transform.localRotation = Quaternion.Euler(0, 0, -k * 220f);
+                float a = k < 0.75f ? 1f : 1f - (k - 0.75f) / 0.25f;
+                ic.color = Color.white.A(a);
+                rays.color = Color.white.A(0.75f * a);
+                if (!landed && k >= 0.3f)
+                {
+                    landed = true;
+                    Ring(to, 4.5f, Pal.GoldBright, 0.45f, 89);
+                    InkDrops(to, 8);
+                }
+            }, () => { if (holder) Destroy(holder.gameObject); });
         }
 
         void UnitAttackFx(SimEvent ev)
@@ -1085,7 +1136,7 @@ namespace Rescue
             {
                 Paused = false;
                 onReward();
-            });
+            }, () => Paused = false);
         }
 
         void HandleInput()

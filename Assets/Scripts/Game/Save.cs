@@ -19,6 +19,9 @@ namespace Rescue
         public string shopDay = "";
         public List<int> shopOffer = new List<int>();
         public List<int> shopSold = new List<int>();
+        public List<int> shopFree = new List<int>();
+        public string lottoDay = "";
+        public int lottoUsed;
         public bool gang, flag, marsh, stele, xuming, far;
         public int menghan, tianshu, baozi, shovels, fu, trap;
         public bool sfx = true;
@@ -78,6 +81,7 @@ namespace Rescue
             if (D.heroes == null) D.heroes = new List<int>();
             if (D.shopOffer == null) D.shopOffer = new List<int>();
             if (D.shopSold == null) D.shopSold = new List<int>();
+            if (D.shopFree == null) D.shopFree = new List<int>();
             if (D.weapons == null) D.weapons = new List<int>();
             if (D.armed == null) D.armed = new List<int>();
             D.armed.RemoveAll(id => WeaponCount(id) <= 0 || id < 0 || id >= HeroDef.All.Length);
@@ -99,10 +103,16 @@ namespace Rescue
         /// <summary>神秘商人每天换货；没用掉的道具过了今天作废。</summary>
         public static void RefreshShopDay()
         {
+            if (D.lottoDay != Today)
+            {
+                D.lottoDay = Today;
+                D.lottoUsed = 0;
+            }
             if (D.shopDay == Today && D.shopOffer.Count == OfferCount) return;
             if (!string.IsNullOrEmpty(D.shopDay) && D.shopDay != Today) D.ClearItems();
             D.shopDay = Today;
             D.shopSold.Clear();
+            D.shopFree.Clear();
             D.shopOffer.Clear();
             var rng = new System.Random(int.Parse(Today));
             void Pick(bool active, int n)
@@ -122,6 +132,23 @@ namespace Rescue
         }
 
         public const int OfferCount = 3;
+        public const int LottoPerDay = 3;
+
+        public static int LottoLeft => D.lottoDay == Today ? Mathf.Max(0, LottoPerDay - D.lottoUsed) : LottoPerDay;
+
+        /// <summary>抽奖九宫格外圈八件，每天换一批。</summary>
+        public static List<int> LottoPool()
+        {
+            var ids = new List<int>();
+            foreach (var it in ShopItem.All) ids.Add(it.Id);
+            var rng = new System.Random(int.Parse(Today) * 7 + 3);
+            for (int i = ids.Count - 1; i > 0; i--)
+            {
+                int j = rng.Next(i + 1);
+                (ids[i], ids[j]) = (ids[j], ids[i]);
+            }
+            return ids.GetRange(0, Mathf.Min(8, ids.Count));
+        }
 
         public static bool Tut(int bit) => (D.tutorial & (1 << bit)) != 0;
         public static void SetTut(int bit) { D.tutorial |= 1 << bit; Write(); }

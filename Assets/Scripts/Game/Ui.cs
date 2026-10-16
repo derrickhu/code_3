@@ -211,6 +211,114 @@ namespace Rescue
         {
             rt.anchorMin = rt.anchorMax = new Vector2(x, y);
         }
+
+        public static readonly Color Edge = Pal.Hex("2E2119");
+        public static readonly Color BtnRed = Pal.Hex("E8573F");
+        public static readonly Color BtnDark = Pal.Hex("4A4542");
+        public static readonly Color BtnYellow = Pal.Hex("F6C531");
+        public static readonly Color BtnOrange = Pal.Hex("F59B2E");
+        public static readonly Color BtnBlue = Pal.Hex("5B86C9");
+        public static readonly Color BtnGreen = Pal.Hex("5FB548");
+
+        /// <summary>卡通按钮：底影、粗描边、面色、顶部高光，可在文字左边放图标（广告按钮放视频图标）。</summary>
+        public static RectTransform CartoonBtn(Transform parent, string text, Vector2 size, Vector2 pos, Color face, Action onClick,
+            int fontSize = 52, string icon = null, Color? fg = null, Font font = null)
+        {
+            var holder = Rect(parent, "framedBtn");
+            holder.sizeDelta = size;
+            holder.anchoredPosition = pos;
+            Box(holder, size + new Vector2(12, 12), new Vector2(0, -10), Pal.Shadow.A(0.5f), null, "shadow");
+            Box(holder, size + new Vector2(12, 12), Vector2.zero, Edge, null, "edge");
+            var f = Box(holder, size, Vector2.zero, face, null, "face");
+            Box(holder, new Vector2(size.x - 16, size.y * 0.42f), new Vector2(0, -size.y * 0.25f + 4), Color.Lerp(face, Color.black, 0.12f), null, "under");
+            Box(holder, new Vector2(size.x - 36, Mathf.Max(10, size.y * 0.13f)), new Vector2(0, size.y * 0.32f), Color.white.A(0.3f), null, "gloss");
+            float iconW = icon != null ? size.y * 0.62f : 0f;
+            var label = Label(holder, text, fontSize, fg ?? Pal.Paper, new Vector2(iconW * 0.55f, 2), new Vector2(size.x - iconW - 20, size.y),
+                TextAnchor.MiddleCenter, font ?? Fonts.Brush, "text");
+            Stroke(label, Color.Lerp(face, Color.black, 0.72f), 2.5f);
+            if (icon != null)
+            {
+                float textW = Mathf.Min(size.x - iconW - 20, label.preferredWidth);
+                Icon(holder, icon, iconW, new Vector2(iconW * 0.55f - textW * 0.5f - iconW * 0.62f, 2), "btnIcon");
+            }
+            Tap(f, onClick);
+            return holder;
+        }
+
+        public static void SetBtnText(RectTransform btn, string s) => btn.Find("text").GetComponent<Text>().text = s;
+
+        public static void SetBtnFace(RectTransform btn, Color c)
+        {
+            btn.Find("face").GetComponent<Image>().color = c;
+            btn.Find("under").GetComponent<Image>().color = Color.Lerp(c, Color.black, 0.12f);
+        }
+
+        /// <summary>木框面板：深色外描边、木色框、深色内线、面色。返回放内容的那层（中心为原点）。</summary>
+        public static RectTransform WoodPanel(Transform parent, Vector2 size, Vector2 pos, Color? wood = null, Color? face = null, string name = "wood")
+        {
+            var holder = Rect(parent, name);
+            holder.sizeDelta = size;
+            holder.anchoredPosition = pos;
+            Box(holder, size + new Vector2(14, 14), new Vector2(0, -14), Pal.Shadow.A(0.6f), null, "shadow");
+            Box(holder, size + new Vector2(14, 14), Vector2.zero, Edge, null, "edge");
+            Box(holder, size, Vector2.zero, wood ?? Pal.Hex("8C6B4E"), null, "frame");
+            Box(holder, size - new Vector2(52, 52), new Vector2(0, -6), Pal.Hex("5E4532"), null, "innerEdge");
+            Box(holder, size - new Vector2(64, 64), new Vector2(0, -6), face ?? Pal.Hex("E9DDBF"), null, "inner");
+            return holder;
+        }
+
+        /// <summary>面板标题：粗描边大字，压在面板上沿。</summary>
+        public static Text Title(Transform parent, string s, Vector2 pos, int size = 92, Color? c = null)
+        {
+            var t = Label(parent, s, size, c ?? Pal.Hex("F7A928"), pos, new Vector2(800, size + 40), TextAnchor.MiddleCenter, Fonts.Brush, "title");
+            Stroke(t, Edge, 4.5f);
+            t.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(0, -6);
+            return t;
+        }
+
+        public static Image CloseX(Transform parent, Vector2 pos, Action onClick, float size = 116)
+        {
+            var x = Icon(parent, "ui_close", size, pos, "close");
+            Tap(x, onClick);
+            return x;
+        }
+
+        /// <summary>小圆角标签（稀有度、兵器名）。</summary>
+        public static Image Tag(Transform parent, string s, Color c, Vector2 pos, float w = 0, int font = 30)
+        {
+            if (w <= 0) w = s.Length * font + 34;
+            var holder = Rect(parent, "tag");
+            holder.anchoredPosition = pos;
+            Box(holder, new Vector2(w + 8, font + 26), Vector2.zero, Edge, null, "edge").pixelsPerUnitMultiplier = 1f;
+            var face = Box(holder, new Vector2(w, font + 18), Vector2.zero, c, null, "face");
+            face.pixelsPerUnitMultiplier = 1f;
+            Stroke(Label(holder, s, font, Pal.Paper, new Vector2(0, 1), new Vector2(w + 20, font + 18)), Color.Lerp(c, Color.black, 0.55f), 2f);
+            return face;
+        }
+
+        /// <summary>屏幕中下方的深色提示条，自动消失。</summary>
+        public static void Toast(string s, float y = -260)
+        {
+            int len = Mathf.Max(6, s.Length);
+            var bg = Box(Root, new Vector2(Mathf.Min(1000, len * 42 + 120), 104), new Vector2(0, y), Pal.Ink.A(0.86f), null, "toast");
+            Label(bg.transform, s, 42, Pal.Paper, Vector2.zero, new Vector2(980, 100));
+            bg.transform.SetAsLastSibling();
+            Tween.Pop(bg.transform, 0.2f);
+            Tween.Run(bg, 1.6f, k => { }, () => UnityEngine.Object.Destroy(bg.gameObject));
+        }
+
+        /// <summary>转圈的光芒（结算、抽奖中奖）。</summary>
+        public static void Spin(Transform t, float degPerSec)
+        {
+            Tween.Run(t, 6f, k => { if (t) t.localRotation = Quaternion.Euler(0, 0, -k * degPerSec * 6f); }, () => { if (t) Spin(t, degPerSec); });
+        }
+
+        public static string Stars(int n, int total, string on = "FFD84A", string off = "4A4232")
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < total; i++) sb.Append($"<color=#{(i < n ? on : off)}>★</color>");
+            return sb.ToString();
+        }
     }
 
     /// <summary>极简补间：不依赖第三方库，用不受时间缩放影响的时钟。</summary>
