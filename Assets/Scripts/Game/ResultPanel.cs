@@ -10,27 +10,45 @@ namespace Rescue
     {
         static readonly Color Edge = Ui.Edge;
 
+        public static int WinCoins(ChapterDef ch) => WinCoins(ch.Index, ch.Round);
+
+        public static int WinCoins(int chapter, int round) =>
+            round > 0 ? 40 + 5 * Mathf.Min(round, 30) : 30 + 4 * Mathf.Min(chapter, 45);
+
         public static void Show(BattleResult r, System.Action onClose)
         {
-            int coins = r.Quit ? 0 : (r.Win ? 30 + 10 * r.Chapter : 8 + r.Wave);
+            int coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : 8 + r.Wave);
             var rank = r.Quit
                 ? new Save.RankDelta { OldTier = Save.D.tier, OldStars = Save.D.stars }
                 : Save.ApplyResult(r.Win);
-            if (r.Win) Save.D.unlocked = Mathf.Max(Save.D.unlocked, Mathf.Min(r.Chapter + 1, ChapterDef.All.Length - 1));
+            var joined = new List<HeroId>();
+            if (r.Round > 0)
+            {
+                if (r.Win)
+                {
+                    Save.D.endlessBest = Mathf.Max(Save.D.endlessBest, r.Round);
+                    Save.D.endlessRound = r.Round + 1;
+                }
+                else if (!r.Quit) Save.D.endlessRound = 1;
+            }
+            else if (r.Win) joined = Save.WinStory(r.Chapter);
+            bool seatNow = joined.Count > 0 && !Save.D.seated && Save.AllSeated;
+            if (seatNow) Save.D.seated = true;
             foreach (var id in r.Formed) if (!Save.D.heroes.Contains((int)id)) Save.D.heroes.Add((int)id);
             Save.D.coins += coins;
             string loot = Save.RollWeapon(r);
             Save.Write();
 
             var layer = Ui.Fill(Ui.Root, r.Win ? Pal.Hex("F3EAD6") : Pal.Hex("C9D6DC"), true, "result");
-            var c = Ui.Rect(layer, "c");
+            var c = Ui.Rect(Ui.Fit(layer, 1880), "c");
             bool claimed = false;
             void Close()
             {
                 if (claimed) return;
                 claimed = true;
                 Object.Destroy(layer.gameObject);
-                onClose?.Invoke();
+                if (joined.Count > 0) JoinPanel.Show(joined, r.Chapter, seatNow, onClose);
+                else onClose?.Invoke();
             }
 
             if (r.Win) Victory(c, rank);
@@ -41,7 +59,8 @@ namespace Rescue
 
             var tags = new List<(string, Color)>();
             if (!string.IsNullOrEmpty(loot)) tags.Add((loot, Pal.Hex("8A54C0")));
-            foreach (var id in r.NewHeroes) tags.Add(("新好汉 " + HeroDef.Get(id).Name, Pal.Hex("C8962E")));
+            if (joined.Count > 0) tags.Add(($"{joined.Count} 位好汉入伙", Pal.Hex("C0392B")));
+            foreach (var id in r.NewHeroes) tags.Add(("初次聚义 " + HeroDef.Get(id).Name, Pal.Hex("C8962E")));
             float tx = -(tags.Count - 1) * 170f;
             for (int i = 0; i < tags.Count && i < 3; i++)
             {
@@ -92,7 +111,7 @@ namespace Rescue
                         Save.D.tier = rank.OldTier;
                         Save.D.stars = rank.OldStars;
                         Save.Write();
-                        stars.text = Ui.Stars(Save.D.stars, RankRules.Stars);
+                        stars.text = Ui.RankStars(Save.D.tier, Save.D.stars);
                         Tween.Pop(stars.transform, 0.35f);
                         Sfx.Play(Snd.Merge);
                         Ui.Toast("星星保住了！");
@@ -102,7 +121,7 @@ namespace Rescue
                 y -= 160;
             }
             Ui.CartoonBtn(c, r.Win ? "领取" : (coins > 0 ? "领取" : "关闭"), new Vector2(380, 112), new Vector2(0, y), Ui.BtnDark, Close, 52);
-            Ui.Label(c, "领完铜钱，孙二娘的摊子就摆开", 28, Pal.InkSoft.A(0.8f), new Vector2(0, y - 100), new Vector2(800, 44));
+            Ui.Label(c, joined.Count > 0 ? "领完铜钱，新入伙的好汉来拜山" : "领完铜钱，孙二娘的摊子就摆开", 28, Pal.InkSoft.A(0.8f), new Vector2(0, y - 100), new Vector2(800, 44));
 
             Tween.Pop(banner, 0.4f, 0.15f);
             Tween.Pop(stage, 0.4f, 0.3f);
@@ -152,13 +171,15 @@ namespace Rescue
             holder.anchoredPosition = new Vector2(0, 410);
             var sc = Ui.Icon(holder, "ui_scroll", 820, Vector2.zero);
             sc.rectTransform.sizeDelta = new Vector2(820, 300);
-            var plate = Ui.Framed(holder, new Vector2(300, 70), new Vector2(0, 118), Pal.Hex("2B2622"), Pal.Hex("8C6B4E"), 4f, "plate");
-            Ui.Stroke(Ui.Label(plate.transform, Save.RankName, 44, Pal.Hex("FFE36A"), new Vector2(0, 2), new Vector2(300, 70), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2f);
+            var plate = Ui.Framed(holder, new Vector2(380, 70), new Vector2(0, 118), Pal.Hex("2B2622"), Ui.RankColor(Save.D.tier), 4f, "plate");
+            Ui.Stroke(Ui.Label(plate.transform, Save.RankName, 44, Pal.Hex("FFE36A"), new Vector2(0, 2), new Vector2(380, 70), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2f);
 
             bool tierChanged = rank.Promoted || rank.Demoted;
-            int from = tierChanged ? (rank.Promoted ? 0 : RankRules.Stars) : rank.OldStars;
+            int cap = Mathf.Max(1, RankRules.StarsAt(Save.D.tier));
+            int from = tierChanged ? (rank.Promoted ? 0 : cap) : rank.OldStars;
             int to = Save.D.stars;
-            stars = Ui.Label(holder, Ui.Stars(from, RankRules.Stars), 116, Color.white, new Vector2(0, -20), new Vector2(720, 150));
+            int tierNow = Save.D.tier;
+            stars = Ui.Label(holder, Ui.RankStars(tierNow, from), cap >= 5 ? 104 : 116, Color.white, new Vector2(0, -20), new Vector2(720, 150));
             stars.supportRichText = true;
             Ui.Stroke(stars, Edge, 3f);
             var st = stars;
@@ -167,12 +188,13 @@ namespace Rescue
                 Tween.Run(st, 0.01f, k => { }, () =>
                 {
                     if (!st) return;
-                    st.text = Ui.Stars(to, RankRules.Stars);
+                    st.text = Ui.RankStars(tierNow, to);
                     Tween.Punch(st.transform, 0.35f, 0.18f);
                     Sfx.Play(win ? Snd.Merge : Snd.Lose, 0.6f);
                 }, 0.9f);
-                int changed = win ? Mathf.Clamp(to - 1, 0, RankRules.Stars - 1) : Mathf.Clamp(from - 1, 0, RankRules.Stars - 1);
-                float sx = -232 + changed * 116;
+                int changed = win ? Mathf.Clamp(to - 1, 0, cap - 1) : Mathf.Clamp(from - 1, 0, cap - 1);
+                float step = cap >= 5 ? 104 : 116;
+                float sx = (changed - (cap - 1) * 0.5f) * step;
                 if (win)
                 {
                     var spark = Ui.Icon(holder, "ui_sparkle", 150, new Vector2(sx, -20), "spark");

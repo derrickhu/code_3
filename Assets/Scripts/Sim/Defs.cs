@@ -60,123 +60,6 @@ namespace Rescue.Sim
         public static UnitDef Get(UnitKind k) => All[(int)k];
     }
 
-    public enum HeroId
-    {
-        WuSong, LinChong, LiKui, HuaRong, DaiZong, YanQing, QinMing, ZhangShun, ZhangHeng,
-        RuanXiaoEr, RuanXiaoQi, SunErNiang, HuSanNiang, LuZhiShen, WuYong, WuDaLang,
-    }
-
-    public sealed class HeroDef
-    {
-        public HeroId Id;
-        public string Name;
-        public string Nick;
-        public string Skill;
-        public string Ult;
-        public string Quote;
-        public float Range, Cooldown, Damage;
-        public int Pierce = 1;
-        public float Splash;
-        public float WaterBonus = 1f;
-        public float UltCooldown = 12f;
-        public bool Hidden;
-        public bool NoAttack;
-
-        public float DamageAt(int level) => Damage * (float)Math.Pow(Tuning.LevelMul, level - 1);
-
-        /// <summary>地煞星（紫框）；其余是天罡星（金框）。</summary>
-        public bool Disha => Id == HeroId.SunErNiang || Id == HeroId.HuSanNiang;
-
-        public string TypeLabel => NoAttack ? "辅助" : Pierce > 1 ? "穿透" : Splash > 0 ? "范围" : "单体";
-
-        /// <summary>局外兵器。空字符串表示这名好汉没有兵器。</summary>
-        public string Weapon => WeaponOf(Id);
-
-        public string WeaponTag
-        {
-            get
-            {
-                var w = Weapon;
-                return string.IsNullOrEmpty(w) ? "" : w.Substring(w.Length - 1);
-            }
-        }
-
-        /// <summary>装备兵器的伤害。一阶就比空手猛，每多缴获一阶再加，五阶封顶。</summary>
-        public static float ArmedMul(int copies)
-        {
-            if (copies <= 0) return 1f;
-            int lv = copies > 5 ? 5 : copies;
-            return 1.45f + 0.18f * (lv - 1);
-        }
-
-        /// <summary>御敌千里：远程射程翻倍。全图射程不再放大。</summary>
-        public float RangeWith(bool far)
-        {
-            if (NoAttack || Range >= 50f) return Range;
-            if (far && Range >= 2f) return Range * 2f;
-            return Range;
-        }
-
-        public static string WeaponOf(HeroId id)
-        {
-            switch (id)
-            {
-                case HeroId.WuSong: return "戒刀";
-                case HeroId.LinChong: return "蛇矛";
-                case HeroId.LiKui: return "板斧";
-                case HeroId.HuaRong: return "铁弓";
-                case HeroId.YanQing: return "铁拳";
-                case HeroId.QinMing: return "狼牙棒";
-                case HeroId.ZhangShun: return "鱼叉";
-                case HeroId.ZhangHeng: return "朴刀";
-                case HeroId.RuanXiaoEr: return "朴刀";
-                case HeroId.RuanXiaoQi: return "鱼叉";
-                case HeroId.SunErNiang: return "厨刀";
-                case HeroId.HuSanNiang: return "套索";
-                case HeroId.LuZhiShen: return "禅杖";
-                default: return "";
-            }
-        }
-
-        public static readonly HeroDef[] All =
-        {
-            new HeroDef { Id = HeroId.WuSong, Name = "武松", Nick = "行者", Range = 1.35f, Cooldown = 0.35f, Damage = 4.5f,
-                Skill = "近身连拳，出手极快", Ult = "醉打：对最前方的敌人连打十八拳", Quote = "三碗不过冈？俺偏要过！", UltCooldown = 11f },
-            new HeroDef { Id = HeroId.LinChong, Name = "林冲", Nick = "豹子头", Range = 2.45f, Cooldown = 0.8f, Damage = 6f, Pierce = 5,
-                Skill = "丈八蛇矛，一枪穿五人", Ult = "风雪山神庙：冻住周围敌人", Quote = "风雪夜，正好杀人。", UltCooldown = 13f },
-            new HeroDef { Id = HeroId.LiKui, Name = "李逵", Nick = "黑旋风", Range = 1.65f, Cooldown = 0.7f, Damage = 5f, Splash = 1.2f,
-                Skill = "双斧乱砍，大范围伤害", Ult = "旋风：一圈板斧清场", Quote = "杀去东京，夺了鸟位！", UltCooldown = 12f },
-            new HeroDef { Id = HeroId.HuaRong, Name = "花荣", Nick = "小李广", Range = 99f, Cooldown = 0.9f, Damage = 7f,
-                Skill = "射程覆盖全场，优先射头目", Ult = "神箭：一箭重创血最厚的敌人", Quote = "看我射那雁行第三只。", UltCooldown = 10f },
-            new HeroDef { Id = HeroId.DaiZong, Name = "戴宗", Nick = "神行太保", NoAttack = true,
-                Skill = "不出手；全队出手速度 +15%", Ult = "神行：全场敌人减速一半", Quote = "日行八百，片刻便到。", UltCooldown = 12f },
-            new HeroDef { Id = HeroId.YanQing, Name = "燕青", Nick = "浪子", Range = 1.35f, Cooldown = 0.5f, Damage = 4f,
-                Skill = "三成概率暴击，三倍伤害", Ult = "相扑：把头目摔回两格", Quote = "献丑了。", UltCooldown = 10f },
-            new HeroDef { Id = HeroId.QinMing, Name = "秦明", Nick = "霹雳火", Range = 2.0f, Cooldown = 1.0f, Damage = 5f, Splash = 1.0f,
-                Skill = "狼牙棒砸地，范围伤害", Ult = "霹雳：在敌人最密处炸开", Quote = "谁敢与我大战三百合！", UltCooldown = 11f },
-            new HeroDef { Id = HeroId.ZhangShun, Name = "张顺", Nick = "浪里白条", Range = 2.15f, Cooldown = 0.7f, Damage = 5f, WaterBonus = 3f,
-                Skill = "站在水上伤害×3", Ult = "浪里白条：拖人下水，范围重创", Quote = "下得水来，叫你吃个饱。", UltCooldown = 12f },
-            new HeroDef { Id = HeroId.ZhangHeng, Name = "张横", Nick = "船火儿", Range = 2.25f, Cooldown = 0.9f, Damage = 6f, Splash = 0.8f, WaterBonus = 2f,
-                Skill = "站在水上伤害×2，范围伤害", Ult = "撞船：把周围敌人撞回去", Quote = "老爷生长在江边。", UltCooldown = 11f },
-            new HeroDef { Id = HeroId.RuanXiaoEr, Name = "阮小二", Nick = "立地太岁", Range = 2.3f, Cooldown = 0.6f, Damage = 9f, WaterBonus = 2f,
-                Skill = "三字好汉，水上伤害×2", Ult = "掀浪：范围重创", Quote = "这腔热血，只卖与识货的！", UltCooldown = 11f },
-            new HeroDef { Id = HeroId.RuanXiaoQi, Name = "阮小七", Nick = "活阎罗", Range = 2.3f, Cooldown = 0.45f, Damage = 8f, WaterBonus = 2f,
-                Skill = "三字好汉，出手快，水上伤害×2", Ult = "活阎罗：重创并定住一人", Quote = "老爷只是个打鱼的。", UltCooldown = 10f },
-            new HeroDef { Id = HeroId.SunErNiang, Name = "孙二娘", Nick = "母夜叉", Range = 1.8f, Cooldown = 0.8f, Damage = 6f,
-                Skill = "身边敌人被杀多掉一个炊饼", Ult = "蒙汗药：周围敌人昏睡三秒", Quote = "客官，里边请——", UltCooldown = 13f },
-            new HeroDef { Id = HeroId.HuSanNiang, Name = "扈三娘", Nick = "一丈青", Range = 2.25f, Cooldown = 0.9f, Damage = 7f,
-                Skill = "红锦套索，命中定身", Ult = "一丈青：同时套住五人", Quote = "看索！", UltCooldown = 11f },
-            new HeroDef { Id = HeroId.LuZhiShen, Name = "鲁智深", Nick = "花和尚", Range = 1.5f, Cooldown = 0.9f, Damage = 14f, Splash = 1.0f,
-                Skill = "禅杖横扫，范围重击", Ult = "方便铲：送一把铲子到山寨，开出新地", Quote = "洒家来也！", UltCooldown = 14f },
-            new HeroDef { Id = HeroId.WuYong, Name = "吴用", Nick = "智多星", NoAttack = true,
-                Skill = "不出手；周围八格出手速度 +30%", Ult = "智取：全队出手速度翻倍三秒", Quote = "小生略施小计。", UltCooldown = 12f },
-            new HeroDef { Id = HeroId.WuDaLang, Name = "武大郎", Nick = "三寸丁谷树皮", NoAttack = true, Hidden = true,
-                Skill = "隐藏好汉。不出手，每五秒烙三个炊饼", Ult = "", Quote = "炊饼——热乎的炊饼——", UltCooldown = 5f },
-        };
-
-        public static HeroDef Get(HeroId id) => All[(int)id];
-    }
-
     public enum EnemyKind { Zu, Chai, Jia, Bu, Boss }
 
     public sealed class EnemyDef
@@ -196,85 +79,6 @@ namespace Rescue.Sim
         };
 
         public static EnemyDef Get(EnemyKind k) => All[(int)k];
-    }
-
-    public enum BossSkill { Summon, Haste, Resist }
-
-    public sealed class BossDef
-    {
-        public string Name;
-        public string Title;
-        public BossSkill Skill;
-        public HeroId Nemesis;
-        public string SkillText;
-    }
-
-    /// <summary>Grass/Marsh 未开垦不能摆；Tile/Water 是开好的地。</summary>
-    public enum Cell { Grass, Path, Water, Tile, Rock, Marsh }
-
-    public sealed class ChapterDef
-    {
-        public int Index;
-        public string Name;
-        public string Story;
-        public string[] Map;
-        public HeroId[] Pool;
-        public BossDef Boss;
-        public float RivalSkill;
-        public float RivalIncome = 1f;
-        public string RivalName;
-
-        public static readonly ChapterDef[] All =
-        {
-            new ChapterDef
-            {
-                Index = 0, Name = "清风寨", RivalName = "燕顺", RivalSkill = 0.25f, RivalIncome = 0.6f,
-                Story = "宋江夜看花灯，被清风寨知寨刘高认出，五花大绑押进寨中。花荣连夜点兵：救哥哥！",
-                Map = new[]
-                {
-                    "S#######",
-                    ".ooo...#",
-                    ".#######",
-                    ".#..ooo.",
-                    ".######.",
-                    "......#G",
-                },
-                Pool = new[] { HeroId.HuaRong, HeroId.QinMing, HeroId.WuSong, HeroId.YanQing, HeroId.WuDaLang },
-                Boss = new BossDef { Name = "刘高", Title = "清风寨知寨", Skill = BossSkill.Summon, Nemesis = HeroId.HuaRong, SkillText = "每隔几秒大喝来人，招来三个寨兵" },
-            },
-            new ChapterDef
-            {
-                Index = 1, Name = "江州法场", RivalName = "晁盖", RivalSkill = 0.55f, RivalIncome = 0.82f,
-                Story = "浔阳楼上一首反诗，宋江被判斩首。午时三刻，十字路口，刽子手已经举刀——",
-                Map = new[]
-                {
-                    "S#.....o",
-                    ".#o####.",
-                    ".#o#oo#.",
-                    ".###oo#.",
-                    "......#.",
-                    "......#G",
-                },
-                Pool = new[] { HeroId.LiKui, HeroId.DaiZong, HeroId.LinChong, HeroId.HuaRong, HeroId.SunErNiang, HeroId.HuSanNiang, HeroId.WuDaLang },
-                Boss = new BossDef { Name = "蔡九", Title = "江州知府", Skill = BossSkill.Haste, Nemesis = HeroId.LiKui, SkillText = "喝令周围官兵加速猛冲" },
-            },
-            new ChapterDef
-            {
-                Index = 2, Name = "白龙庙", RivalName = "李俊", RivalSkill = 0.8f, RivalIncome = 0.92f,
-                Story = "劫了法场，众好汉护着宋江退到江边白龙庙，前有大江，后有追兵。浪里白条，下水！",
-                Map = new[]
-                {
-                    "~~~~~~~S",
-                    "########",
-                    "#.ooooo.",
-                    "########",
-                    ".......#",
-                    "G#######",
-                },
-                Pool = new[] { HeroId.ZhangShun, HeroId.ZhangHeng, HeroId.RuanXiaoEr, HeroId.RuanXiaoQi, HeroId.LiKui, HeroId.LuZhiShen, HeroId.WuYong },
-                Boss = new BossDef { Name = "黄文炳", Title = "通判", Skill = BossSkill.Resist, Nemesis = HeroId.ZhangShun, SkillText = "老奸巨猾，只受一半伤害（张顺例外）" },
-            },
-        };
     }
 
     public static class Tuning
@@ -303,36 +107,95 @@ namespace Rescue.Sim
         public static float WaveHp(int wave) => 5f * (float)Math.Pow(1.18, wave - 1);
     }
 
-    /// <summary>座次：胜加星，满五星再胜升阶；败掉星，零星再败掉一阶并落到四星。</summary>
+    /// <summary>
+    /// 梁山座次：十一个大阶各分叁、贰、壹三小阶，顶上是不封顶的「天魁星」。
+    /// 胜加星，满星再胜升一小阶；败掉星，零星再败降一小阶，但不会跌出当前大阶。
+    /// 提辖以下败了不掉星，新手只升不降。
+    /// </summary>
     public static class RankRules
     {
-        public const int Stars = 5;
+        public static readonly string[] Majors =
+            { "喽啰", "小校", "都头", "提辖", "步军头领", "水军头领", "马军头领", "八骠骑", "五虎将", "地煞星", "天罡星", "天魁星" };
 
-        public static void Apply(ref int tier, ref int stars, bool win, int tierCount, out bool promoted, out bool demoted)
+        public static readonly string[] MajorTips =
+        {
+            "山寨里跑腿的小兵", "带十来个喽啰的小头目", "县里的都头，如武松、朱仝、雷横",
+            "军中提辖，如鲁达、杨志", "梁山步军头领，如鲁智深、武松", "梁山水军头领，如李俊、阮氏三雄",
+            "梁山马军头领，如史进、穆弘", "马军八骠骑兼先锋使", "马军五虎上将",
+            "七十二地煞之列", "三十六天罡之列", "天魁星呼保义，梁山之主",
+        };
+
+        static readonly string[] Subs = { "叁", "贰", "壹" };
+
+        public const int SubPerMajor = 3;
+        public const int TopMajor = 11;
+        /// <summary>天魁星的扁平序号，也是最后一阶。</summary>
+        public const int Top = TopMajor * SubPerMajor;
+        public const int Count = Top + 1;
+        /// <summary>界面上星条最多画几颗；天魁星的星数改成数字。</summary>
+        public const int MaxStars = 5;
+
+        public static int Major(int flat) => Clamp(flat) >= Top ? TopMajor : Clamp(flat) / SubPerMajor;
+        public static int Sub(int flat) => Clamp(flat) >= Top ? 0 : Clamp(flat) % SubPerMajor;
+
+        public static int Clamp(int flat) => flat < 0 ? 0 : flat > Top ? Top : flat;
+
+        /// <summary>这一小阶满几颗星升阶；天魁星不封顶返回 0。</summary>
+        public static int StarsAt(int flat)
+        {
+            int m = Major(flat);
+            if (m >= TopMajor) return 0;
+            return m <= 2 ? 3 : m <= 6 ? 4 : 5;
+        }
+
+        public static string Name(int flat)
+        {
+            int m = Major(flat);
+            return m >= TopMajor ? Majors[m] : Majors[m] + "·" + Subs[Sub(flat)];
+        }
+
+        public static string MajorName(int flat) => Majors[Major(flat)];
+
+        public static bool SafeStars(int flat) => Major(flat) < 3;
+
+        /// <summary>局外排名分：升一小阶比任何星数都多。</summary>
+        public static int Score(int flat, int stars) => Clamp(flat) * 100 + Math.Min(stars, 99) * 10;
+
+        public static void Apply(ref int tier, ref int stars, bool win, out bool promoted, out bool demoted)
         {
             promoted = demoted = false;
-            if (tierCount < 1) return;
-            if (tier < 0) tier = 0;
-            if (tier >= tierCount) tier = tierCount - 1;
+            tier = Clamp(tier);
             if (stars < 0) stars = 0;
-            if (stars > Stars) stars = Stars;
+            int cap = StarsAt(tier);
+            if (cap > 0 && stars > cap) stars = cap;
             if (win)
             {
-                if (stars >= Stars && tier < tierCount - 1)
+                if (cap > 0 && stars >= cap)
                 {
                     tier++;
                     stars = 0;
                     promoted = true;
                 }
-                else stars = Math.Min(Stars, stars + 1);
+                else stars++;
+                return;
             }
-            else if (stars > 0) stars--;
-            else if (tier > 0)
+            if (SafeStars(tier)) return;
+            if (stars > 0) { stars--; return; }
+            if (tier < Top && Sub(tier) > 0)
             {
                 tier--;
-                stars = Stars - 1;
+                stars = StarsAt(tier) - 1;
                 demoted = true;
             }
+        }
+
+        /// <summary>旧版七阶存档（喽啰…天罡星）换算到新座次。</summary>
+        public static int FromLegacy(int oldTier)
+        {
+            int[] map = { 0, 1, 4, 6, 7, 8, 10 };
+            if (oldTier < 0) oldTier = 0;
+            if (oldTier >= map.Length) oldTier = map.Length - 1;
+            return map[oldTier] * SubPerMajor;
         }
     }
 }

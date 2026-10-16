@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Rescue.Sim;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -235,7 +236,9 @@ namespace Rescue
             float iconW = icon != null ? size.y * 0.62f : 0f;
             var label = Label(holder, text, fontSize, fg ?? Pal.Paper, new Vector2(iconW * 0.55f, 2), new Vector2(size.x - iconW - 20, size.y),
                 TextAnchor.MiddleCenter, font ?? Fonts.Brush, "text");
-            Stroke(label, Color.Lerp(face, Color.black, 0.72f), 2.5f);
+            var ink = fg ?? Pal.Paper;
+            if (ink.grayscale < 0.45f) Stroke(label, Color.Lerp(face, Color.white, 0.55f).A(0.9f), 1.5f);
+            else Stroke(label, Color.Lerp(face, Color.black, 0.72f), 2.5f);
             if (icon != null)
             {
                 float textW = Mathf.Min(size.x - iconW - 20, label.preferredWidth);
@@ -251,6 +254,15 @@ namespace Rescue
         {
             btn.Find("face").GetComponent<Image>().color = c;
             btn.Find("under").GetComponent<Image>().color = Color.Lerp(c, Color.black, 0.12f);
+        }
+
+        /// <summary>竖向内容高 needH，屏幕矮（平板、横向留白多的机型）放不下时整体等比缩小。返回缩放层。</summary>
+        public static RectTransform Fit(Transform parent, float needH, string name = "fit")
+        {
+            var rt = Rect(parent, name);
+            float h = Root.rect.height;
+            if (h > 0 && needH > h) rt.localScale = Vector3.one * (h / needH);
+            return rt;
         }
 
         /// <summary>木框面板：深色外描边、木色框、深色内线、面色。返回放内容的那层（中心为原点）。</summary>
@@ -318,6 +330,125 @@ namespace Rescue
             var sb = new System.Text.StringBuilder();
             for (int i = 0; i < total; i++) sb.Append($"<color=#{(i < n ? on : off)}>★</color>");
             return sb.ToString();
+        }
+
+        /// <summary>座次星条：普通小阶按满星数画，天魁星不封顶写成「★×N」。</summary>
+        public static string RankStars(int tier, int n, string on = "FFD84A", string off = "4A4232")
+        {
+            int cap = RankRules.StarsAt(tier);
+            return cap > 0 ? Stars(n, cap, on, off) : $"<color=#{on}>★</color>×{n}";
+        }
+
+        static readonly Color[] MajorColors =
+        {
+            Pal.Hex("8A8076"), Pal.Hex("6FA05A"), Pal.Hex("4F9A7A"), Pal.Hex("3F86B8"), Pal.Hex("4F6BC2"), Pal.Hex("2E8FB0"),
+            Pal.Hex("8A5BC4"), Pal.Hex("B0569A"), Pal.Hex("D06A2C"), Pal.Hex("7B4FA8"), Pal.Hex("C8962E"), Pal.Hex("D9452F"),
+        };
+
+        static readonly Color[] Grades = { Pal.Hex("8A8076"), Pal.Hex("4FA05A"), Pal.Hex("3F86B8"), Pal.Hex("D9822B") };
+
+        /// <summary>兵器品级色：凡器灰、利器绿、宝器蓝、神兵橙金。</summary>
+        public static Color GradeColor(int grade) => Grades[Mathf.Clamp(grade, 0, Grades.Length - 1)];
+
+        /// <summary>大阶的徽记色：从灰绿到金红，越高越亮。</summary>
+        public static Color RankColor(int tier) => MajorColors[RankRules.Major(tier)];
+
+        static readonly string[] Seals = { "喽", "校", "都", "提", "步", "水", "马", "骠", "虎", "煞", "罡", "魁" };
+
+        /// <summary>座次勋章：金边圆章挂两条绶带，章心写大阶的一个字，下面一到三颗金点是小阶；旁边另写全名。</summary>
+        public static RectTransform RankBadge(Transform parent, int tier, Vector2 pos, float scale = 1f)
+        {
+            var holder = Rect(parent, "rankBadge");
+            holder.anchoredPosition = pos;
+            holder.localScale = Vector3.one * scale;
+            var c = RankColor(tier);
+            var deep = Color.Lerp(c, Color.black, 0.45f);
+            foreach (float side in new[] { -1f, 1f })
+            {
+                var tail = Rect(holder, "ribbon");
+                tail.anchoredPosition = new Vector2(side * 26, -58);
+                tail.localRotation = Quaternion.Euler(0, 0, side * 18);
+                Box(tail, new Vector2(40, 64), Vector2.zero, Edge, null, "edge").pixelsPerUnitMultiplier = 1f;
+                Box(tail, new Vector2(30, 56), new Vector2(0, 2), deep, null, "face").pixelsPerUnitMultiplier = 1f;
+            }
+            Simple(Box(holder, new Vector2(136, 136), Vector2.zero, Edge, Art.Circle, "edge"));
+            Simple(Box(holder, new Vector2(126, 126), Vector2.zero, Pal.Hex("E8B84A"), Art.Circle, "rim"));
+            Simple(Box(holder, new Vector2(104, 104), Vector2.zero, Edge, Art.Circle, "inner"));
+            Simple(Box(holder, new Vector2(98, 98), Vector2.zero, c, Art.Circle, "face"));
+            int major = RankRules.Major(tier);
+            Stroke(Label(holder, Seals[Mathf.Clamp(major, 0, Seals.Length - 1)], 62, Pal.Paper, new Vector2(0, 10), new Vector2(110, 80),
+                TextAnchor.MiddleCenter, Fonts.Brush), Color.Lerp(c, Color.black, 0.65f), 2.5f);
+            if (major < RankRules.TopMajor)
+            {
+                int pips = RankRules.Sub(tier) + 1;
+                for (int i = 0; i < pips; i++)
+                    Simple(Box(holder, new Vector2(14, 14), new Vector2((i - (pips - 1) * 0.5f) * 18, -36), Pal.Hex("FFE36A"), Art.Circle, "pip"));
+            }
+            else Label(holder, "★", 30, Pal.Hex("FFE36A"), new Vector2(0, -33), new Vector2(60, 40));
+            return holder;
+        }
+
+        static void Simple(Image img) => img.type = Image.Type.Simple;
+
+        /// <summary>竖向滚动区：返回放内容的 content（顶端对齐，宽同 view），高度由调用方设。</summary>
+        public static RectTransform Scroll(Transform parent, Vector2 size, Vector2 pos, float contentHeight, string name = "scroll")
+        {
+            var view = Rect(parent, name);
+            view.sizeDelta = size;
+            view.anchoredPosition = pos;
+            var hit = view.gameObject.AddComponent<Image>();
+            hit.color = Color.clear;
+            view.gameObject.AddComponent<RectMask2D>();
+            var content = Rect(view, "content");
+            content.anchorMin = new Vector2(0.5f, 1f);
+            content.anchorMax = new Vector2(0.5f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.sizeDelta = new Vector2(size.x, Mathf.Max(size.y, contentHeight));
+            content.anchoredPosition = Vector2.zero;
+            var sr = view.gameObject.AddComponent<ScrollRect>();
+            sr.content = content;
+            sr.horizontal = false;
+            sr.vertical = true;
+            sr.movementType = ScrollRect.MovementType.Elastic;
+            sr.scrollSensitivity = 40f;
+            sr.decelerationRate = 0.12f;
+            view.gameObject.AddComponent<ScrollHold>().Init(sr);
+            return content;
+        }
+
+        /// <summary>把滚动区停在离顶 y 处（弹出动画期间也保持住）。</summary>
+        public static void ScrollTo(RectTransform content, float y)
+        {
+            var hold = content.parent.GetComponent<ScrollHold>();
+            float max = Mathf.Max(0, content.sizeDelta.y - ((RectTransform)content.parent).sizeDelta.y);
+            y = Mathf.Clamp(y, 0, max);
+            content.anchoredPosition = new Vector2(0, y);
+            if (hold) hold.Y = y;
+        }
+
+        /// <summary>content 里按“离顶多远”摆子物体（子物体锚点在 content 中心）。</summary>
+        public static Vector2 Top(RectTransform content, float x, float yFromTop) => new Vector2(x, content.sizeDelta.y * 0.5f - yFromTop);
+    }
+
+    /// <summary>
+    /// 面板弹出时父节点从零缩放，ScrollRect 会按退化的边界把内容弹走；
+    /// 开头这一小段时间里钉住起始位置，玩家一碰就放手。
+    /// </summary>
+    public sealed class ScrollHold : MonoBehaviour
+    {
+        public float Y;
+        ScrollRect _sr;
+        float _t = 0.6f;
+
+        public void Init(ScrollRect sr) => _sr = sr;
+
+        void LateUpdate()
+        {
+            if (_sr == null || _t <= 0) return;
+            _t -= Time.unscaledDeltaTime;
+            if (Input.GetMouseButton(0) || Input.touchCount > 0) { _t = 0; return; }
+            _sr.StopMovement();
+            _sr.content.anchoredPosition = new Vector2(0, Y);
         }
     }
 

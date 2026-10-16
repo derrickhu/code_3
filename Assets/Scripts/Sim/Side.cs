@@ -77,10 +77,23 @@ namespace Rescue.Sim
         readonly Rng _rng;
         readonly Dictionary<int, float> _unitCd = new Dictionary<int, float>();
         readonly List<KeyValuePair<char, float>> _charWeights = new List<KeyValuePair<char, float>>();
-        bool[,] _wuyongAura = new bool[Board.Cols, Board.Rows];
-        bool _daizong;
+        float[,] _aura = NewAura();
+        float _teamCd = 1f;
         int _sinceGold;
-        HeroInstance _erniang;
+        readonly List<HeroInstance> _bunsHeroes = new List<HeroInstance>();
+        readonly Dictionary<HeroId, float> _bondDmg = new Dictionary<HeroId, float>();
+        /// <summary>当前凑齐的羁绊。</summary>
+        public readonly List<Bond> ActiveBonds = new List<Bond>();
+        public readonly HashSet<string> BondsEver = new HashSet<string>();
+        public float RallyT;
+
+        static float[,] NewAura()
+        {
+            var a = new float[Board.Cols, Board.Rows];
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++) a[c, r] = 1f;
+            return a;
+        }
 
         public bool Dead => Hp <= 0;
         public int Hearts => (Hp + Tuning.HeartHp - 1) / Tuning.HeartHp;
@@ -425,14 +438,28 @@ namespace Rescue.Sim
                 int i = (int)def.Id;
                 if (i >= 0 && i < Items.WeaponLv.Length && Items.WeaponLv[i] > 0) lv = Items.WeaponLv[i];
             }
-            return HeroDef.ArmedMul(lv);
+            return HeroDef.ArmedMul(lv, def.WGrade);
         }
 
-        bool Armed(HeroDef def)
+        public bool Armed(HeroDef def)
         {
             if (Index != 0 || string.IsNullOrEmpty(def.Weapon) || Items.Armed == null) return false;
             return Items.Armed.Contains((int)def.Id);
         }
+
+        WeaponAffix AffixOf(HeroDef def) => Armed(def) ? Weapons.Affix(def) : WeaponAffix.Bare;
+
+        /// <summary>普攻 / 大招共用的伤害：等级、水上、兵器、羁绊。</summary>
+        float HeroDamage(HeroInstance h, in WeaponAffix aff)
+        {
+            var def = h.Def;
+            float dmg = def.DamageAt(h.Level) * WeaponMul(def) * aff.Dmg;
+            if (h.OnWater) dmg *= def.WaterBonus * aff.Water;
+            if (_bondDmg.TryGetValue(def.Id, out var b)) dmg *= 1f + b;
+            return dmg;
+        }
+
+        public float BondBonus(HeroId id) => _bondDmg.TryGetValue(id, out var b) ? b : 0f;
 
         public bool UseMengHan()
         {
@@ -486,23 +513,54 @@ namespace Rescue.Sim
             foreach (var h in Heroes) before.Add(h.Id);
             Heroes = NameMatcher.Match(Board, Pool, Mirrored, Heroes);
 
-            _wuyongAura = new bool[Board.Cols, Board.Rows];
-            _daizong = false;
-            _erniang = null;
+            _aura = NewAura();
+            _teamCd = 1f;
+            _bunsHeroes.Clear();
+            var teamSeen = new HashSet<HeroId>();
             foreach (var h in Heroes)
             {
+                var d = h.Def;
                 if (!before.Contains(h.Id))
                 {
-                    FormedEver.Add(h.Def.Id);
-                    Emit(new SimEvent { Type = Ev.HeroFormed, A = h.Id, B = (int)h.Def.Id, P = h.Pos, Text = h.Def.Name });
+                    FormedEver.Add(d.Id);
+                    Emit(new SimEvent { Type = Ev.HeroFormed, A = h.Id, B = (int)d.Id, P = h.Pos, Text = d.Name });
                 }
-                if (h.Def.Id == HeroId.DaiZong) _daizong = true;
-                if (h.Def.Id == HeroId.SunErNiang) _erniang = h;
-                if (h.Def.Id == HeroId.WuYong)
+                if (d.TeamCd < 1f && teamSeen.Add(d.Id)) _teamCd *= d.TeamCd;
+                if (d.KillBuns > 0) _bunsHeroes.Add(h);
+                if (d.Aura < 1f)
                     foreach (var cell in h.Cells)
                         for (int dc = -1; dc <= 1; dc++)
                             for (int dr = -1; dr <= 1; dr++)
-                                if (Board.InBounds(cell.c + dc, cell.r + dr)) _wuyongAura[cell.c + dc, cell.r + dr] = true;
+                                if (Board.InBounds(cell.c + dc, cell.r + dr))
+                                    _aura[cell.c + dc, cell.r + dr] = Math.Min(_aura[cell.c + dc, cell.r + dr], d.Aura);
+            }
+            RecomputeBonds();
+        }
+
+        void RecomputeBonds()
+        {
+            var on = new HashSet<HeroId>();
+            foreach (var h in Heroes) on.Add(h.Def.Id);
+            _bondDmg.Clear();
+            ActiveBonds.Clear();
+            foreach (var b in Bond.All)
+            {
+                int n = 0;
+                foreach (var id in b.Members) if (on.Contains(id)) n++;
+                if (n < b.Need) continue;
+                ActiveBonds.Add(b);
+                foreach (var id in b.Members)
+                {
+                    if (!on.Contains(id)) continue;
+                    _bondDmg.TryGetValue(id, out var v);
+                    _bondDmg[id] = v + b.Dmg;
+                }
+                if (BondsEver.Add(b.Name))
+                {
+                    var at = new V2();
+                    foreach (var h in Heroes) if (Array.IndexOf(b.Members, h.Def.Id) >= 0) { at = h.Pos; break; }
+                    Emit(new SimEvent { Type = Ev.Bond, P = at, Val = b.Dmg, Text = b.Name });
+                }
             }
         }
 
@@ -528,6 +586,7 @@ namespace Rescue.Sim
             EnemySlowT = Math.Max(0, EnemySlowT - dt);
             HasteAllT = Math.Max(0, HasteAllT - dt);
             ItemHasteT = Math.Max(0, ItemHasteT - dt);
+            RallyT = Math.Max(0, RallyT - dt);
             _steleCd = Math.Max(0, _steleCd - dt);
             ShieldT = Math.Max(0, ShieldT - dt);
 
@@ -613,9 +672,10 @@ namespace Rescue.Sim
         float CdMul(int c, int r)
         {
             float m = 1f;
-            if (_daizong) m *= 0.85f;
-            if (_wuyongAura[c, r]) m *= 0.7f;
+            m *= _teamCd;
+            m *= _aura[c, r];
             if (HasteAllT > 0) m *= 0.5f;
+            if (RallyT > 0) m *= 0.75f;
             if (ItemHasteT > 0) m *= 0.71f;
             return m;
         }
@@ -660,28 +720,35 @@ namespace Rescue.Sim
                 h.UltCd -= dt;
                 var pos = h.Pos;
                 _curHero = h;
+                var aff = AffixOf(def);
 
-                if (h.UltCd <= 0 && TryUlt(h, pos)) h.UltCd = def.UltCooldown;
+                if (h.UltCd <= 0 && TryUlt(h, pos, aff)) h.UltCd = def.UltCooldown * aff.UltCd;
 
                 if (def.NoAttack) GainXp(h, dt * 0.35f);
                 if (def.NoAttack || h.Cd > 0) continue;
                 float range = def.RangeWith(Items.Far);
-                var target = FindTarget(pos, range, def.Id == HeroId.HuaRong);
+                if (range < 50f) range += aff.Range;
+                var target = FindTarget(pos, range, def.PreferBig);
                 if (target == null) { h.Cd = 0; continue; }
-                h.Cd = def.Cooldown * CdMul(h.Cells[0].c, h.Cells[0].r);
-                float dmg = def.DamageAt(h.Level) * (h.OnWater ? def.WaterBonus : 1f) * WeaponMul(def);
+                h.Cd = def.Cooldown * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd;
+                float dmg = HeroDamage(h, aff);
                 int crit = 0;
-                if (def.Id == HeroId.YanQing && _rng.Chance(0.3f)) { dmg *= 3f; crit = 1; }
+                float critChance = def.CritChance + aff.Crit;
+                if (critChance > 0 && _rng.Chance(critChance)) { dmg *= def.CritMul; crit = 1; }
                 Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = target.Pos, Flag = crit });
 
-                if (def.Pierce > 1) PierceLine(pos, target.Pos, range, def.Pierce, dmg, def);
+                int pierce = def.Pierce + (def.Pierce > 1 ? aff.Pierce : 0);
+                if (pierce > 1) PierceLine(pos, target.Pos, range, pierce, dmg, def);
                 else
                 {
                     Hit(target, dmg, def, crit == 1);
-                    if (def.Splash > 0) Splash(target, def.Splash, dmg * 0.6f, def);
+                    float splash = def.Splash + aff.Splash;
+                    if (splash > 0) Splash(target, splash, dmg * 0.6f, def);
                 }
-                if (def.Id == HeroId.HuSanNiang) target.StunT = Math.Max(target.StunT, 0.6f);
-                if (def.Id == HeroId.LuZhiShen && !target.IsBig) Knock(target, 0.4f);
+                float stun = def.HitStun + aff.Stun;
+                if (stun > 0) target.StunT = Math.Max(target.StunT, stun);
+                float knock = def.HitKnock + aff.Knock;
+                if (knock > 0 && !target.IsBig) Knock(target, knock);
                 GainXp(h, 0.2f);
             }
             _curHero = null;
@@ -700,138 +767,198 @@ namespace Rescue.Sim
             Emit(new SimEvent { Type = Ev.HeroLevel, A = h.Id, B = (int)h.Def.Id, Val = next, P = h.Pos, Text = h.Def.Name });
         }
 
-        bool TryUlt(HeroInstance h, V2 pos)
+        bool TryUlt(HeroInstance h, V2 pos, in WeaponAffix aff)
         {
             var def = h.Def;
-            float dmg = def.DamageAt(h.Level) * (h.OnWater ? def.WaterBonus : 1f) * WeaponMul(def);
+            float dmg = HeroDamage(h, aff) * aff.UltMul;
             bool any = Enemies.Count > 0;
             float radius = 0;
-            switch (def.Id)
+            switch (def.UltKind)
             {
-                case HeroId.WuDaLang:
-                    Buns += 3;
-                    Emit(new SimEvent { Type = Ev.Buns, Val = 3, P = pos });
-                    return true;
-                case HeroId.DaiZong:
+                case UltKind.Buns:
+                    Buns += def.UltN;
+                    Emit(new SimEvent { Type = Ev.Buns, Val = def.UltN, P = pos });
+                    if (def.Hidden) return true;
+                    radius = 0.6f;
+                    break;
+                case UltKind.SlowAll:
                     if (!any) return false;
-                    EnemySlowT = 4f;
+                    EnemySlowT = Math.Max(EnemySlowT, def.UltT);
                     radius = 99;
                     break;
-                case HeroId.WuYong:
+                case UltKind.HasteAll:
                     if (!any) return false;
-                    HasteAllT = 3f;
+                    HasteAllT = Math.Max(HasteAllT, def.UltT);
                     radius = 99;
                     break;
-                case HeroId.WuSong:
+                case UltKind.Combo:
                 {
-                    if (FindTarget(pos, 2.6f, false) == null) return false;
-                    for (int i = 0; i < 18; i++)
+                    if (FindTarget(pos, def.UltR, false) == null) return false;
+                    for (int i = 0; i < def.UltN; i++)
                     {
-                        var t = FindTarget(pos, 2.6f, false);
+                        var t = FindTarget(pos, def.UltR, false);
                         if (t == null) break;
-                        Hit(t, dmg * 1.2f, def);
+                        Hit(t, dmg * def.UltMul, def);
                     }
-                    radius = 2.6f;
+                    radius = def.UltR;
                     break;
                 }
-                case HeroId.LinChong:
-                    radius = 3f;
+                case UltKind.Area:
+                    radius = def.UltR;
                     if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) { e.StunT = Math.Max(e.StunT, 2.5f); Hit(e, dmg * 4f, def); }
+                    foreach (var e in InRange(pos, radius))
+                    {
+                        if (def.UltStun > 0) e.StunT = Math.Max(e.StunT, def.UltStun);
+                        if (def.UltKnock > 0 && !e.IsBig) Knock(e, def.UltKnock);
+                        if (def.UltMul > 0) Hit(e, dmg * def.UltMul, def);
+                    }
                     break;
-                case HeroId.LiKui:
-                    radius = 3.2f;
-                    if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) Hit(e, dmg * 6f, def);
-                    break;
-                case HeroId.HuaRong:
+                case UltKind.Snipe:
                 {
                     Enemy best = null;
                     foreach (var e in Enemies) if (!e.Dead && (best == null || e.Hp > best.Hp)) best = e;
                     if (best == null) return false;
                     Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = best.Pos, Flag = 2 });
-                    Hit(best, dmg * 25f, def, true);
+                    Hit(best, dmg * def.UltMul, def, true);
                     pos = best.Pos;
                     radius = 0.8f;
                     break;
                 }
-                case HeroId.YanQing:
+                case UltKind.Throw:
                 {
                     Enemy best = null;
-                    foreach (var e in InRange(pos, 3f)) if (best == null || e.MaxHp > best.MaxHp) best = e;
+                    foreach (var e in InRange(pos, def.UltR)) if (best == null || e.MaxHp > best.MaxHp) best = e;
                     if (best == null) return false;
-                    best.Progress = Math.Max(0, best.Progress - 2f);
-                    best.Pos = Board.PosAt(best.Progress);
-                    Hit(best, dmg * 8f, def, true);
+                    Knock(best, def.UltKnock);
+                    Hit(best, dmg * def.UltMul, def, true);
                     radius = 1f;
                     break;
                 }
-                case HeroId.QinMing:
+                case UltKind.Blast:
                 {
                     Enemy center = null;
                     int bestN = 0;
                     foreach (var e in InRange(pos, 4f))
                     {
                         int n = 0;
-                        foreach (var o in Enemies) if (!o.Dead && V2.Dist(o.Pos, e.Pos) < 1.6f) n++;
+                        foreach (var o in Enemies) if (!o.Dead && V2.Dist(o.Pos, e.Pos) < def.UltR) n++;
                         if (n > bestN) { bestN = n; center = e; }
                     }
                     if (center == null) return false;
                     pos = center.Pos;
-                    radius = 1.6f;
-                    foreach (var e in InRange(pos, radius)) Hit(e, dmg * 8f, def);
+                    radius = def.UltR;
+                    foreach (var e in InRange(pos, radius))
+                    {
+                        if (def.UltStun > 0) e.StunT = Math.Max(e.StunT, def.UltStun);
+                        Hit(e, dmg * def.UltMul, def);
+                    }
                     break;
                 }
-                case HeroId.ZhangShun:
-                    radius = 3.5f;
-                    if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) { e.StunT = Math.Max(e.StunT, 1f); Hit(e, dmg * 6f, def); }
-                    break;
-                case HeroId.ZhangHeng:
-                    radius = 2.6f;
-                    if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) { if (!e.IsBig) Knock(e, 1.5f); Hit(e, dmg * 3f, def); }
-                    break;
-                case HeroId.RuanXiaoEr:
-                    radius = 2.8f;
-                    if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) Hit(e, dmg * 6f, def);
-                    break;
-                case HeroId.RuanXiaoQi:
+                case UltKind.Pin:
                 {
-                    var t = FindTarget(pos, def.Range + 0.5f, false);
+                    var t = FindTarget(pos, Math.Min(def.Range, 50f) + 0.5f, def.PreferBig);
                     if (t == null) return false;
-                    t.StunT = Math.Max(t.StunT, 2f);
-                    Hit(t, dmg * 15f, def, true);
+                    t.StunT = Math.Max(t.StunT, def.UltStun);
+                    Hit(t, dmg * def.UltMul, def, true);
                     pos = t.Pos;
                     radius = 1f;
                     break;
                 }
-                case HeroId.SunErNiang:
-                    radius = 3f;
-                    if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) e.StunT = Math.Max(e.StunT, 3f);
-                    break;
-                case HeroId.HuSanNiang:
+                case UltKind.Lasso:
                 {
-                    var list = InRange(pos, 3f);
+                    var list = InRange(pos, def.UltR);
                     if (list.Count == 0) return false;
                     list.Sort((a, b) => b.Progress.CompareTo(a.Progress));
-                    for (int i = 0; i < list.Count && i < 5; i++) { list[i].StunT = Math.Max(list[i].StunT, 2.5f); Hit(list[i], dmg * 3f, def); }
-                    radius = 3f;
+                    for (int i = 0; i < list.Count && i < def.UltN; i++)
+                    {
+                        list[i].StunT = Math.Max(list[i].StunT, def.UltStun);
+                        Hit(list[i], dmg * def.UltMul, def);
+                    }
+                    radius = def.UltR;
                     break;
                 }
-                case HeroId.LuZhiShen:
+                case UltKind.Shovel:
                     if (Board.AnyDiggable() && !HasShovel())
                     {
                         GrantShovels(1);
                         radius = 0.5f;
                         break;
                     }
-                    radius = 2f;
+                    radius = def.UltR;
                     if (!AreaAny(pos, radius)) return false;
-                    foreach (var e in InRange(pos, radius)) Hit(e, dmg * 10f, def);
+                    foreach (var e in InRange(pos, radius)) Hit(e, dmg * def.UltMul, def);
                     break;
+                case UltKind.Volley:
+                {
+                    float r = def.Range >= 50f ? 99f : Math.Max(def.Range, 2f) + 1f;
+                    var list = InRange(pos, r);
+                    if (list.Count == 0) return false;
+                    list.Sort((a, b) => b.Progress.CompareTo(a.Progress));
+                    for (int i = 0; i < def.UltN; i++)
+                    {
+                        var t = list[i % list.Count];
+                        Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = t.Pos, Flag = 3 });
+                        Hit(t, dmg * def.UltMul, def);
+                    }
+                    radius = r;
+                    break;
+                }
+                case UltKind.Storm:
+                    if (!AreaAny(pos, 99f)) return false;
+                    foreach (var e in InRange(pos, 99f))
+                    {
+                        if (def.UltStun > 0) e.StunT = Math.Max(e.StunT, def.UltStun);
+                        Hit(e, dmg * def.UltMul, def);
+                    }
+                    radius = 99;
+                    break;
+                case UltKind.Heal:
+                {
+                    if (Hp >= MaxHp) return false;
+                    int before = Hp;
+                    Hp = Math.Min(MaxHp, Hp + def.UltN);
+                    Emit(new SimEvent { Type = Ev.Heal, Val = Hp - before, P = Board.Goal.Center, A = h.Id, B = (int)def.Id });
+                    radius = 0.8f;
+                    break;
+                }
+                case UltKind.Rally:
+                    if (!any) return false;
+                    ShieldT = Math.Max(ShieldT, def.UltT);
+                    RallyT = Math.Max(RallyT, def.UltT);
+                    radius = 99;
+                    break;
+                case UltKind.Shield:
+                    if (!any) return false;
+                    ShieldT = Math.Max(ShieldT, def.UltT);
+                    radius = 0.8f;
+                    pos = Board.Goal.Center;
+                    break;
+                case UltKind.Upgrade:
+                {
+                    Piece best = null;
+                    for (int c = 0; c < Board.Cols; c++)
+                        for (int r = 0; r < Board.Rows; r++)
+                        {
+                            var p = Board.Pieces[c, r];
+                            if (p == null || p.Type != PieceType.Unit || p.Level >= UnitDef.MaxLevel) continue;
+                            if (best == null || p.Level < best.Level) { best = p; pos = new CellPos(c, r).Center; }
+                        }
+                    if (best == null) return false;
+                    MergeInto(best, pos);
+                    radius = 0.6f;
+                    break;
+                }
+                case UltKind.Steal:
+                {
+                    var other = M.Sides[1 - Index];
+                    int n = other == null ? 0 : Math.Min(def.UltN, other.Buns);
+                    if (n <= 0) return false;
+                    other.Buns -= n;
+                    Buns += n;
+                    Emit(new SimEvent { Type = Ev.Steal, Val = n, P = pos, A = h.Id, B = (int)def.Id });
+                    radius = 0.6f;
+                    break;
+                }
                 default:
                     return false;
             }
@@ -931,7 +1058,8 @@ namespace Rescue.Sim
 
             e.Dead = true;
             float raw = e.Def.Reward * e.RewardMul;
-            if (_erniang != null && V2.Dist(_erniang.Pos, e.Pos) <= 2.2f) raw += 1;
+            foreach (var bh in _bunsHeroes)
+                if (V2.Dist(bh.Pos, e.Pos) <= bh.Def.KillBuns) { raw += 1; break; }
             _incomeAcc += raw * IncomeMul;
             int reward = (int)_incomeAcc;
             _incomeAcc -= reward;

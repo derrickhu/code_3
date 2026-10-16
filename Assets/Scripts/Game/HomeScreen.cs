@@ -67,6 +67,8 @@ namespace Rescue
         Text _coins, _stamina, _loadout;
         int _selected;
         Text _chapterName, _chapterInfo, _rankName, _stars;
+        RectTransform _badge, _badgeHolder;
+        int _badgeTier = -1;
         RectTransform _shop;
         Text _shopCoins, _shopStamina;
         Action<int> _onFight;
@@ -88,7 +90,7 @@ namespace Rescue
 
         static readonly Color Edge = Pal.Hex("2E2119");
         static readonly Color StarOn = Pal.Hex("FFD84A");
-        static readonly Color StarOff = Pal.Hex("4A4232");
+        static readonly Color StarOff = Pal.Hex("6E5D45");
 
         RectTransform Corner(float x, float y, string name)
         {
@@ -112,32 +114,27 @@ namespace Rescue
             var tl = Corner(0f, 1f, "topLeft");
             BuildHud(tl, out _coins, out _stamina, true);
 
-            Ui.Tap(Ui.Icon(tl, "ui_gear", 104, new Vector2(84, -236)), ToggleSound);
-            SideSign(tl, "ui_notice", "公告", new Vector2(84, -366), ShowNotice);
-            SideSign(tl, "ui_notice", "好汉谱", new Vector2(84, -496), ShowCodex);
+            Ui.Tap(Ui.Icon(tl, "ui_gear", 100, new Vector2(80, -222)), ToggleSound);
+            SideSign(tl, "ui_notice", "公告", new Vector2(80, -350), ShowNotice);
+            SideSign(tl, "ui_notice", "好汉谱", new Vector2(80, -476), ShowCodex);
+            SideSign(tl, "ui_notice", "回目", new Vector2(80, -602), ShowChapters);
 
             var tr = Corner(1f, 1f, "topRight");
-            var shopFace = Ui.Icon(tr, "merchant_bust", 150, new Vector2(-96, -250));
+            var shopFace = Ui.Icon(tr, "merchant_bust", 150, new Vector2(-92, -238));
             Ui.Tap(shopFace, ShowShop);
-            Ui.Stroke(Ui.Label(tr, "神秘商人", 34, Pal.Paper, new Vector2(-96, -340), new Vector2(200, 50), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2.5f);
+            Ui.Stroke(Ui.Label(tr, "神秘商人", 34, Pal.Paper, new Vector2(-92, -328), new Vector2(200, 50), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2.5f);
 
             var top = Corner(0.5f, 1f, "title");
-            var title = Ui.Label(top, "营救宋江", 168, Pal.Hex("C0392B"), new Vector2(40, -330), new Vector2(900, 210), TextAnchor.MiddleCenter, Fonts.Brush);
+            var title = Ui.Label(top, "营救宋江", 168, Pal.Hex("C0392B"), new Vector2(0, -296), new Vector2(900, 190), TextAnchor.MiddleCenter, Fonts.Brush);
             Ui.Stroke(title, Pal.Hex("FFF6E2"), 5f);
             title.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(4, -8);
-            _rankName = Ui.Label(top, "", 44, Pal.Ink, new Vector2(40, -448), new Vector2(500, 60));
-            Ui.Stroke(_rankName, Pal.Hex("FFF6E2"), 2f);
-            _stars = Ui.Label(top, "", 112, StarOn, new Vector2(40, -545), new Vector2(760, 130));
-            _stars.supportRichText = true;
-            Ui.Stroke(_stars, Edge, 4f);
-            var rankHit = Ui.Box(top, new Vector2(700, 260), new Vector2(40, -490), new Color(0, 0, 0, 0), null, "rankHit");
-            Ui.Tap(rankHit, ShowBoard);
             Tween.Pop(title.transform, 0.5f);
+            BuildRankPlate(top, new Vector2(0, -470));
 
             BuildHero(Corner(0.5f, 0.5f, "hero"));
 
             var bottom = Corner(0.5f, 0f, "bottom");
-            _loadout = Ui.Label(bottom, "", 30, Pal.Willow, new Vector2(0, 700), new Vector2(940, 50));
+            _loadout = Ui.Label(bottom, "", 30, Pal.Willow, new Vector2(0, 680), new Vector2(940, 46));
             Ui.Stroke(_loadout, Pal.Hex("FFF6E2"), 2f);
             BuildStart(bottom);
 
@@ -149,31 +146,72 @@ namespace Rescue
             if (!Save.Volatile && Save.RollDaily()) ShowDaily();
         }
 
-        /// <summary>左上角：头像、铜钱条、体力条（绿加号看广告补体力）。商人界面也复用。</summary>
+        /// <summary>标题下的座次牌：左嵌勋章，中写座次，右排星；整块点开排行榜。</summary>
+        void BuildRankPlate(RectTransform parent, Vector2 pos)
+        {
+            const float w = 600f, h = 84f;
+            var plate = Ui.Rect(parent, "rankPlate");
+            plate.anchoredPosition = pos;
+            plate.sizeDelta = new Vector2(w, h);
+            Ui.Box(plate, new Vector2(w + 12, h + 12), new Vector2(0, -6), Pal.Shadow.A(0.45f), null, "shadow");
+            Ui.Box(plate, new Vector2(w + 12, h + 12), Vector2.zero, Edge, null, "edge");
+            Ui.Box(plate, new Vector2(w + 4, h + 4), Vector2.zero, Pal.Hex("C8962E"), null, "rim");
+            var face = Ui.Box(plate, new Vector2(w - 4, h - 4), Vector2.zero, Pal.Hex("3B2A20"), null, "face");
+            Ui.Box(plate, new Vector2(w - 40, 10), new Vector2(10, h / 2 - 14), Color.white.A(0.07f), null, "gloss");
+            face.raycastTarget = true;
+            Ui.Tap(face, ShowBoard);
+
+            _rankName = Ui.Label(plate, "", 40, Pal.Hex("FFE7A8"), new Vector2(-w / 2 + 92 + 130, 0), new Vector2(260, h), TextAnchor.MiddleLeft, Fonts.Brush);
+            _rankName.resizeTextForBestFit = true;
+            _rankName.resizeTextMinSize = 28;
+            _rankName.resizeTextMaxSize = 40;
+            Ui.Stroke(_rankName, Edge, 2f);
+            _stars = Ui.Label(plate, "", 50, StarOn, new Vector2(w / 2 - 26 - 140, -2), new Vector2(280, h), TextAnchor.MiddleRight);
+            _stars.supportRichText = true;
+            Ui.Stroke(_stars, Edge, 2.5f);
+
+            _badgeHolder = Ui.Rect(plate, "badge");
+            _badgeHolder.anchoredPosition = new Vector2(-w / 2 + 18, 4);
+        }
+
+        const float HudY = -92f;
+
+        /// <summary>顶栏一行：头像、铜钱条、体力条（绿加号看广告补体力）。商人界面也复用。</summary>
         void BuildHud(RectTransform tl, out Text coins, out Text stamina, bool avatar)
         {
             if (avatar)
             {
-                var face = Ui.Icon(tl, "ui_avatar", 132, new Vector2(84, -96));
+                var face = Ui.Icon(tl, "ui_avatar", 124, new Vector2(80, HudY));
                 Ui.Tap(face, () => Toast($"{Save.RankName} · 胜 {Save.D.wins} / 战 {Save.D.battles}"));
             }
-            float x = avatar ? 330 : 250;
-            Ui.Box(tl, new Vector2(290, 80), new Vector2(x + 6, -92), Pal.Hex("3B2A20").A(0.92f), null, "coinBar");
-            Ui.Icon(tl, "coin", 96, new Vector2(x - 138, -92));
-            coins = Ui.Label(tl, "", 46, Pal.Hex("FFE7A8"), new Vector2(x + 30, -92), new Vector2(220, 80));
+            float x = avatar ? 186 : 40;
+            HudPill(tl, x, 250, "coinBar");
+            Ui.Icon(tl, "coin", 92, new Vector2(x + 14, HudY));
+            coins = Ui.Label(tl, "", 44, Pal.Hex("FFE7A8"), new Vector2(x + 145, HudY), new Vector2(180, 76));
             coins.fontStyle = FontStyle.Bold;
 
-            Ui.Box(tl, new Vector2(340, 80), new Vector2(x + 20, -198), Pal.Hex("3B2A20").A(0.92f), null, "staBar");
-            Ui.Icon(tl, "ui_bolt", 80, new Vector2(x - 140, -198));
-            stamina = Ui.Label(tl, "", 40, Pal.Hex("FFE7A8"), new Vector2(x + 4, -198), new Vector2(250, 80));
+            x += 280;
+            HudPill(tl, x, 330, "staBar");
+            Ui.Icon(tl, "ui_bolt", 72, new Vector2(x + 12, HudY));
+            stamina = Ui.Label(tl, "", 38, Pal.Hex("FFE7A8"), new Vector2(x + 152, HudY), new Vector2(230, 76));
             stamina.fontStyle = FontStyle.Bold;
             stamina.supportRichText = true;
-            var plus = Ui.Icon(tl, "ui_plus", 66, new Vector2(x + 158, -198));
+            var plus = Ui.Icon(tl, "ui_plus", 62, new Vector2(x + 316, HudY));
             Ui.Tap(plus, () =>
             {
                 if (Stamina.Current >= Stamina.Max) { Toast("体力已满"); return; }
                 AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); });
             });
+        }
+
+        /// <summary>顶栏的深色圆角条，和座次牌同一套描边。left 是条的左端。</summary>
+        static void HudPill(RectTransform parent, float left, float w, string name)
+        {
+            const float h = 72f;
+            var c = new Vector2(left + w / 2, HudY);
+            Ui.Box(parent, new Vector2(w + 10, h + 10), c, Edge, null, name + "Edge");
+            Ui.Box(parent, new Vector2(w, h), c, Pal.Hex("3B2A20").A(0.95f), null, name);
+            Ui.Box(parent, new Vector2(w - 36, 8), c + new Vector2(6, h / 2 - 12), Color.white.A(0.08f), null, name + "Gloss");
         }
 
         void SideSign(RectTransform parent, string img, string text, Vector2 pos, Action onClick)
@@ -208,13 +246,18 @@ namespace Rescue
             Bob(song.transform, 0f);
             Bob(hat.transform, 0.1f);
 
-            _selected = Mathf.Clamp(Save.D.unlocked, 0, ChapterDef.All.Length - 1);
-            var strip = Ui.Framed(c, new Vector2(560, 92), new Vector2(0, -290), Pal.Hex("F3E6C6"), Edge, 5f, "chapterStrip");
+            _selected = Mathf.Clamp(Save.D.unlocked, 0, ChapterDef.StoryCount);
+            var strip = Ui.Framed(c, new Vector2(560, 92), new Vector2(0, -280), Pal.Hex("F3E6C6"), Edge, 5f, "chapterStrip");
             _chapterName = Ui.Label(strip.transform, "", 44, Pal.Ink, new Vector2(0, 2), new Vector2(440, 88), TextAnchor.MiddleCenter, Fonts.Brush);
-            _chapterInfo = Ui.Label(c, "", 28, Pal.InkSoft, new Vector2(0, -370), new Vector2(760, 44));
+            _chapterName.resizeTextForBestFit = true;
+            _chapterName.resizeTextMinSize = 26;
+            _chapterName.resizeTextMaxSize = 44;
+            _chapterName.verticalOverflow = VerticalWrapMode.Truncate;
+            Ui.Tap(strip, () => { if (_selected >= ChapterDef.StoryCount) ShowTeam(); else ShowChapters(); });
+            _chapterInfo = Ui.Label(c, "", 28, Pal.InkSoft, new Vector2(0, -355), new Vector2(760, 44));
             Ui.Stroke(_chapterInfo, Pal.Hex("FFF6E2"), 2f);
-            ArrowBtn(c, "◀", new Vector2(-340, -290), -1);
-            ArrowBtn(c, "▶", new Vector2(340, -290), 1);
+            ArrowBtn(c, "◀", new Vector2(-340, -280), -1);
+            ArrowBtn(c, "▶", new Vector2(340, -280), 1);
         }
 
         void ArrowBtn(RectTransform parent, string glyph, Vector2 pos, int dir)
@@ -226,8 +269,8 @@ namespace Rescue
 
         void SelectChapter(int i)
         {
-            if (i < 0 || i >= ChapterDef.All.Length) return;
-            if (i > Save.D.unlocked) { Toast("先赢下上一回才能解锁"); return; }
+            if (i < 0 || i > ChapterDef.StoryCount) return;
+            if (i > Save.D.unlocked) { Toast(i >= ChapterDef.StoryCount ? "打完蓼儿洼，聚义厅才开张" : "先赢下上一回才能解锁"); return; }
             _selected = i;
             RefreshChapter();
             Tween.Punch(_chapterName.transform, 0.15f);
@@ -235,16 +278,27 @@ namespace Rescue
 
         void RefreshChapter()
         {
+            if (_selected >= ChapterDef.StoryCount)
+            {
+                _chapterName.text = $"聚义厅 · 第{BattleView.ToCn(Save.D.endlessRound)}阵";
+                var names = new List<string>();
+                foreach (var id in Save.Team()) names.Add(HeroDef.Get(id).Name);
+                _chapterInfo.text = $"阵容 {string.Join(" ", names)}　最好 {Save.D.endlessBest} 阵　点此换将";
+                return;
+            }
             var ch = ChapterDef.All[_selected];
             _chapterName.text = "第" + BattleView.ToCn(ch.Index + 1) + "回 · " + ch.Name;
             var nem = HeroDef.Get(ch.Boss.Nemesis).Name;
-            _chapterInfo.text = $"头目 {ch.Boss.Name}　克星 {nem}　对手 {ch.RivalName}";
+            bool fresh = ch.Joins.Length > 0 && !Save.Joined(ch.Joins[0]);
+            _chapterInfo.text = fresh
+                ? $"{ch.Act}　头目 {ch.Boss.Name}　克星 {nem}　胜后 {ch.Joins.Length} 人入伙"
+                : $"{ch.Act}　头目 {ch.Boss.Name}　克星 {nem}　对手 {ch.RivalName}";
         }
 
         void BuildStart(RectTransform bottom)
         {
             var holder = Ui.Rect(bottom, "start");
-            holder.anchoredPosition = new Vector2(0, 520);
+            holder.anchoredPosition = new Vector2(0, 480);
             holder.sizeDelta = new Vector2(600, 170);
             Ui.Box(holder, new Vector2(620, 172), new Vector2(0, -10), Pal.Shadow.A(0.6f), null, "shadow");
             Ui.Box(holder, new Vector2(620, 172), Vector2.zero, Edge, null, "edge");
@@ -281,14 +335,18 @@ namespace Rescue
             Sfx.On = !Sfx.On;
             Save.D.sfx = Sfx.On;
             Save.Write();
-            Toast(Sfx.On ? "音效已打开" : "音效已关闭");
+            Toast(Sfx.On ? "声音已打开" : "声音已关闭");
         }
 
         void ShowNotice()
         {
-            Panel("公告", out var card, new Vector2(900, 1100));
-            Ui.Label(card, "· 胜一局升一星，满五星再胜晋升座次\n· 败一局掉一星，没星再败就掉一阶\n· 每天按昨日座次发铜钱，排行榜里领\n· 每局结束孙二娘摆摊，道具仅当天有效\n· 打仗缴获兵器，装备给好汉，越叠越猛",
-                38, Pal.Ink, new Vector2(0, 40), new Vector2(800, 600), TextAnchor.MiddleLeft);
+            Panel("公告", out var card, new Vector2(900, 1300));
+            Ui.Label(card, "· 剧情五十七回，从史家村一路打到蓼儿洼；每赢一回，原著里这一回上山的好汉入伙\n" +
+                "· 好汉谱收齐一百单八将，忠义堂排座次；之后聚义厅自选五将车轮战\n" +
+                "· 座次：喽啰→小校→都头→提辖→步/水/马军头领→八骠骑→五虎将→地煞→天罡→天魁星，每阶分叁贰壹\n" +
+                "· 胜加星、满星升阶；败掉星，但不会跌出大阶；提辖以下只升不降\n" +
+                "· 兵器分凡、利、宝、神四品，各带特性；有渊源的好汉同场触发羁绊",
+                36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 900), TextAnchor.MiddleLeft);
         }
 
         void Fight()
@@ -318,6 +376,12 @@ namespace Rescue
             _loadout.text = Save.D.HasAnyItem ? "下一战随身：" + BattleScreen.ItemSummary(Save.D.PeekLoadout()) : "";
             _rankName.text = Save.RankName;
             _stars.text = StarRich(Save.D.stars);
+            if (_badgeTier != Save.D.tier)
+            {
+                _badgeTier = Save.D.tier;
+                if (_badge) Destroy(_badge.gameObject);
+                _badge = Ui.RankBadge(_badgeHolder, Save.D.tier, Vector2.zero, 0.82f);
+            }
             RefreshChapter();
         }
 
@@ -329,23 +393,18 @@ namespace Rescue
             return $"{s} <size=30>/{Stamina.Max}  {sec / 60}:{sec % 60:00}</size>";
         }
 
-        static string StarRich(int n)
-        {
-            string on = ColorUtility.ToHtmlStringRGB(StarOn), off = ColorUtility.ToHtmlStringRGB(StarOff);
-            var sb = new System.Text.StringBuilder();
-            for (int i = 0; i < RankRules.Stars; i++) sb.Append($"<color=#{(i < n ? on : off)}>★</color>");
-            return sb.ToString();
-        }
+        static string StarRich(int n) =>
+            Ui.RankStars(Save.D.tier, n, ColorUtility.ToHtmlStringRGB(StarOn), ColorUtility.ToHtmlStringRGB(StarOff));
 
         // ─────────────────────────── 浮层 ───────────────────────────
 
-        RectTransform Panel(string title, out RectTransform card, Vector2 size)
+        RectTransform Panel(string title, out RectTransform card, Vector2 size, Action onClose = null)
         {
             var layer = Ui.Fill(_root, new Color(0, 0, 0, 0.72f), true, "panel");
-            card = Ui.WoodPanel(layer, size, new Vector2(0, -20));
+            card = Ui.WoodPanel(Ui.Fit(layer, size.y + 160), size, new Vector2(0, -20));
             Ui.Title(card, title, new Vector2(0, size.y / 2 - 10));
             var l = layer;
-            Ui.CloseX(card, new Vector2(-size.x / 2 + 6, size.y / 2 - 4), () => Destroy(l.gameObject));
+            Ui.CloseX(card, new Vector2(-size.x / 2 + 6, size.y / 2 - 4), () => { Destroy(l.gameObject); onClose?.Invoke(); });
             Tween.Pop(card, 0.25f);
             return layer;
         }

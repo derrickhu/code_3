@@ -10,7 +10,9 @@ TrueTypeFontImporter:
   includeFontData: 1
   fontNames:
   - Ma Shan Zheng
-  fallbackFontReferences: []
+  - Shuihu Kai
+  fallbackFontReferences:
+  - {fileID: 12800000, guid: BnwfvCj/By1xs4fF9l0vNR6cPgn5I/6KoYTKBM9GeyO9P6KOLoZqu+Y=, type: 3}
   customCharacters: 
   fontRenderingMode: 0
   ascentCalculationMode: 1

@@ -31,6 +31,7 @@ namespace Rescue
             Application.targetFrameRate = 60;
             Input.multiTouchEnabled = false;
             _shots = Arg("-shots");
+            if (_shots != null) Sfx.Music = false;
             Save.Load();
             if (_shots != null)
             {
@@ -39,7 +40,6 @@ namespace Rescue
             }
             Tween.Init(gameObject);
             Sfx.Init(gameObject);
-            if (_shots == null) Analytics.Begin();
 
             _cam = Camera.main;
             if (_cam == null)
@@ -68,7 +68,29 @@ namespace Rescue
 
             Ui.Init(transform);
             if (_shots != null) StartCoroutine(Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : AutoShots());
-            else ShowHome();
+            else if (Application.isBatchMode)
+            {
+                Analytics.Begin();
+                ShowHome();
+            }
+            else
+            {
+                CloudSync.Imported += OnCloudImported;
+                CloudSync.Startup(ShowHome);
+            }
+        }
+
+        void OnDestroy()
+        {
+            CloudSync.Imported -= OnCloudImported;
+        }
+
+        void OnCloudImported()
+        {
+            if (_battle != null) return;
+            if (_home != null) Destroy(_home.gameObject);
+            _home = null;
+            ShowHome();
         }
 
         void LateUpdate() => Ui.FitPhone();
@@ -93,6 +115,7 @@ namespace Rescue
             if (_battle) Destroy(_battle.gameObject);
             _battle = null;
             _home = HomeScreen.Open(transform, StartBattle);
+            Sfx.PlayMenu();
         }
 
         void StartBattle(int chapter) => StartBattle(chapter, false);
@@ -101,19 +124,35 @@ namespace Rescue
         {
             if (_home) Destroy(_home.gameObject);
             _home = null;
+            _pending = Resolve(chapter);
+            if (BattleScreen.Epic(_pending)) Sfx.PlayEpic();
+            else Sfx.PlayStory();
             if (autoplay) OpenBattle(chapter, true);
             else StartCoroutine(MatchThenFight(chapter));
+        }
+
+        ChapterDef _pending;
+
+        /// <summary>剧情回直接取；越过终章的序号是聚义厅，按当前阵数和阵容现生成。</summary>
+        static ChapterDef Resolve(int chapter)
+        {
+            if (chapter < ChapterDef.StoryCount) return ChapterDef.All[Mathf.Max(0, chapter)];
+            return ChapterDef.Endless(Save.D.endlessRound, Save.Team(), (uint)Environment.TickCount);
         }
 
         void OpenBattle(int chapter, bool autoplay)
         {
             var loadout = autoplay ? new Loadout() : Save.D.TakeLoadout();
             Save.Write();
-            _battle = BattleScreen.Open(transform, ChapterDef.All[chapter], _cam, loadout, autoplay, r =>
+            var ch = _pending ?? Resolve(chapter);
+            _pending = null;
+            _battle = BattleScreen.Open(transform, ch, _cam, loadout, autoplay, r =>
                 ResultPanel.Show(r, () =>
                 {
                     ShowHome();
-                    if (!autoplay && _home != null) _home.ShowShop();
+                    if (autoplay || _home == null) return;
+                    if (JoinPanel.WantCodex) { JoinPanel.WantCodex = false; _home.ShowCodex(); }
+                    else _home.ShowShop();
                 }));
         }
 
@@ -127,7 +166,7 @@ namespace Rescue
 
         RectTransform BuildMatch(int chapter)
         {
-            var ch = ChapterDef.All[chapter];
+            var ch = _pending ?? Resolve(chapter);
             var layer = Ui.Fill(Ui.Root, Color.white, true, "match");
             var bg = layer.GetComponent<Image>();
             bg.sprite = Art.Img("home_bg2");
@@ -136,9 +175,10 @@ namespace Rescue
             Tween.Pop(title.transform, 0.35f);
             float mine = Save.D.battles <= 0 ? 0f : (float)Save.D.wins / Save.D.battles;
             float rivalRate = Mathf.Clamp01(0.36f + ch.RivalSkill * 0.42f);
-            int rivalTier = Mathf.Clamp(Save.D.tier + (ch.RivalSkill >= 0.55f ? 1 : 0), 0, Save.Tiers.Length - 1);
-            var me = Banner(layer, new Vector2(0, 250), "我", Save.RankName, Save.D.stars, mine, Ui.BtnBlue, null);
-            var rival = Banner(layer, new Vector2(0, -250), ch.RivalName, Save.Tiers[rivalTier], Mathf.RoundToInt(ch.RivalSkill * RankRules.Stars), rivalRate,
+            int rivalTier = RankRules.Clamp(Save.D.tier + (ch.RivalSkill >= 0.55f ? 1 : 0) - (ch.RivalSkill < 0.35f ? 1 : 0));
+            int rivalStars = Mathf.RoundToInt(ch.RivalSkill * RankRules.StarsAt(rivalTier));
+            var me = Banner(layer, new Vector2(0, 250), "我", Save.D.tier, Save.D.stars, mine, Ui.BtnBlue, null);
+            var rival = Banner(layer, new Vector2(0, -250), ch.RivalName, rivalTier, rivalStars, rivalRate,
                 Pal.Hex("D9452F"), ch.RivalName.Substring(0, 1));
             SlideIn(me, -1200f);
             SlideIn(rival, 1200f);
@@ -148,11 +188,11 @@ namespace Rescue
             Ui.Stroke(vsText, Ui.Edge, 5f);
             Tween.Pop(vs.transform, 0.35f, 0.3f);
             Tween.Pop(vsText.transform, 0.35f, 0.35f);
-            Ui.Label(layer, "对阵 · " + ch.Name, 44, Pal.Paper.A(0.9f), new Vector2(0, -520), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
+            Ui.Label(layer, (ch.IsEndless ? "" : "第" + BattleView.ToCn(ch.Index + 1) + "回 · ") + ch.Name, 44, Pal.Paper.A(0.9f), new Vector2(0, -520), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
             return layer;
         }
 
-        static RectTransform Banner(RectTransform layer, Vector2 pos, string name, string tier, int stars, float rate, Color bg, string glyph)
+        static RectTransform Banner(RectTransform layer, Vector2 pos, string name, int tier, int stars, float rate, Color bg, string glyph)
         {
             var holder = Ui.Rect(layer, "banner");
             holder.anchoredPosition = pos;
@@ -167,12 +207,13 @@ namespace Rescue
                 Ui.Label(av.transform, glyph, 120, Pal.Ink, new Vector2(0, 6), new Vector2(176, 176), TextAnchor.MiddleCenter, Fonts.Brush);
             }
             Ui.Stroke(Ui.Label(t, name, 66, Pal.Paper, new Vector2(-70, 50), new Vector2(400, 90), TextAnchor.MiddleLeft, Fonts.Brush), Ui.Edge, 3f);
-            Ui.Stroke(Ui.Label(t, tier, 42, Pal.Hex("FFE36A"), new Vector2(-70, -14), new Vector2(400, 60), TextAnchor.MiddleLeft, Fonts.Brush), Ui.Edge, 2.5f);
-            var st = Ui.Label(t, Ui.Stars(stars, RankRules.Stars), 48, Color.white, new Vector2(-70, -72), new Vector2(400, 60), TextAnchor.MiddleLeft);
+            Ui.Stroke(Ui.Label(t, RankRules.Name(tier), 42, Pal.Hex("FFE36A"), new Vector2(-70, -14), new Vector2(400, 60), TextAnchor.MiddleLeft, Fonts.Brush), Ui.Edge, 2.5f);
+            Ui.RankBadge(t, tier, new Vector2(300, 70), 0.55f);
+            var st = Ui.Label(t, Ui.RankStars(tier, stars), 48, Color.white, new Vector2(-70, -72), new Vector2(400, 60), TextAnchor.MiddleLeft);
             st.supportRichText = true;
             Ui.Stroke(st, Ui.Edge, 2f);
-            Ui.Label(t, "胜率", 32, Pal.Paper.A(0.85f), new Vector2(300, 36), new Vector2(200, 50));
-            Ui.Stroke(Ui.Label(t, (rate * 100f).ToString("0.0") + "%", 56, Pal.Paper, new Vector2(300, -28), new Vector2(240, 80)), Ui.Edge, 3f).fontStyle = FontStyle.Bold;
+            Ui.Label(t, "胜率", 32, Pal.Paper.A(0.85f), new Vector2(300, -4), new Vector2(200, 50));
+            Ui.Stroke(Ui.Label(t, (rate * 100f).ToString("0.0") + "%", 56, Pal.Paper, new Vector2(300, -60), new Vector2(240, 80)), Ui.Edge, 3f).fontStyle = FontStyle.Bold;
             return holder;
         }
 
@@ -203,7 +244,7 @@ namespace Rescue
 
         IEnumerator AutoShots()
         {
-            int chapter = int.TryParse(Arg("-chapter"), out var c) ? Mathf.Clamp(c, 0, ChapterDef.All.Length - 1) : 0;
+            int chapter = int.TryParse(Arg("-chapter"), out var c) ? Mathf.Clamp(c, 0, ChapterDef.StoryCount) : 0;
             Save.D.heroes.Add((int)HeroId.WuSong);
             Save.D.heroes.Add((int)HeroId.LinChong);
             ShowHome();
@@ -337,17 +378,18 @@ namespace Rescue
         IEnumerator UiShots()
         {
             Save.D.coins = 117;
-            Save.D.stars = 4;
-            Save.D.tier = 2;
-            Save.D.unlocked = 2;
+            Save.D.stars = 2;
+            Save.D.tier = 13;
             Save.D.claimDay = Save.Today;
-            Save.D.claimTier = 2;
+            Save.D.claimTier = 12;
             Save.D.claimStars = 3;
             Save.D.claimTaken = false;
-            foreach (var id in new[] { HeroId.WuSong, HeroId.LinChong, HeroId.LiKui, HeroId.HuaRong, HeroId.SunErNiang, HeroId.LuZhiShen })
-                Save.D.heroes.Add((int)id);
-            Save.D.weapons.AddRange(new[] { (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.LinChong, (int)HeroId.LiKui, (int)HeroId.LiKui, (int)HeroId.HuaRong });
+            for (int i = 0; i < 25; i++) Save.WinStory(i);
+            foreach (var id in Save.D.joined) Save.D.heroes.Add(id);
+            Save.D.weapons.AddRange(new[] { (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.LinChong, (int)HeroId.LiKui, (int)HeroId.LiKui, (int)HeroId.HuaRong,
+                (int)HeroId.LuZhiShen, (int)HeroId.ZhangHeng, (int)HeroId.SunErNiang });
             Save.D.armed.Add((int)HeroId.WuSong);
+            Save.D.armed.Add((int)HeroId.HuaRong);
             ShowHome();
             _home.ShowDaily();
             yield return new WaitForSecondsRealtime(1.2f);
@@ -363,6 +405,16 @@ namespace Rescue
             yield return Page(() => _home.ShowArmory(), "armory");
             yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.WuSong); }, "armory_detail");
             yield return Page(() => _home.ShowCodex(), "codex");
+            yield return Page(() => _home.ShowChapters(), "chapters");
+            yield return Page(() => JoinPanel.Show(new System.Collections.Generic.List<HeroId> { HeroId.LinChong }, 3, false, null), "join");
+            Destroy(Ui.Root.Find("join")?.gameObject);
+
+            for (int i = 25; i < ChapterDef.StoryCount; i++) Save.WinStory(i);
+            Save.D.endlessRound = 7;
+            Save.D.endlessBest = 12;
+            yield return Page(() => _home.ShowTeam(), "team");
+            yield return Page(() => JoinPanel.ShowSeats(null), "seats");
+            Destroy(Ui.Root.Find("seats")?.gameObject);
 
             Destroy(_home.gameObject);
             ShowHome();

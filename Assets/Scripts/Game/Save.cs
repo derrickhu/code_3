@@ -32,6 +32,15 @@ namespace Rescue
         public string claimDay = "";
         public int claimTier, claimStars;
         public bool claimTaken = true;
+        /// <summary>存档版本。2 起是梁山座次三十四阶、按回目入伙。</summary>
+        public int ver;
+        /// <summary>已入伙的好汉（好汉谱解锁）。heroes 只记“凑出过”。</summary>
+        public List<int> joined = new List<int>();
+        /// <summary>聚义厅：自选的五员大将、当前第几阵、最好成绩。</summary>
+        public List<int> team = new List<int>();
+        public int endlessRound = 1, endlessBest;
+        /// <summary>一百单八将聚齐后排座次的仪式只放一次。</summary>
+        public bool seated;
 
         public Loadout PeekLoadout()
         {
@@ -69,15 +78,40 @@ namespace Rescue
         const string Key = "rescue_save_v1";
         public static SaveData D { get; private set; }
 
-        public static readonly string[] Tiers = { "喽啰", "小头目", "步军头领", "马军头领", "八骠骑", "五虎将", "天罡星" };
+        public const int Version = 2;
 
-        public static string RankName => Tiers[Mathf.Clamp(D.tier, 0, Tiers.Length - 1)];
+        public static string RankName => RankRules.Name(D.tier);
+        public static int Major => RankRules.Major(D.tier);
+
+        public static bool HasLocal => PlayerPrefs.HasKey(Key);
+        public static string Raw => PlayerPrefs.GetString(Key, "");
 
         public static void Load()
         {
-            var json = PlayerPrefs.GetString(Key, "");
-            try { D = string.IsNullOrEmpty(json) ? new SaveData() : JsonUtility.FromJson<SaveData>(json); }
-            catch (Exception) { D = new SaveData(); }
+            D = Parse(PlayerPrefs.GetString(Key, ""));
+            Normalize();
+        }
+
+        /// <summary>用云端原文覆盖本地。失败时保持内存里的当前档。</summary>
+        public static bool ApplyCloud(string json)
+        {
+            var next = Parse(json);
+            if (next == null) return false;
+            D = next;
+            Normalize();
+            Persist();
+            return true;
+        }
+
+        static SaveData Parse(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            try { return JsonUtility.FromJson<SaveData>(json); }
+            catch (Exception) { return null; }
+        }
+
+        static void Normalize()
+        {
             if (D == null) D = new SaveData();
             if (D.heroes == null) D.heroes = new List<int>();
             if (D.shopOffer == null) D.shopOffer = new List<int>();
@@ -86,6 +120,23 @@ namespace Rescue
             if (D.weapons == null) D.weapons = new List<int>();
             if (D.armed == null) D.armed = new List<int>();
             D.armed.RemoveAll(id => WeaponCount(id) <= 0 || id < 0 || id >= HeroDef.All.Length);
+            if (D.joined == null) D.joined = new List<int>();
+            if (D.team == null) D.team = new List<int>();
+            if (D.ver < Version)
+            {
+                if (D.ver < 2)
+                {
+                    D.tier = RankRules.FromLegacy(D.tier);
+                    D.claimTier = RankRules.FromLegacy(D.claimTier);
+                    D.stars = Mathf.Clamp(D.stars, 0, RankRules.StarsAt(D.tier));
+                    D.unlocked = 0;
+                }
+                D.ver = Version;
+            }
+            D.tier = RankRules.Clamp(D.tier);
+            D.unlocked = Mathf.Clamp(D.unlocked, 0, ChapterDef.StoryCount);
+            D.team.RemoveAll(id => !Joined(id));
+            if (D.endlessRound < 1) D.endlessRound = 1;
             if (D.staminaRule < 1)
             {
                 if (D.stamina < Stamina.Max) D.stamina = Stamina.Max;
@@ -99,7 +150,13 @@ namespace Rescue
 
         public static void Write()
         {
-            if (Volatile) return;
+            if (Volatile || D == null) return;
+            Persist();
+            CloudSync.Touch();
+        }
+
+        static void Persist()
+        {
             PlayerPrefs.SetString(Key, JsonUtility.ToJson(D));
             PlayerPrefs.Save();
         }
@@ -165,14 +222,14 @@ namespace Rescue
             public int OldTier, OldStars;
         }
 
-        /// <summary>胜加星，满五星再胜升阶；败掉星，零星再败掉阶。</summary>
+        /// <summary>胜加星，满星再胜升阶；败掉星，零星再败降一小阶（不跌出大阶）。</summary>
         public static RankDelta ApplyResult(bool win)
         {
             var d = new RankDelta { OldTier = D.tier, OldStars = D.stars };
             D.battles++;
             if (win) D.wins++;
             int tier = D.tier, stars = D.stars;
-            RankRules.Apply(ref tier, ref stars, win, Tiers.Length, out d.Promoted, out d.Demoted);
+            RankRules.Apply(ref tier, ref stars, win, out d.Promoted, out d.Demoted);
             d.DroppedStar = d.Demoted || (!win && stars < d.OldStars);
             D.tier = tier;
             D.stars = stars;
@@ -184,15 +241,74 @@ namespace Rescue
         {
             if (D.claimDay == Today) return !D.claimTaken;
             bool first = string.IsNullOrEmpty(D.claimDay);
-            D.claimTier = Mathf.Clamp(D.tier, 0, Tiers.Length - 1);
-            D.claimStars = Mathf.Clamp(D.stars, 0, RankRules.Stars);
+            D.claimTier = RankRules.Clamp(D.tier);
+            D.claimStars = Mathf.Clamp(D.stars, 0, 99);
             D.claimDay = Today;
             D.claimTaken = first && D.battles <= 0;
             Write();
             return !D.claimTaken;
         }
 
-        public static int DailyCoins => 8 + D.claimTier * 8 + D.claimStars * 2;
+        public static int DailyCoins => 8 + RankRules.Major(D.claimTier) * 8 + RankRules.Sub(D.claimTier) * 3 + Mathf.Min(D.claimStars, 10) * 2;
+
+        public static bool Joined(int id) => D.joined.Contains(id);
+        public static bool Joined(HeroId id) => D.joined.Contains((int)id);
+        public static int JoinedCount => D.joined.Count;
+        public static bool StoryDone => D.unlocked >= ChapterDef.StoryCount;
+        /// <summary>一百单八将（不算隐藏的武大郎）是否聚齐。</summary>
+        public static bool AllSeated
+        {
+            get
+            {
+                foreach (var d in HeroDef.All) if (d.Rank > 0 && !Joined(d.Id)) return false;
+                return true;
+            }
+        }
+
+        /// <summary>赢下剧情回：解锁下一回，回目里的好汉入伙。返回新入伙的人。</summary>
+        public static List<HeroId> WinStory(int chapter)
+        {
+            var fresh = new List<HeroId>();
+            if (chapter < 0 || chapter >= ChapterDef.StoryCount) return fresh;
+            D.unlocked = Mathf.Max(D.unlocked, chapter + 1);
+            foreach (var id in ChapterDef.All[chapter].Joins)
+                if (!Joined(id)) { D.joined.Add((int)id); fresh.Add(id); }
+            return fresh;
+        }
+
+        /// <summary>聚义厅阵容：存档里的五人，不足就从已入伙里随机补。</summary>
+        public static List<HeroId> Team()
+        {
+            var t = new List<HeroId>();
+            foreach (var id in D.team) if (Joined(id) && t.Count < ChapterDef.TeamSize) t.Add((HeroId)id);
+            if (t.Count < ChapterDef.TeamSize) foreach (var id in RandomTeam(t)) if (t.Count < ChapterDef.TeamSize && !t.Contains(id)) t.Add(id);
+            return t;
+        }
+
+        /// <summary>随机五将：至少三个能出手的，名字尽量不重字，凑字更顺。</summary>
+        public static List<HeroId> RandomTeam(List<HeroId> keep = null)
+        {
+            var pick = keep == null ? new List<HeroId>() : new List<HeroId>(keep);
+            var pool = new List<HeroId>();
+            foreach (var id in D.joined) if (!pick.Contains((HeroId)id) && !HeroDef.Get((HeroId)id).Hidden) pool.Add((HeroId)id);
+            for (int i = pool.Count - 1; i > 0; i--)
+            {
+                int j = UnityEngine.Random.Range(0, i + 1);
+                (pool[i], pool[j]) = (pool[j], pool[i]);
+            }
+            int fighters = 0;
+            foreach (var id in pick) if (!HeroDef.Get(id).NoAttack) fighters++;
+            foreach (var id in pool)
+            {
+                if (pick.Count >= ChapterDef.TeamSize) break;
+                var d = HeroDef.Get(id);
+                int slotsLeft = ChapterDef.TeamSize - pick.Count;
+                if (d.NoAttack && fighters + slotsLeft <= 3) continue;
+                pick.Add(id);
+                if (!d.NoAttack) fighters++;
+            }
+            return pick;
+        }
 
         public static int WeaponCount(int hero)
         {
@@ -205,18 +321,29 @@ namespace Rescue
         public const int MaxArmed = 3;
         public const int RecycleCoins = 22;
 
+        public const int MaxWeapons = 60;
+
+        /// <summary>赢下或撑到第四波掉一件兵器：凑出过的好汉优先，品级越高越难掉。</summary>
         public static string RollWeapon(BattleResult r)
         {
             if (r.Quit || r.Wave < 4) return "";
-            HeroId pick = default;
-            bool found = false;
+            var cands = new List<HeroId>();
             foreach (var id in r.Formed)
-                if (!string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) { pick = id; found = true; break; }
-            if (!found)
-                foreach (var id in ChapterDef.All[Mathf.Clamp(r.Chapter, 0, ChapterDef.All.Length - 1)].Pool)
-                    if (!string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) { pick = id; found = true; break; }
-            if (!found || UnityEngine.Random.value > 0.72f) return "";
-            if (D.weapons.Count >= 24)
+                if (!string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) cands.Add(id);
+            if (cands.Count == 0 && r.Pool != null)
+                foreach (var id in r.Pool)
+                    if (!string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) cands.Add(id);
+            if (cands.Count == 0 || UnityEngine.Random.value > 0.72f) return "";
+            int total = 0;
+            foreach (var id in cands) total += Weapons.DropWeight(HeroDef.Get(id).WGrade);
+            int x = UnityEngine.Random.Range(0, total);
+            HeroId pick = cands[0];
+            foreach (var id in cands)
+            {
+                x -= Weapons.DropWeight(HeroDef.Get(id).WGrade);
+                if (x < 0) { pick = id; break; }
+            }
+            if (D.weapons.Count >= MaxWeapons)
             {
                 D.coins += RecycleCoins;
                 return "兵器囊已满，换成铜钱 " + RecycleCoins;

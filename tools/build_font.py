@@ -8,6 +8,10 @@ import re
 import shutil
 
 from fontTools import subset
+from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.recordingPen import RecordingPen
+from fontTools.pens.transformPen import TransformPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -22,6 +26,15 @@ FONTS = [
 ]
 
 EXTRA = "，。！？、：；「」『』（）《》—…·★☆↓→←↑×％+-/0123456789"
+
+# 马善政缺的左右结构字：从 donor 取 x 小于 split 的偏旁轮廓，再把 right 整字缩放进 donor 右半部件的框里。
+SYNTH = {
+    "Brush.ttf": {
+        "啰": ("喽", 400, "罗"),
+        "玘": ("玩", 400, "己"),
+        "珪": ("玩", 400, "圭"),
+    },
+}
 
 
 def collect_chars() -> str:
@@ -45,12 +58,68 @@ def rename(font: TTFont, family: str) -> None:
             rec.string = "Regular"
 
 
+def _contours(glyphs, name):
+    rec = RecordingPen()
+    glyphs[name].draw(rec)
+    out, cur = [], []
+    for op, args in rec.value:
+        cur.append((op, args))
+        if op in ("closePath", "endPath"):
+            b = BoundsPen(glyphs)
+            for o, a in cur:
+                getattr(b, o)(*a)
+            out.append((cur, b.bounds))
+            cur = []
+    return out
+
+
+def _union(boxes):
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def synthesize(font: TTFont, table: dict) -> str:
+    glyphs = font.getGlyphSet()
+    cmap = font.getBestCmap()
+    made = []
+    for ch, (donor, split, right) in table.items():
+        if ord(ch) in cmap or ord(donor) not in cmap or ord(right) not in cmap:
+            continue
+        parts = _contours(glyphs, cmap[ord(donor)])
+        left = [c for c, b in parts if b[2] < split]
+        box = _union([b for c, b in parts if b[2] >= split])
+        rb = BoundsPen(glyphs)
+        glyphs[cmap[ord(right)]].draw(rb)
+        r = rb.bounds
+        sx, sy = (box[2] - box[0]) / (r[2] - r[0]), (box[3] - box[1]) / (r[3] - r[1])
+        pen = TTGlyphPen(glyphs)
+        for contour in left:
+            for op, args in contour:
+                getattr(pen, op)(*args)
+        glyphs[cmap[ord(right)]].draw(TransformPen(pen, (sx, 0, 0, sy, box[0] - r[0] * sx, box[1] - r[1] * sy)))
+        name = f"uni{ord(ch):04X}"
+        glyf = font["glyf"]
+        glyf[name] = pen.glyph()
+        font["hmtx"][name] = font["hmtx"][cmap[ord(donor)]]
+        order = font.getGlyphOrder()
+        if name not in order:
+            font.setGlyphOrder(order + [name])
+        glyf.glyphOrder = font.getGlyphOrder()
+        for t in font["cmap"].tables:
+            if t.isUnicode():
+                t.cmap[ord(ch)] = name
+        made.append(ch)
+    return "".join(made)
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     LICENSES.mkdir(exist_ok=True)
     text = collect_chars()
     for src, dst, family, lic in FONTS:
         font = TTFont(SRC / src)
+        made = synthesize(font, SYNTH.get(dst, {}))
+        if made:
+            print(f"{dst}: 拼字 {made}")
         cmap = font.getBestCmap()
         missing = [c for c in text if ord(c) not in cmap and not c.isspace()]
         opts = subset.Options()

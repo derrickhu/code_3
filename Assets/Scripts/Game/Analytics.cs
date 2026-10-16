@@ -10,7 +10,7 @@ namespace Rescue
 {
     /// <summary>
     /// 经分上报。信封对齐 @gp/analytics-sdk，POST 到共用云函数 analytics-ingest。
-    /// 编辑器和截图模式不打点。还没有登录，日活用本机 anonymous_id。
+    /// gameKey 是 songjiang。编辑器和截图模式不打点。登录后 user_id 用云存档身份。
     /// </summary>
     public static class Analytics
     {
@@ -24,6 +24,7 @@ namespace Rescue
 
         static bool _ready;
         static bool _sessionStarted;
+        static string _userId = "";
         static bool _sending;
         static string _anonId;
         static string _sessionId;
@@ -36,12 +37,21 @@ namespace Rescue
         static readonly List<string> Queue = new List<string>();
         static Pump _pump;
 
-        public static void Begin()
+        public static void Begin() => BindUser("");
+
+        /// <summary>云登录结束后调用。有 userId 先打 login，再打 session_start。</summary>
+        public static void BindUser(string userId)
         {
             Ensure();
+            if (!string.IsNullOrEmpty(userId) && string.IsNullOrEmpty(_userId))
+            {
+                _userId = userId;
+                Track("login", Param.Of("from_anonymous", true));
+                Flush();
+            }
             if (_sessionStarted) return;
             _sessionStarted = true;
-            Track("session_start", Param.Of("entry", "main").Bool("with_user_id", false));
+            Track("session_start", Param.Of("entry", "main").Bool("with_user_id", !string.IsNullOrEmpty(_userId)));
             Flush();
         }
 
@@ -207,7 +217,7 @@ namespace Rescue
             sb.Append(",\"app_version\":").Append(Json(ver));
             sb.Append(",\"sdk_version\":").Append(Json(SdkVersion));
             sb.Append(",\"platform\":").Append(Json(PlatformName()));
-            sb.Append(",\"user_id\":\"\"");
+            sb.Append(",\"user_id\":").Append(Json(_userId ?? ""));
             sb.Append(",\"anonymous_id\":").Append(Json(_anonId));
             sb.Append(",\"session_id\":").Append(Json(_sessionId));
             sb.Append(",\"session_seq\":").Append(_seq.ToString(CultureInfo.InvariantCulture));

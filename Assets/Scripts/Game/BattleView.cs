@@ -732,7 +732,8 @@ namespace Rescue
                     if (mine && !boss)
                     {
                         Sfx.Play(Snd.Ult, 0.45f);
-                        Sfx.Play(UltSound((HeroId)ev.B), 0.85f, (HeroId)ev.B == HeroId.SunErNiang ? 0.8f : 1f);
+                        var ud = HeroDef.Get((HeroId)ev.B);
+                        Sfx.Play(UltSound(ud), 0.85f, ud.Look == Look.Poison ? 0.8f : 1f);
                         _shake = Mathf.Max(_shake, 0.9f);
                     }
                     if (_frames.TryGetValue(ev.A, out var fv)) fv.Glow();
@@ -765,6 +766,31 @@ namespace Rescue
                 case Ev.Buns:
                     if (mine) BunFly(World(ev.Side, ev.P), (int)ev.Val);
                     break;
+                case Ev.Heal:
+                {
+                    var at = CellWorld(ev.Side, M.Sides[ev.Side].Board.Goal.c, M.Sides[ev.Side].Board.Goal.r);
+                    Splat(at, 1.8f, Pal.Willow.A(0.45f), 0.8f);
+                    Ring(at, 2.2f, Pal.Willow, 0.5f, 45);
+                    FloatText(at + Vector2.up * 0.9f, "回血 +" + ev.Val, Pal.Willow, mine ? 0.36f : 0.28f, 1.3f);
+                    if (mine) Sfx.Play(Snd.UltHeal, 0.8f);
+                    break;
+                }
+                case Ev.Steal:
+                {
+                    var at = World(ev.Side, ev.P);
+                    FloatText(at + Vector2.up * 0.7f, (mine ? "偷来炊饼 +" : "被偷炊饼 -") + ev.Val, mine ? Pal.Gold : Pal.Red, 0.34f, 1.2f);
+                    if (mine) BunFly(at, (int)ev.Val);
+                    Sfx.Play(Snd.Rain, mine ? 0.6f : 0.3f, 1.3f);
+                    break;
+                }
+                case Ev.Bond:
+                {
+                    var at = World(ev.Side, ev.P);
+                    Ring(at, 3.6f, Pal.Hex("D9822B"), 0.65f, 45);
+                    Splat(at, 2.6f, Pal.GoldBright.A(0.35f), 0.9f);
+                    if (!mine) FloatText(at + new Vector2(0, -0.7f), "对手羁绊 " + ev.Text, Pal.RedDeep, 0.28f, 1.4f);
+                    break;
+                }
                 case Ev.Dismiss:
                     if (mine)
                     {
@@ -1407,12 +1433,19 @@ namespace Rescue
                 title = d.Name;
                 level = $"Lv.{h.Level}";
                 center = World(0, h.Pos);
-                bool armed = !string.IsNullOrEmpty(d.Weapon) && M.Player.Items.Armed != null && M.Player.Items.Armed.Contains((int)d.Id);
-                float wmul = armed ? 1.35f : 1f;
+                bool armed = M.Player.Armed(d);
+                int wlv = armed && M.Player.Items.WeaponLv != null && (int)d.Id < M.Player.Items.WeaponLv.Length ? Mathf.Max(1, M.Player.Items.WeaponLv[(int)d.Id]) : 1;
+                float wmul = armed ? HeroDef.ArmedMul(wlv, d.WGrade) : 1f;
+                float bond = M.Player.BondBonus(d.Id);
+                wmul *= 1f + bond;
                 string xp = h.Level >= UnitDef.MaxLevel ? "已满级" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}";
                 string atk = d.NoAttack ? "不出手" : $"攻击力：{d.DamageAt(h.Level) * (h.OnWater ? d.WaterBonus : 1f) * wmul:0.#}　攻速：{1f / d.Cooldown:0.0}次/秒";
-                string gear = armed ? $"\n兵器 {d.Weapon}　伤害 +35%" : "";
-                body = $"{(d.Disha ? "地煞星" : "天罡星")}·{d.Nick}　类型：{d.TypeLabel}\n{atk}\n{xp}　满级{UnitDef.MaxLevel}级\n{d.Skill}{gear}";
+                string gear = armed ? $"\n兵器 {d.Weapon}（{Weapons.Grades[Mathf.Clamp(d.WGrade, 0, 3)]}）伤害 +{Mathf.RoundToInt((HeroDef.ArmedMul(wlv, d.WGrade) - 1f) * 100f)}%\n{Weapons.AffixText(d.WKind)}" : "";
+                string bonds = "";
+                foreach (var bd in M.Player.ActiveBonds) if (System.Array.IndexOf(bd.Members, d.Id) >= 0) bonds += (bonds.Length > 0 ? "、" : "") + bd.Name;
+                if (bonds.Length > 0) bonds = $"\n羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
+                string star = d.Rank > 0 ? d.Star : "隐藏好汉";
+                body = $"{star}·{d.Nick}　类型：{d.TypeLabel}\n{atk}\n{xp}　满级{UnitDef.MaxLevel}级\n{d.Skill}{gear}{bonds}";
                 range = d.NoAttack ? 0f : d.RangeWith(M.Player.Items.Far);
                 style = d.Disha ? RangeStyle.Disha : RangeStyle.Hero;
             }
@@ -1624,7 +1657,10 @@ namespace Rescue
         public static string ToCn(int n)
         {
             string[] d = { "零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十" };
-            return n >= 0 && n <= 10 ? d[n] : n.ToString();
+            if (n >= 0 && n <= 10) return d[n];
+            if (n < 20) return "十" + d[n - 10];
+            if (n < 100) return d[n / 10] + "十" + (n % 10 == 0 ? "" : d[n % 10]);
+            return n.ToString();
         }
 
         public Vector2 RecruitButtonPos => _recruitBtn.transform.localPosition;
@@ -1913,7 +1949,7 @@ namespace Rescue
                 _arm = null;
                 if (armed)
                 {
-                    _armBg = Gfx.Sprite(_root, Art.Rounded, Pal.Hex("3D7BBF"), Vector2.zero, new Vector2(0.72f, 0.32f), 27);
+                    _armBg = Gfx.Sprite(_root, Art.Rounded, Ui.GradeColor(h.Def.WGrade), Vector2.zero, new Vector2(0.72f, 0.32f), 27);
                     _arm = Gfx.Text(_root, "用" + h.Def.WeaponTag, Fonts.Kai, 0.2f, Pal.Paper, Vector2.zero, 28);
                 }
                 _side = side;

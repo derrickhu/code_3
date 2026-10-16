@@ -1,0 +1,13 @@
+{
+  "name": "songjiang-api",
+  "version": "1.0.0",
+  "description": "营救宋江 CloudBase HTTP 后端：login + save pull/push",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.5.0",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

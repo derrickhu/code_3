@@ -38,7 +38,7 @@ namespace Rescue
             Ui.Anchor(tl, 0f, 1f);
             BuildHud(tl, out _shopCoins, out _shopStamina, true);
 
-            var body = Ui.Rect(_shop, "body");
+            var body = Ui.Rect(Ui.Fit(_shop, 1740), "body");
             body.sizeDelta = new Vector2(960, 1500);
             body.anchoredPosition = new Vector2(0, -40);
             var bust = Ui.Icon(body, "merchant_bust", 230, new Vector2(30, 700));

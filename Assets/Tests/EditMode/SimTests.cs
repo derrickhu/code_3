@@ -6,6 +6,14 @@ namespace Rescue.Tests
     public class SimTests
     {
         static Match NewMatch(int chapter = 0) => new Match(ChapterDef.All[chapter], 42);
+        static Match PoolMatch(params HeroId[] pool) => new Match(ChapterDef.All[0].WithPool(pool), 42);
+
+        static ChapterDef Named(string name)
+        {
+            foreach (var ch in ChapterDef.All) if (ch.Name == name) return ch;
+            Assert.Fail("没有这一回：" + name);
+            return null;
+        }
 
         static void Clear(Side s)
         {
@@ -87,7 +95,7 @@ namespace Rescue.Tests
         [Test]
         public void HeroFormsOnlyInReadingOrder()
         {
-            var s = NewMatch().Player;
+            var s = PoolMatch(HeroId.WuSong).Player;
             Clear(s);
             var at = FindRun(s, 2, new CellPos(1, 0));
             s.Board.Pieces[at.c, at.r] = Piece.Hero('松');
@@ -103,7 +111,7 @@ namespace Rescue.Tests
         [Test]
         public void VerticalNameReadsTopToBottom()
         {
-            var s = NewMatch().Player;
+            var s = new Match(Named("清风寨").WithPool(HeroId.HuaRong), 42).Player;
             Clear(s);
             var at = FindRun(s, 2, new CellPos(0, -1));
             s.Board.Pieces[at.c, at.r] = Piece.Hero('花');
@@ -116,7 +124,7 @@ namespace Rescue.Tests
         [Test]
         public void MirroredSideReadsInScreenOrder()
         {
-            var s = NewMatch().Rival;
+            var s = PoolMatch(HeroId.HuaRong).Rival;
             Clear(s);
             var at = FindRun(s, 2, new CellPos(-1, 0));
             s.Board.Pieces[at.c, at.r] = Piece.Hero('花');
@@ -128,7 +136,7 @@ namespace Rescue.Tests
         [Test]
         public void SharedSurnameServesOnlyOneHero()
         {
-            var s = NewMatch(2).Player;
+            var s = PoolMatch(HeroId.ZhangShun, HeroId.ZhangHeng).Player;
             Clear(s);
             var at = FindRun(s, 3, new CellPos(1, 0));
             s.Board.Pieces[at.c + 1, at.r] = Piece.Hero('张');
@@ -146,7 +154,7 @@ namespace Rescue.Tests
         [Test]
         public void ThreeCharNameForms()
         {
-            var s = NewMatch(2).Player;
+            var s = PoolMatch(HeroId.RuanXiaoQi).Player;
             Clear(s);
             var at = FindRun(s, 3, new CellPos(1, 0));
             s.Board.Pieces[at.c, at.r] = Piece.Hero('阮');
@@ -161,7 +169,7 @@ namespace Rescue.Tests
         [Test]
         public void HeroSurvivesUnrelatedChanges_AndLevelIsMinOfChars()
         {
-            var s = NewMatch().Player;
+            var s = PoolMatch(HeroId.WuSong).Player;
             Clear(s);
             var at = FindRun(s, 2, new CellPos(1, 0));
             s.Board.Pieces[at.c, at.r] = Piece.Hero('武', 2);
@@ -245,7 +253,7 @@ namespace Rescue.Tests
         [Test]
         public void HeroGainsXpAndLevelsUpAllChars()
         {
-            var m = NewMatch();
+            var m = PoolMatch(HeroId.WuSong);
             var s = m.Player;
             Clear(s);
             var at = FindRun(s, 2, new CellPos(1, 0));
@@ -317,7 +325,9 @@ namespace Rescue.Tests
         [Test]
         public void NemesisDealsFiveTimesToBoss()
         {
-            var m = NewMatch();
+            var ch = ChapterDef.All[0].WithPool(HeroId.HuaRong);
+            ch.Boss = new BossDef { Name = ch.Boss.Name, Title = ch.Boss.Title, Skill = ch.Boss.Skill, Nemesis = HeroId.HuaRong };
+            var m = new Match(ch, 42);
             var s = m.Player;
             Clear(s);
             m.SpawnOn(s, EnemyKind.Boss, 3f);
@@ -334,7 +344,7 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void AiVsAiMatchesEndInReasonableTime([Values(0, 1, 2)] int chapter)
+        public void AiVsAiMatchesEndInReasonableTime([Values(0, 1, 2, 24, 40, 56)] int chapter)
         {
             var m = new Match(ChapterDef.All[chapter], 7);
             var a = new RivalAI(m.Player, 0.8f, 11);
@@ -377,47 +387,152 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void RankDropsStarAndTier()
+        public void RankStarsPromoteAndNeverLeaveMajor()
         {
-            int tier = 2, stars = 0;
-            RankRules.Apply(ref tier, ref stars, false, 7, out bool up, out bool down);
-            Assert.IsFalse(up);
-            Assert.IsTrue(down);
-            Assert.AreEqual(1, tier);
-            Assert.AreEqual(4, stars);
-
-            RankRules.Apply(ref tier, ref stars, false, 7, out up, out down);
+            int tier = 0, stars = 0;
+            RankRules.Apply(ref tier, ref stars, false, out bool up, out bool down);
+            Assert.AreEqual(0, tier, "新手败了不掉");
             Assert.IsFalse(down);
-            Assert.AreEqual(1, tier);
-            Assert.AreEqual(3, stars);
 
-            tier = 0;
-            stars = 0;
-            RankRules.Apply(ref tier, ref stars, false, 7, out up, out down);
-            Assert.IsFalse(down);
-            Assert.AreEqual(0, tier);
-            Assert.AreEqual(0, stars);
-
-            tier = 1;
-            stars = 5;
-            RankRules.Apply(ref tier, ref stars, true, 7, out up, out down);
+            for (int i = 0; i < RankRules.StarsAt(0); i++) RankRules.Apply(ref tier, ref stars, true, out up, out down);
+            Assert.AreEqual(RankRules.StarsAt(0), stars);
+            RankRules.Apply(ref tier, ref stars, true, out up, out down);
             Assert.IsTrue(up);
-            Assert.AreEqual(2, tier);
-            Assert.AreEqual(0, stars);
-
-            tier = 6;
-            stars = 5;
-            RankRules.Apply(ref tier, ref stars, true, 7, out up, out down);
-            Assert.IsFalse(up);
-            Assert.AreEqual(6, tier);
-            Assert.AreEqual(5, stars);
-
-            tier = 1;
-            stars = 4;
-            RankRules.Apply(ref tier, ref stars, true, 7, out up, out down);
-            Assert.IsFalse(up);
             Assert.AreEqual(1, tier);
-            Assert.AreEqual(5, stars);
+            Assert.AreEqual(0, stars);
+            Assert.AreEqual("喽啰·贰", RankRules.Name(tier));
+
+            tier = 4 * RankRules.SubPerMajor + 1;
+            stars = 0;
+            RankRules.Apply(ref tier, ref stars, false, out up, out down);
+            Assert.IsTrue(down);
+            Assert.AreEqual(4 * RankRules.SubPerMajor, tier);
+            Assert.AreEqual(RankRules.StarsAt(tier) - 1, stars);
+
+            stars = 0;
+            RankRules.Apply(ref tier, ref stars, false, out up, out down);
+            Assert.IsFalse(down, "大阶最低一小阶不再往下掉");
+            Assert.AreEqual(4 * RankRules.SubPerMajor, tier);
+
+            tier = RankRules.Top;
+            stars = 40;
+            RankRules.Apply(ref tier, ref stars, true, out up, out down);
+            Assert.AreEqual(RankRules.Top, tier, "天魁星封顶");
+            Assert.AreEqual(41, stars);
+            Assert.AreEqual("天魁星", RankRules.Name(tier));
+
+            Assert.AreEqual(12, RankRules.Majors.Length);
+            Assert.AreEqual(RankRules.Count, RankRules.Top + 1);
+            for (int t = 0; t + 1 < RankRules.Count; t++)
+                Assert.Greater(RankRules.Score(t + 1, 0), RankRules.Score(t, RankRules.StarsAt(t)), "升阶分必须高过满星");
+            Assert.AreEqual(0, RankRules.FromLegacy(0));
+            Assert.AreEqual(10 * RankRules.SubPerMajor, RankRules.FromLegacy(6));
+        }
+
+        [Test]
+        public void HundredEightHeroesHaveUniqueRanks()
+        {
+            var seen = new bool[109];
+            int ranked = 0;
+            foreach (var d in HeroDef.All)
+            {
+                Assert.IsFalse(string.IsNullOrEmpty(d.Name), d.Id.ToString());
+                if (d.Rank <= 0) { Assert.IsTrue(d.Hidden, d.Name + " 没座次就该是隐藏好汉"); continue; }
+                Assert.That(d.Rank, Is.InRange(1, 108), d.Name);
+                Assert.IsFalse(seen[d.Rank], d.Name + " 座次重复");
+                seen[d.Rank] = true;
+                ranked++;
+                Assert.IsFalse(string.IsNullOrEmpty(d.Bio), d.Name + " 缺生平");
+                Assert.IsFalse(string.IsNullOrEmpty(d.Nick), d.Name + " 缺绰号");
+                Assert.AreEqual(d.Rank > 36, d.Disha, d.Name);
+            }
+            Assert.AreEqual(108, ranked);
+        }
+
+        [Test]
+        public void StoryJoinsEveryHeroExactlyOnce()
+        {
+            var joins = new int[HeroDef.All.Length];
+            foreach (var ch in ChapterDef.All)
+                foreach (var id in ch.Joins)
+                {
+                    joins[(int)id]++;
+                    Assert.Contains(id, ch.Pool, $"{ch.Name}：入伙的 {HeroDef.Get(id).Name} 应在本回出场");
+                }
+            foreach (var d in HeroDef.All)
+            {
+                if (d.Rank > 0) Assert.AreEqual(1, joins[(int)d.Id], d.Name + " 入伙次数不对");
+                else Assert.LessOrEqual(joins[(int)d.Id], 1, d.Name + " 隐藏好汉最多入伙一次");
+            }
+            Assert.AreEqual(ChapterDef.All[ChapterDef.StoryCount - 1].Name, "蓼儿洼", "剧情应以蓼儿洼收尾");
+        }
+
+        [Test]
+        public void ChapterPoolsStaySmallAndNemesisCanFight()
+        {
+            foreach (var ch in ChapterDef.All)
+            {
+                Assert.That(ch.Pool.Length, Is.InRange(2, 6), ch.Name + " 池子大小");
+                Assert.Contains(ch.Boss.Nemesis, ch.Pool, ch.Name + " 克星不在池里");
+                Assert.IsFalse(HeroDef.Get(ch.Boss.Nemesis).NoAttack, ch.Name + " 克星不能出手");
+                int fighters = 0;
+                foreach (var id in ch.Pool) if (!HeroDef.Get(id).NoAttack) fighters++;
+                Assert.GreaterOrEqual(fighters, 2, ch.Name + " 能出手的太少");
+                Assert.IsFalse(string.IsNullOrEmpty(ch.Story), ch.Name);
+                Assert.IsFalse(string.IsNullOrEmpty(ch.Hui), ch.Name);
+            }
+            for (int i = 1; i < ChapterDef.StoryCount; i++)
+                Assert.GreaterOrEqual(ChapterDef.All[i].RivalSkill, ChapterDef.All[i - 1].RivalSkill, "难度应逐回不降");
+        }
+
+        [Test]
+        public void EndlessUsesChosenTeamAndRamps()
+        {
+            var team = new[] { HeroId.WuSong, HeroId.LinChong, HeroId.HuaRong, HeroId.LiKui, HeroId.WuYong };
+            var a = ChapterDef.Endless(1, team, 5);
+            var b = ChapterDef.Endless(30, team, 5);
+            Assert.IsTrue(a.IsEndless);
+            CollectionAssert.AreEquivalent(team, a.Pool);
+            Assert.Contains(a.Boss.Nemesis, a.Pool);
+            Assert.IsFalse(HeroDef.Get(a.Boss.Nemesis).NoAttack);
+            Assert.Greater(b.RivalSkill, a.RivalSkill);
+            var m = new Match(a, 9);
+            Assert.Greater(new Board(a.Map).Path.Count, 10);
+            Assert.AreEqual(5, m.Player.Pool.Count);
+        }
+
+        [Test]
+        public void BondBoostsDamageOnlyWhenMembersFormed()
+        {
+            var m = PoolMatch(HeroId.RuanXiaoEr, HeroId.RuanXiaoWu, HeroId.RuanXiaoQi);
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            var spots = new System.Collections.Generic.List<CellPos>();
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (s.Board.Placeable(c, r) && s.Board.Placeable(c + 1, r) && s.Board.Placeable(c + 2, r)) spots.Add(new CellPos(c, r));
+            Assert.GreaterOrEqual(spots.Count, 1);
+            var names = new[] { "阮小二", "阮小五", "阮小七" };
+            int placed = 0;
+            var used = new System.Collections.Generic.HashSet<(int, int)>();
+            foreach (var p in spots)
+            {
+                if (placed >= 3) break;
+                if (used.Contains((p.c, p.r)) || used.Contains((p.c + 1, p.r)) || used.Contains((p.c + 2, p.r))) continue;
+                for (int k = 0; k < 3; k++)
+                {
+                    s.Board.Pieces[p.c + k, p.r] = Piece.Hero(names[placed][k]);
+                    used.Add((p.c + k, p.r));
+                }
+                for (int k = -1; k <= 3; k++) used.Add((p.c + k, p.r));
+                placed++;
+            }
+            if (placed < 3) Assert.Inconclusive("地图放不下三个三字名");
+            s.RecomputeHeroes();
+            Assert.AreEqual(3, s.Heroes.Count);
+            Assert.Greater(s.BondBonus(HeroId.RuanXiaoQi), 0f, "阮氏三雄应触发");
+            Assert.Contains("阮氏三雄", s.ActiveBonds.ConvertAll(x => x.Name));
         }
 
         [Test]
@@ -439,6 +554,16 @@ namespace Rescue.Tests
             Assert.Greater(HeroDef.ArmedMul(1), 1.35f);
             Assert.Greater(HeroDef.ArmedMul(5), HeroDef.ArmedMul(4));
             Assert.AreEqual(HeroDef.ArmedMul(5), HeroDef.ArmedMul(9), 0.001f);
+            for (int g = 1; g < Weapons.Grades.Length; g++)
+                Assert.Greater(HeroDef.ArmedMul(1, g), HeroDef.ArmedMul(1, g - 1), "品级越高底子越厚");
+            foreach (var d in HeroDef.All)
+            {
+                if (string.IsNullOrEmpty(d.Weapon)) continue;
+                Assert.AreNotEqual(WeaponKind.None, d.WKind, d.Name + " 兵器没有分类");
+                var aff = Weapons.Affix(d);
+                Assert.GreaterOrEqual(aff.Dmg, 0.9f, d.Name);
+                Assert.Greater(aff.Cd, 0f, d.Name);
+            }
         }
 
         [Test]
@@ -459,7 +584,9 @@ namespace Rescue.Tests
         [Test]
         public void ResistBossHitIsMarkedHalf()
         {
-            var m = NewMatch(2);
+            var ch = Named("白龙庙");
+            Assert.AreEqual(BossSkill.Resist, ch.Boss.Skill);
+            var m = new Match(ch.WithPool(HeroId.LiKui, ch.Boss.Nemesis), 42);
             var s = m.Player;
             Clear(s);
             m.SpawnOn(s, EnemyKind.Boss, 2f);

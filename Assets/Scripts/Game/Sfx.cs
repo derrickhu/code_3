@@ -6,8 +6,8 @@ namespace Rescue
     public enum Snd
     {
         Tap, Recruit, Place, Merge, Hero, Hit, Kill, Leak, Rain, Ult, Win, Lose, Staff, Warn,
-        Dao, Spear, Bow, ArrowHit, Horse, Axe, Smash, Water, FireHit, Lasso, Fist, Dart, Poison, Crit,
-        UltFire, UltWater, UltWind, UltWhirl, UltMagic, UltSmash,
+        Dao, Spear, Bow, ArrowHit, Horse, Axe, Smash, Water, FireHit, Lasso, Fist, Dart, Poison, Crit, Whip, Hammer, Sword, Stone,
+        UltFire, UltWater, UltWind, UltWhirl, UltMagic, UltSmash, UltThunder, UltCannon, UltHeal, UltDrum, Join, RankUp,
     }
 
     /// <summary>界面音是程序合成的木鱼、锣、鼓、铜钱；兵器和招式音从 Resources/Sfx 读录音，读不到时退回合成音。</summary>
@@ -19,8 +19,18 @@ namespace Rescue
         readonly Dictionary<Snd, float> _last = new Dictionary<Snd, float>();
         AudioSource[] _src;
         int _next;
+        enum Bed { None, Menu, Story, Battle, Crisis, Epic, Victory, Defeat }
+
+        AudioSource _music;
+        AudioClip _menu, _story, _battle, _crisis, _epic, _victory, _defeat;
+        Bed _want;
+        float _menuAt, _seek = -1f;
+        bool _played;
+        const float MusicVol = 0.4f;
 
         public static bool On = true;
+        /// <summary>截图等无人听的场合关掉，避免去读那首两分多钟的曲子。</summary>
+        public static bool Music = true;
 
         public static void Init(GameObject host)
         {
@@ -38,6 +48,115 @@ namespace Rescue
             var src = _i._src[_i._next++ % _i._src.Length];
             src.pitch = pitch * Random.Range(0.96f, 1.04f);
             src.PlayOneShot(_i._clips[s], vol);
+        }
+
+        /// <summary>主界面「梁山泊」。已经在放就接着放，从别处回来从上次的位置淡入。</summary>
+        public static void PlayMenu() => _i?.Want(Bed.Menu);
+
+        /// <summary>回目简报、好汉入伙、小课堂用的「替天行道」。已经在放就不重头。</summary>
+        public static void PlayStory() => _i?.Want(Bed.Story);
+
+        /// <summary>开战之后的「聚义」。已经在放就不重头，音量压低一点，给刀枪声留位置。</summary>
+        public static void PlayBattle() => _i?.Want(Bed.Battle);
+
+        /// <summary>头目或宋江告急时的「大闹」。已经在放就不重头。</summary>
+        public static void PlayCrisis() => _i?.Want(Bed.Crisis);
+
+        /// <summary>聚义厅、车轮战、终章和排座次用的「百八聚义」。已经在放就不重头。</summary>
+        public static void PlayEpic() => _i?.Want(Bed.Epic);
+
+        /// <summary>赢了之后的「凯旋」，只放一遍，放完就静着。</summary>
+        public static void PlayVictory() => _i?.Want(Bed.Victory);
+
+        /// <summary>输了之后的「败走」，只放一遍，放完就静着。</summary>
+        public static void PlayDefeat() => _i?.Want(Bed.Defeat);
+
+        /// <summary>淡出当前的曲子。</summary>
+        public static void StopMusic() => _i?.Want(Bed.None);
+
+        void Want(Bed bed)
+        {
+            if (!Music && bed != Bed.None) return;
+            EnsureMusic();
+            if (bed == Bed.Menu && _menu == null) return;
+            if (bed == Bed.Story && _story == null) return;
+            if (bed == Bed.Battle && _battle == null) return;
+            if (bed == Bed.Crisis && _crisis == null) return;
+            if (bed == Bed.Epic && _epic == null) return;
+            if (bed == Bed.Victory && _victory == null) return;
+            if (bed == Bed.Defeat && _defeat == null) return;
+            _want = bed;
+        }
+
+        void EnsureMusic()
+        {
+            if (_music == null)
+            {
+                _music = gameObject.AddComponent<AudioSource>();
+                _music.playOnAwake = false;
+                _music.loop = true;
+                _music.spatialBlend = 0f;
+                _music.volume = 0f;
+            }
+            if (_menu == null) _menu = Resources.Load<AudioClip>("Music/menu");
+            if (_story == null) _story = Resources.Load<AudioClip>("Music/story");
+            if (_battle == null) _battle = Resources.Load<AudioClip>("Music/battle");
+            if (_crisis == null) _crisis = Resources.Load<AudioClip>("Music/crisis");
+            if (_epic == null) _epic = Resources.Load<AudioClip>("Music/epic");
+            if (_victory == null) _victory = Resources.Load<AudioClip>("Music/victory");
+            if (_defeat == null) _defeat = Resources.Load<AudioClip>("Music/defeat");
+        }
+
+        AudioClip Wanted => _want switch
+        {
+            Bed.Menu => _menu,
+            Bed.Story => _story,
+            Bed.Battle => _battle,
+            Bed.Crisis => _crisis,
+            Bed.Epic => _epic,
+            Bed.Victory => _victory,
+            Bed.Defeat => _defeat,
+            _ => null,
+        };
+
+        float WantedVol => _want == Bed.Battle || _want == Bed.Crisis ? 0.3f : _want == Bed.Epic ? 0.33f : MusicVol;
+
+        void Update()
+        {
+            if (_music == null) return;
+            if (!On)
+            {
+                _music.volume = Mathf.MoveTowards(_music.volume, 0f, Time.unscaledDeltaTime);
+                if (_music.volume <= 0.001f && _music.isPlaying) _music.Pause();
+                return;
+            }
+            var clip = Wanted;
+            bool sting = _want == Bed.Victory || _want == Bed.Defeat;
+            if (_music.clip != clip)
+            {
+                if (_music.isPlaying && _music.volume > 0.02f)
+                {
+                    _music.volume = Mathf.MoveTowards(_music.volume, 0f, Time.unscaledDeltaTime * (sting ? 2f : 0.8f));
+                    return;
+                }
+                if (_music.clip == _menu) _menuAt = _music.time;
+                _music.clip = clip;
+                _music.volume = 0f;
+                if (clip == null) { _seek = -1f; _music.Stop(); return; }
+                _seek = clip == _menu ? _menuAt : 0f;
+                _music.loop = clip != _victory && clip != _defeat;
+                _music.Play();
+                _played = false;
+            }
+            if (clip == null) return;
+            if (_seek >= 0f && _music.clip.loadState == AudioDataLoadState.Loaded)
+            {
+                _music.time = Mathf.Clamp(_seek, 0f, Mathf.Max(0f, _music.clip.length - 0.1f));
+                _seek = -1f;
+            }
+            if (_music.isPlaying) _played = true;
+            _music.volume = Mathf.MoveTowards(_music.volume, WantedVol, Time.unscaledDeltaTime * (sting ? 3f : 0.55f));
+            if (!_music.isPlaying && (_music.loop || !_played)) _music.Play();
         }
 
         void Build()
@@ -91,6 +210,16 @@ namespace Rescue
             Load(Snd.UltWhirl, "ult_whirl", Snd.Ult);
             Load(Snd.UltMagic, "ult_magic", Snd.Merge);
             Load(Snd.UltSmash, "ult_smash", Snd.Ult);
+            Load(Snd.Whip, "whip", Snd.Hit);
+            Load(Snd.Hammer, "hammer", Snd.Smash);
+            Load(Snd.Sword, "sword", Snd.Dao);
+            Load(Snd.Stone, "stone", Snd.Dart);
+            Load(Snd.UltThunder, "ult_thunder", Snd.UltMagic);
+            Load(Snd.UltCannon, "ult_cannon", Snd.UltFire);
+            Load(Snd.UltHeal, "ult_heal", Snd.Merge);
+            Load(Snd.UltDrum, "ult_drum", Snd.Leak);
+            Load(Snd.Join, "join", Snd.Hero);
+            Load(Snd.RankUp, "rank_up", Snd.Win);
         }
 
         void Load(Snd s, string file, Snd fallback)

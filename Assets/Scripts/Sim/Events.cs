@@ -4,7 +4,7 @@ namespace Rescue.Sim
     {
         Recruit, Merge, HeroFormed, Attack, HeroAttack, Hit, Kill, Leak, Rain, Ult,
         WaveStart, BossSpawn, EliteWarn, Dig, Buns, ItemUsed, End, Dismiss,
-        HeroLevel, Shovels, Rescue, Baozi,
+        HeroLevel, Shovels, Rescue, Baozi, Bond, Heal, Steal,
     }
 
     /// <summary>A 通常是棋子 / 敌人 / 好汉的 Id；P、Q 是所在半区自己的格子坐标。</summary>

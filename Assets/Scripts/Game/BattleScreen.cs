@@ -9,6 +9,9 @@ namespace Rescue
     public sealed class BattleResult
     {
         public int Chapter;
+        /// <summary>聚义厅第几阵；0 是剧情回。</summary>
+        public int Round;
+        public HeroId[] Pool;
         public bool Win;
         public bool Quit;
         public int Wave, Kills, Rains;
@@ -31,7 +34,8 @@ namespace Rescue
         Text _hintText;
         readonly Queue<Action> _banners = new Queue<Action>();
         float _bannerCd;
-        bool _started, _ending;
+        bool _started, _ending, _hot;
+        float _calm;
         Tut? _tut;
         float _tutT;
         float _ringT;
@@ -55,8 +59,8 @@ namespace Rescue
             uint seed = (uint)(DateTime.Now.Ticks & 0x7fffffff);
             M = new Match(ch, seed, items);
             M.Hold = true;
-            M.Rival.IncomeMul = Mathf.Min(1.05f, ch.RivalIncome + Save.D.tier * 0.03f);
-            float skill = Mathf.Clamp01(ch.RivalSkill + Save.D.tier * 0.04f);
+            M.Rival.IncomeMul = Mathf.Min(1.12f, ch.RivalIncome + Save.Major * 0.012f);
+            float skill = Mathf.Clamp01(ch.RivalSkill + Save.Major * 0.015f);
             _rival = new RivalAI(M.Rival, skill, seed + 99);
             if (Autoplay) _auto = new RivalAI(M.Player, 0.9f, seed + 7);
 
@@ -86,6 +90,7 @@ namespace Rescue
 
         void Begin()
         {
+            PlayCalm();
             _started = true;
             M.Hold = false;
             Analytics.LevelStart(M.Chapter.Index + 1, M.Chapter.Name);
@@ -98,7 +103,7 @@ namespace Rescue
 
         void Update()
         {
-            if (!_started || M.Over) { UpdateBanners(); return; }
+            if (!_started || M.Over || _ending) { UpdateBanners(); return; }
             if (!View.Paused && !M.Hold)
             {
                 float dt = Mathf.Min(Time.deltaTime, 0.1f) * View.Speed;
@@ -107,6 +112,34 @@ namespace Rescue
             }
             UpdateTutorial();
             UpdateBanners();
+            UpdateMusic();
+        }
+
+        /// <summary>头目还在场，或宋江只剩最后一颗心、官兵摸到跟前，就换成「大闹」。险情过去四秒再回到「聚义」，避免来回切。</summary>
+        void UpdateMusic()
+        {
+            bool hot = M.Player.InDanger || BossAlive();
+            if (hot) { _hot = true; _calm = 0f; }
+            else if (_hot) _calm += Time.unscaledDeltaTime;
+            if (hot || (_hot && _calm < 4f)) Sfx.PlayCrisis();
+            else { _hot = false; PlayCalm(); }
+        }
+
+        /// <summary>聚义厅车轮战和终章「蓼儿洼」平时放「百八聚义」，其余各回放「聚义」。</summary>
+        void PlayCalm()
+        {
+            if (Epic(M.Chapter)) Sfx.PlayEpic();
+            else Sfx.PlayBattle();
+        }
+
+        public static bool Epic(ChapterDef ch) => ch.IsEndless || ch.Index == ChapterDef.StoryCount - 1;
+
+        bool BossAlive()
+        {
+            foreach (var s in new[] { M.Player, M.Rival })
+                foreach (var e in s.Enemies)
+                    if (!e.Dead && e.Def.Kind == EnemyKind.Boss) return true;
+            return false;
         }
 
         // ─────────────────────────── 开场 ───────────────────────────
@@ -115,22 +148,33 @@ namespace Rescue
         {
             var layer = Ui.Fill(_overlay, new Color(0.08f, 0.06f, 0.04f, 0.78f), true, "intro");
             _intro = layer;
-            var card = Ui.WoodPanel(layer, new Vector2(940, 1200), new Vector2(0, 40), Pal.Hex("8C6B4E"), Pal.Paper);
-            Ui.Label(card.transform, "第" + BattleView.ToCn(ch.Index + 1) + "回", 44, Pal.InkSoft, new Vector2(0, 470), new Vector2(800, 70));
-            Ui.Label(card.transform, ch.Name, 150, Pal.Ink, new Vector2(0, 340), new Vector2(860, 180), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Label(card.transform, ch.Story, 40, Pal.InkSoft, new Vector2(0, 150), new Vector2(780, 220), TextAnchor.MiddleLeft);
+            var card = Ui.WoodPanel(Ui.Fit(layer, 1420), new Vector2(940, 1240), new Vector2(0, 40), Pal.Hex("8C6B4E"), Pal.Paper);
+            string head = ch.IsEndless ? "聚义厅 · 车轮战" : $"第{BattleView.ToCn(ch.Index + 1)}回 · {ch.Act}";
+            Ui.Label(card.transform, head, 42, Pal.InkSoft, new Vector2(0, 500), new Vector2(800, 64));
+            Ui.Label(card.transform, ch.Name, 140, Pal.Ink, new Vector2(0, 385), new Vector2(860, 170), TextAnchor.MiddleCenter, Fonts.Brush);
+            if (!string.IsNullOrEmpty(ch.Hui))
+                Ui.Label(card.transform, "《水浒传》" + ch.Hui, 32, Pal.Hex("9A6A1E"), new Vector2(0, 285), new Vector2(860, 50));
+            Ui.Label(card.transform, ch.Story, 38, Pal.InkSoft, new Vector2(0, 160), new Vector2(800, 200), TextAnchor.MiddleLeft);
 
             var names = new List<string>();
             foreach (var id in ch.Pool) { var d = HeroDef.Get(id); if (!d.Hidden) names.Add(d.Name); }
-            Ui.Label(card.transform, "本回好汉：" + string.Join("  ", names), 38, Pal.Gold, new Vector2(0, -10), new Vector2(800, 110));
+            Ui.Label(card.transform, "本回好汉：" + string.Join("  ", names), 38, Pal.Gold, new Vector2(0, 20), new Vector2(820, 70));
+            if (ch.Joins.Length > 0)
+            {
+                var j = new List<string>();
+                foreach (var id in ch.Joins) j.Add(HeroDef.Get(id).Nick + HeroDef.Get(id).Name);
+                bool done = Save.Joined(ch.Joins[0]);
+                Ui.Label(card.transform, (done ? "已入伙：" : "胜后入伙：") + string.Join("、", j), 34, done ? Pal.InkSoft : Pal.Red,
+                    new Vector2(0, -55), new Vector2(840, 90));
+            }
             var nem = HeroDef.Get(ch.Boss.Nemesis).Name;
-            Ui.Label(card.transform, $"头目：{ch.Boss.Title}{ch.Boss.Name}（{ch.Boss.SkillText}）\n克星：{nem}，对他伤害 ×5", 36, Pal.RedDeep,
-                new Vector2(0, -150), new Vector2(800, 140));
-            Ui.Label(card.transform, "对手：" + ch.RivalName + "（谁的宋江先倒谁输）", 34, Pal.InkSoft, new Vector2(0, -255), new Vector2(800, 60));
+            Ui.Label(card.transform, $"头目：{ch.Boss.Title}{ch.Boss.Name}（{ch.Boss.SkillText}）\n克星：{nem}，对他伤害 ×5", 34, Pal.RedDeep,
+                new Vector2(0, -170), new Vector2(820, 120));
+            Ui.Label(card.transform, "对手：" + ch.RivalName + "（谁的宋江先倒谁输）", 32, Pal.InkSoft, new Vector2(0, -260), new Vector2(800, 56));
             if (items != null && ItemSummary(items).Length > 0)
-                Ui.Label(card.transform, "随身：" + ItemSummary(items), 34, Pal.Willow, new Vector2(0, -320), new Vector2(800, 60));
+                Ui.Label(card.transform, "随身：" + ItemSummary(items), 32, Pal.Willow, new Vector2(0, -320), new Vector2(800, 56));
 
-            Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -455), Ui.BtnRed, () =>
+            Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Ui.BtnRed, () =>
             {
                 Destroy(layer.gameObject);
                 Begin();
@@ -183,6 +227,14 @@ namespace Rescue
                     Banner(M.Chapter.Boss.Name + " 来了！", $"{M.Chapter.Boss.SkillText} · 克星：{nem}", Pal.RedDeep, 1.1f);
                     break;
                 }
+                case Ev.Bond when mine:
+                {
+                    Bond b = null;
+                    foreach (var x in Bond.All) if (x.Name == ev.Text) b = x;
+                    Sfx.Play(Snd.Join, 0.8f);
+                    Banner("羁绊 · " + ev.Text, (b != null ? b.Story + "　" : "") + $"伤害 +{Mathf.RoundToInt(ev.Val * 100)}%", Pal.Hex("B5651D"), 1.1f);
+                    break;
+                }
                 case Ev.EliteWarn:
                     Banner("捕头来袭", "戴面具的捕头血厚，集中火力", Pal.Hex("3B2050"), 0.8f);
                     break;
@@ -227,13 +279,13 @@ namespace Rescue
                 var g = layer.gameObject.AddComponent<CanvasGroup>();
                 g.blocksRaycasts = false;
                 Ui.Box(layer, new Vector2(1250, 880), new Vector2(0, 180), Pal.Ink.A(0.9f), Art.Blob);
-                Ui.Label(layer, d.Nick, 52, Pal.GoldBright, new Vector2(0, 390), new Vector2(900, 80));
+                Ui.Label(layer, (d.Rank > 0 ? d.Star + " · " : "") + d.Nick, 52, Pal.GoldBright, new Vector2(0, 390), new Vector2(900, 80));
                 var name = Ui.Label(layer, d.Name, 230, Pal.Paper, new Vector2(0, 230), new Vector2(1000, 280), TextAnchor.MiddleCenter, Fonts.Brush);
                 Ui.Label(layer, d.Skill, 40, Pal.Paper.A(0.9f), new Vector2(0, 70), new Vector2(900, 70));
                 var seal = Ui.Box(layer, new Vector2(150, 150), new Vector2(330, 320), Pal.Red);
                 Ui.Label(seal.transform, "替天\n行道", 44, Pal.Paper, Vector2.zero, new Vector2(150, 150), TextAnchor.MiddleCenter, Fonts.Brush);
                 seal.rectTransform.localRotation = Quaternion.Euler(0, 0, -12);
-                if (fresh) Ui.Label(layer, "— 新好汉入谱 —", 40, Pal.GoldBright, new Vector2(0, 5), new Vector2(900, 60));
+                if (fresh) Ui.Label(layer, "— 初次聚义 —", 40, Pal.GoldBright, new Vector2(0, 5), new Vector2(900, 60));
                 Ui.Label(layer, "「" + d.Quote + "」", 36, Pal.Paper.A(0.75f), new Vector2(0, -50), new Vector2(900, 60));
 
                 Tween.Pop(name.transform, 0.35f);
@@ -401,21 +453,21 @@ namespace Rescue
             if (M.Over || !_started) return;
             View.Paused = true;
             var layer = Ui.Fill(_overlay, new Color(0, 0, 0, 0.62f), true, "pause");
-            var card = Ui.WoodPanel(layer, new Vector2(840, 920), new Vector2(0, 80), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
+            var card = Ui.WoodPanel(Ui.Fit(layer, 1200), new Vector2(840, 920), new Vector2(0, 80), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
             Ui.Title(card, "暂停", new Vector2(0, 450), 90);
             var gear = Ui.Icon(card, "ui_gear", 96, new Vector2(330, 370));
-            var gearState = Ui.Label(card, Sfx.On ? "音效开" : "音效关", 26, Pal.InkSoft, new Vector2(330, 305), new Vector2(160, 40));
+            var gearState = Ui.Label(card, Sfx.On ? "声音开" : "声音关", 26, Pal.InkSoft, new Vector2(330, 305), new Vector2(160, 40));
             gearState.fontStyle = FontStyle.Bold;
             Ui.Tap(gear, () =>
             {
                 Sfx.On = !Sfx.On;
                 Save.D.sfx = Sfx.On;
                 Save.Write();
-                gearState.text = Sfx.On ? "音效开" : "音效关";
+                gearState.text = Sfx.On ? "声音开" : "声音关";
             });
 
             string mine = ItemSummary(M.Player.Items);
-            int winCoins = 30 + 10 * M.Chapter.Index;
+            int winCoins = ResultPanel.WinCoins(M.Chapter);
             SpoilBox(card, new Vector2(0, 205), "对手战利品：", mine.Length > 0 ? "你身上的：" + mine : "无");
             SpoilBox(card, new Vector2(0, -45), "战利品：", $"铜钱 ×{winCoins}　兵器（撑过四波有机会）");
 
@@ -474,10 +526,11 @@ namespace Rescue
             if (_ending) return;
             _ending = true;
             _hint.gameObject.SetActive(false);
-            Sfx.Play(win ? Snd.Win : Snd.Lose);
+            if (win) Sfx.PlayVictory();
+            else Sfx.PlayDefeat();
             var r = new BattleResult
             {
-                Chapter = M.Chapter.Index, Win = win, Quit = quit, Wave = M.Wave, Kills = M.Player.Kills, Rains = M.Player.Rains,
+                Chapter = M.Chapter.Index, Round = M.Chapter.Round, Pool = M.Chapter.Pool, Win = win, Quit = quit, Wave = M.Wave, Kills = M.Player.Kills, Rains = M.Player.Rains,
             };
             foreach (var id in M.Player.FormedEver)
             {
