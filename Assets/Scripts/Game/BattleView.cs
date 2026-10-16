@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Rescue
 {
     /// <summary>战场的世界空间表现与输入。只读 Match 状态渲染，玩家操作走 Side 的公开接口。</summary>
-    public sealed class BattleView : MonoBehaviour
+    public sealed partial class BattleView : MonoBehaviour
     {
         public const float Left = -4f;
         public const float MyBottom = -5.9f;
@@ -115,6 +115,7 @@ namespace Rescue
             BuildTip();
             BuildCard();
             for (int s = 0; s < 2; s++) _goals[s] = new GoalView(this, s);
+            BuildAmbient();
             SyncAll(true);
         }
 
@@ -139,6 +140,7 @@ namespace Rescue
                 Gfx.Sprite(_root, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, WallY + wallH * 0.5f + 0.06f), new Vector2(0.26f, 0.1f), 10);
                 Gfx.Sprite(_root, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, WallY - wallH * 0.5f - 0.06f), new Vector2(0.26f, 0.1f), 10);
             }
+            DecorateWall(WallY, wallH);
         }
 
         void BuildBoard(int side)
@@ -156,10 +158,7 @@ namespace Rescue
                     }
                 }
 
-            var sp = CellWorld(side, b.Spawn.c, b.Spawn.r);
-            Gfx.Sprite(_root, Art.Img("bush"), Color.white, sp + new Vector2(0, 0.05f), Vector2.one * 1.2f, 13, "spawn");
-            var flagBg = Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), sp + new Vector2(0.3f, 0.32f), new Vector2(0.36f, 0.36f), 13);
-            Gfx.Text(_root, "官", Fonts.Brush, 0.26f, Pal.Paper, flagBg.transform.localPosition, 14);
+            BuildSpawn(CellWorld(side, b.Spawn.c, b.Spawn.r));
         }
 
         void BuildCell(int side, int c, int r)
@@ -195,21 +194,25 @@ namespace Rescue
                         Gfx.Sprite(t, Art.Stroke, Color.white.A(0.5f), new Vector2(0, 0.22f - i * 0.22f), new Vector2(0.72f, 0.18f), 9);
                     break;
                 case Cell.Rock:
-                    Gfx.Sprite(t, Art.White, Pal.InkSoft, Vector2.zero, full, 8);
+                    Gfx.Sprite(t, Art.Ground("tex_grass", c, r), Color.white, Vector2.zero, full, 8);
                     break;
             }
+            Decorate(t, side, kind, c, r);
         }
 
         void PathEdges(Transform t, int side, Board b, int c, int r)
         {
             var self = CellWorld(side, c, r);
+            int salt = 0;
             foreach (var d in new[] { new CellPos(1, 0), new CellPos(-1, 0), new CellPos(0, 1), new CellPos(0, -1) })
             {
+                salt++;
                 int nc = c + d.c, nr = r + d.r;
                 if (Board.InBounds(nc, nr) && b.Cells[nc, nr] == Cell.Path) continue;
                 var delta = (CellWorld(side, nc, nr) - self) * 0.5f;
                 var edge = Gfx.Sprite(t, Art.Stroke, Pal.PathEdge.A(0.8f), delta * 0.94f, new Vector2(1.0f, 0.07f), 9);
                 edge.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Abs(delta.x) > 0.01f ? 90 : 0);
+                PathPebbles(t, delta, side, c, r, salt);
             }
         }
 
@@ -325,7 +328,12 @@ namespace Rescue
         {
             if (M == null) return;
             _frame++;
-            if (!Paused && !M.Over)
+            if (_hitStop > 0f && !Paused)
+            {
+                _hitStop -= Time.deltaTime;
+                FlushEvents();
+            }
+            else if (!Paused && !M.Over)
             {
                 _acc += Mathf.Min(Time.deltaTime, 0.1f) * Speed;
                 const float step = 1f / 60f;
@@ -341,7 +349,9 @@ namespace Rescue
 
             if (InputEnabled && !Paused) HandleInput();
             SyncAll(false);
+            if (!Paused) TickLater(Time.deltaTime);
             UpdateFx(Time.deltaTime);
+            TickMap(Time.deltaTime);
             UpdateTip(Time.deltaTime);
             UpdateCard(Time.deltaTime);
             UpdateIdleHint(Time.deltaTime);
@@ -623,8 +633,7 @@ namespace Rescue
                 case Ev.Kill:
                 {
                     var pos = World(ev.Side, ev.P);
-                    Splat(pos, ev.Flag == 2 ? 2.4f : ev.Flag == 1 ? 1.4f : 0.85f, Pal.Ink.A(0.55f), 0.9f);
-                    InkDrops(pos, ev.Flag > 0 ? 9 : 5);
+                    KillFx(ev);
                     if (mine)
                     {
                         Sfx.Play(Snd.Kill, 0.35f);
@@ -652,10 +661,11 @@ namespace Rescue
                     var pos = World(ev.Side, ev.P);
                     bool boss = ev.Flag == 1;
                     float r = Mathf.Min(ev.Val, 6f);
+                    bool custom = !boss && HeroUltFx(ev);
                     if (r > 0.1f)
                     {
                         Ring(pos, r * 2f, boss ? Pal.Red : Pal.Ink, 0.5f, 44);
-                        if (!boss) InkSwirl(pos, Mathf.Clamp(r * 2f, 1.6f, 7f), Pal.Ink.A(0.8f), 0.8f);
+                        if (!boss && !custom) InkSwirl(pos, Mathf.Clamp(r * 2f, 1.6f, 7f), Pal.Ink.A(0.8f), 0.8f);
                     }
                     string word = ev.Text ?? "";
                     int colon = word.IndexOf('：');
@@ -772,74 +782,6 @@ namespace Rescue
             }, () => { if (holder) Destroy(holder.gameObject); });
         }
 
-        void UnitAttackFx(SimEvent ev)
-        {
-            var from = World(ev.Side, ev.P);
-            var to = World(ev.Side, ev.Q);
-            var kind = (UnitKind)ev.B;
-            if (_pieces.TryGetValue(ev.A, out var pv)) pv.Attack(kind, (to - from).normalized);
-            var col = Pal.ForLevel((int)ev.Val).A(0.85f);
-            switch (kind)
-            {
-                case UnitKind.Dao: SlashAt(to, col, 0.95f); break;
-                case UnitKind.Qiang: Thrust(from, to, col, 0.14f); break;
-                case UnitKind.Gong: Arrow(from, to, col); break;
-                case UnitKind.Qi: Splat(to, 0.6f, Pal.Earth.A(0.5f), 0.35f); InkDrops(to, 3); break;
-            }
-        }
-
-        void HeroAttackFx(SimEvent ev)
-        {
-            var from = World(ev.Side, ev.P);
-            var to = World(ev.Side, ev.Q);
-            var id = (HeroId)ev.B;
-            var dir = (to - from).normalized;
-            if (ev.Flag == 2)
-            {
-                WeaponFlash(from, "bow", dir, UnitKind.Gong, 1.1f);
-                Arrow(from, to, Pal.Red, 1.6f);
-                Ring(to, 1.6f, Pal.Red, 0.4f, 46);
-                if (ev.Side == 0) Sfx.Play(Snd.Ult, 0.6f, 1.3f);
-                return;
-            }
-            var col = Pal.GoldBright;
-            switch (id)
-            {
-                case HeroId.HuaRong:
-                    WeaponFlash(from, "bow", dir, UnitKind.Gong, 0.9f);
-                    Arrow(from, to, col, 1.2f);
-                    break;
-                case HeroId.HuSanNiang:
-                case HeroId.RuanXiaoQi:
-                case HeroId.RuanXiaoEr:
-                case HeroId.ZhangShun:
-                case HeroId.ZhangHeng:
-                    Arrow(from, to, col, 1.1f);
-                    break;
-                case HeroId.LinChong:
-                    WeaponFlash(from, "spear", dir, UnitKind.Qiang, 1.0f);
-                    Thrust(from, to, col, 0.22f);
-                    break;
-                case HeroId.LiKui:
-                    WeaponFlash(to + new Vector2(-0.25f, 0), "dao", dir, UnitKind.Dao, 0.8f);
-                    WeaponFlash(to + new Vector2(0.25f, 0), "dao", -dir, UnitKind.Dao, 0.8f);
-                    SlashAt(to, col, 1.4f);
-                    break;
-                default:
-                    WeaponFlash(Vector2.Lerp(from, to, 0.6f), "dao", dir, UnitKind.Dao, 0.85f);
-                    SlashAt(to, ev.Flag == 1 ? Pal.Red : col, 1.2f);
-                    break;
-            }
-            if (ev.Side == 0 && ev.Flag != 2)
-            {
-                var def = HeroDef.Get(id);
-                var armed = M.Player.Items.Armed;
-                if (armed != null && armed.Contains((int)id) && def.WeaponTag.Length > 0)
-                    FloatText(from + new Vector2(0, 0.95f), "用" + def.WeaponTag, Pal.Hex("3D7BBF"), 0.34f, 0.7f);
-            }
-            if (_frames.TryGetValue(ev.A, out var fv)) fv.Pulse();
-        }
-
         // ─────────────────────────── 特效 ───────────────────────────
 
         sealed class Fx
@@ -917,42 +859,6 @@ namespace Rescue
                 fx.A = pos;
                 fx.B = pos + dir;
             }
-        }
-
-        void SlashAt(Vector2 pos, Color c, float size)
-        {
-            var fx = NewSpriteFx(Art.Slash, c, pos, new Vector2(size, size), 42, 0.22f, (f, k) =>
-            {
-                f.Sr.color = f.C.A(f.C.a * (1 - k));
-                f.Go.transform.localScale = new Vector3(size * (0.6f + 0.6f * k), size * (0.8f + 0.2f * k), 1);
-            });
-            fx.Go.transform.localRotation = Quaternion.Euler(0, 0, UnityEngine.Random.Range(-60f, 60f) + 180f * (UnityEngine.Random.value < 0.5f ? 0 : 1));
-        }
-
-        void Thrust(Vector2 from, Vector2 to, Color c, float thick)
-        {
-            var dir = to - from;
-            float len = dir.magnitude + 0.4f;
-            var mid = from + dir.normalized * len * 0.5f;
-            var fx = NewSpriteFx(Art.Stroke, c, mid, new Vector2(len, thick), 42, 0.2f, (f, k) =>
-            {
-                f.Sr.color = f.C.A(f.C.a * (1 - k));
-                f.Go.transform.localScale = new Vector3(len * (0.4f + 0.6f * Tween.OutCubic(Mathf.Min(1, k * 3))), thick * (1 - k * 0.5f), 1);
-            });
-            fx.Go.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
-        }
-
-        void Arrow(Vector2 from, Vector2 to, Color c, float scale = 1f)
-        {
-            var dir = to - from;
-            var fx = NewSpriteFx(Art.ArrowShaft, c, from, new Vector2(0.55f, 0.14f) * scale, 42, 0.16f, (f, k) =>
-            {
-                f.Go.transform.localPosition = Vector2.Lerp(f.A, f.B, k);
-                if (k >= 0.99f) Splat(f.B, 0.35f, Pal.Ink.A(0.4f), 0.25f);
-            });
-            fx.A = from;
-            fx.B = to;
-            fx.Go.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
         }
 
         /// <summary>好汉出手时在棋盘上闪现兵器：刀抡一圈、枪往前捅、弓拉满。</summary>
@@ -1052,19 +958,30 @@ namespace Rescue
         {
             int n = Mathf.Max(1, Mathf.RoundToInt(val));
             bool big = flag > 0 || n >= 18;
-            float h = flag == 2 || n >= 40 ? 0.5f : big ? 0.34f : 0.22f;
+            float h = flag == 2 || n >= 40 ? 0.52f : big ? 0.38f : 0.26f;
             string s = flag == 2 ? "克" + n : flag == 3 ? "半" + n : flag == 1 ? n + "!" : n.ToString();
             Color c = flag == 2 ? Pal.Red : flag == 1 ? Pal.Gold : flag == 3 ? Pal.Hex("8A5A44") : Pal.Ink;
             var at = pos + new Vector2(UnityEngine.Random.Range(-0.2f, 0.2f), 0.4f);
-            var fx = new Fx { Life = big ? 0.8f : 0.48f, C = c, A = at };
-            fx.Tm = Gfx.Text(_fxRoot, s, Fonts.Kai, h, c, at, 47, TextAnchor.MiddleCenter, "dmg");
+            var fx = new Fx { Life = big ? 0.8f : 0.5f, C = c, A = at };
+            fx.Tm = Gfx.Text(_fxRoot, s, Fonts.Kai, h, c, at, 49, TextAnchor.MiddleCenter, "dmg");
             fx.Go = fx.Tm.gameObject;
+            var rim = new TextMesh[4];
+            for (int i = 0; i < 4; i++)
+            {
+                var o = new Vector2(i % 2 == 0 ? -1 : 1, i < 2 ? -1 : 1) * 0.022f;
+                rim[i] = Gfx.Text(fx.Go.transform, s, Fonts.Kai, h, Pal.Paper, o, 48);
+                rim[i].transform.localScale = Vector3.one;
+                rim[i].characterSize = fx.Tm.characterSize / fx.Go.transform.localScale.x;
+            }
+            float drift = UnityEngine.Random.Range(-0.25f, 0.25f);
             fx.Step = (f, k) =>
             {
-                f.Go.transform.localPosition = f.A + new Vector2(0, k * (big ? 0.6f : 0.32f));
-                float pop = k < 0.12f ? Tween.OutBack(k / 0.12f) : 1f;
+                f.Go.transform.localPosition = f.A + new Vector2(drift * k, Tween.OutCubic(k) * (big ? 0.7f : 0.4f));
+                float pop = k < 0.14f ? Mathf.Lerp(big ? 2.2f : 1.6f, 1f, Tween.OutCubic(k / 0.14f)) : 1f;
                 f.Go.transform.localScale = Vector3.one * pop;
-                f.Tm.color = f.C.A(1f - k * k);
+                float a = k < 0.6f ? 1f : 1f - (k - 0.6f) / 0.4f;
+                f.Tm.color = f.C.A(a);
+                foreach (var r in rim) r.color = Pal.Paper.A(0.9f * a);
             };
             _fx.Add(fx);
         }
@@ -1690,6 +1607,7 @@ namespace Rescue
             readonly Transform _glyphT;
             Color _glyphColor = Pal.Ink;
             float _animT;
+            Vector2 _lungeOff;
             UnitKind _animKind;
             Vector2 _animDir;
             float _punch;
@@ -1820,7 +1738,22 @@ namespace Rescue
                     Root.localScale = Vector3.zero;
                     return;
                 }
-                Root.localPosition = Vector2.Lerp(Root.localPosition, Target, 1f - Mathf.Exp(-dt * (dragging ? 30f : 16f)));
+                var cur = (Vector2)Root.localPosition - _lungeOff;
+                cur = Vector2.Lerp(cur, Target, 1f - Mathf.Exp(-dt * (dragging ? 30f : 16f)));
+                _lungeOff = Vector2.zero;
+                if (_animT > 0 && !dragging)
+                {
+                    float lk = 1f - _animT;
+                    float reach = _animKind switch
+                    {
+                        UnitKind.Dao => 0.16f,
+                        UnitKind.Qiang => 0.22f,
+                        UnitKind.Gong => -0.09f,
+                        _ => 0.12f,
+                    };
+                    _lungeOff = _animDir * reach * Mathf.Sin(Mathf.Min(1f, lk * 1.6f) * Mathf.PI);
+                }
+                Root.localPosition = cur + _lungeOff;
 
                 _punch = Mathf.Max(0, _punch - dt * 1.5f);
                 _popK = Mathf.Min(1f, _popK + dt / 0.3f);
@@ -1828,7 +1761,15 @@ namespace Rescue
                 Root.localScale = Vector3.one * ((_dragging ? 1.12f : 1f) * (1f + Mathf.Sin(_punch * 20f) * _punch * 0.5f) * pop);
 
                 float sx = 1, sy = 1, morph = 0;
-                if (_animT > 0 && _weapon != null)
+                if (_animT > 0 && _animKind == UnitKind.Qi)
+                {
+                    _animT = Mathf.Max(0, _animT - dt / AnimDur);
+                    float q = Mathf.Sin((1f - _animT) * Mathf.PI);
+                    sx += q * 0.18f;
+                    sy -= q * 0.12f;
+                    if (_weapon != null) _weapon.enabled = false;
+                }
+                else if (_animT > 0 && _weapon != null)
                 {
                     _animT = Mathf.Max(0, _animT - dt / AnimDur);
                     float k = 1f - _animT;
@@ -2000,6 +1941,7 @@ namespace Rescue
                 bool boss = e.Boss != null;
                 bool elite = e.Def.Kind == EnemyKind.Bu;
                 float h = boss ? 0.55f : elite ? 0.62f : e.Def.Kind == EnemyKind.Jia ? 0.5f : 0.42f;
+                GlyphHeight = h;
                 _big = boss || elite;
                 uint hash = (uint)e.Id * 2654435761u;
                 _jitter = new Vector2(((hash >> 8) & 0xff) / 255f - 0.5f, ((hash >> 16) & 0xff) / 255f - 0.5f) * (_big ? 0f : 0.28f);
@@ -2021,9 +1963,25 @@ namespace Rescue
 
             public void Flash() => _flash = 1f;
 
+            public string GlyphText => _glyph.text;
+            public float GlyphHeight { get; }
+            public Color GlyphColor => _baseColor;
+
+            Vector2 _kick;
+
+            /// <summary>受击后仰：沿攻击方向被推开一下再弹回。</summary>
+            public void Kick(Vector2 dir, float amount)
+            {
+                if (_big) amount *= 0.35f;
+                _kick += dir * amount;
+                if (_kick.sqrMagnitude > 0.16f) _kick = _kick.normalized * 0.4f;
+                _flash = 1f;
+            }
+
             public void Sync(Enemy e, Vector2 pos, float dt)
             {
-                Root.localPosition = pos + _jitter + new Vector2(0, Mathf.Abs(Mathf.Sin(Time.time * 9f + e.Id)) * 0.04f);
+                _kick = Vector2.Lerp(_kick, Vector2.zero, 1f - Mathf.Exp(-dt * 14f));
+                Root.localPosition = pos + _jitter + _kick + new Vector2(0, Mathf.Abs(Mathf.Sin(Time.time * 9f + e.Id)) * 0.04f);
                 float k = Mathf.Clamp01(e.Hp / e.MaxHp);
                 bool showBar = _big || k < 0.999f;
                 _hpBg.enabled = _hpFg.enabled = showBar;
@@ -2036,7 +1994,9 @@ namespace Rescue
                 _cc.text = e.StunT > 0 ? "眩" : haste ? "速" : "";
                 _cc.color = e.StunT > 0 ? Pal.Hex("5B7FA6") : Pal.Red;
                 _glyph.color = Color.Lerp(c, Pal.Red, _flash * 0.8f);
-                _glyph.transform.localScale = Vector3.one * (1f + _flash * 0.15f) * (haste ? 1.14f : 1f);
+                float squash = _flash * 0.22f;
+                _glyph.transform.localScale = new Vector3(1f + squash, 1f - squash * 0.6f, 1f) * (haste ? 1.14f : 1f);
+                _glyph.transform.localRotation = Quaternion.Euler(0, 0, -_kick.x * 40f);
             }
         }
 

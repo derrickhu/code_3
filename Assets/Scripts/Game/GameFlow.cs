@@ -66,7 +66,7 @@ namespace Rescue
             FitCamera();
 
             Ui.Init(transform);
-            if (_shots != null) StartCoroutine(Arg("-ui") != null ? UiShots() : AutoShots());
+            if (_shots != null) StartCoroutine(Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : AutoShots());
             else ShowHome();
         }
 
@@ -230,6 +230,12 @@ namespace Rescue
                 yield return new WaitForSecondsRealtime(5f);
                 t += 5f;
                 if (t % 15f < 0.1f) yield return Shot("battle");
+                if (Mathf.Approximately(t, 55f) || Mathf.Approximately(t, 100f))
+                    for (int i = 0; i < 6; i++)
+                    {
+                        yield return Shot("fx");
+                        yield return new WaitForSecondsRealtime(0.06f);
+                    }
                 if (Mathf.Approximately(t, 20f))
                 {
                     _battle.View.ShowInfoForAnyPiece();
@@ -255,6 +261,44 @@ namespace Rescue
             yield return new WaitForSecondsRealtime(2.6f);
             yield return Shot("result");
             yield return new WaitForSecondsRealtime(0.5f);
+            Application.Quit();
+        }
+
+        /// <summary>逐个放出兵种、好汉普攻和大招特效截图：-shots DIR -fx 1。</summary>
+        IEnumerator FxShots()
+        {
+            StartBattle(0, true);
+            yield return new WaitForSecondsRealtime(3.5f);
+            var view = _battle.View;
+            view.Speed = 0f;
+            foreach (UnitKind k in Enum.GetValues(typeof(UnitKind)))
+            {
+                view.ShowcaseUnit(k, 3);
+                yield return new WaitForSecondsRealtime(k == UnitKind.Gong ? 0.1f : 0.07f);
+                yield return Shot("unit_" + k);
+                yield return new WaitForSecondsRealtime(0.5f);
+            }
+            foreach (HeroId id in Enum.GetValues(typeof(HeroId)))
+            {
+                var def = HeroDef.Get(id);
+                if (def.NoAttack) continue;
+                view.ShowcaseHero(id, false);
+                yield return new WaitForSecondsRealtime(0.12f);
+                yield return Shot("atk_" + id);
+                yield return new WaitForSecondsRealtime(0.6f);
+            }
+            view.ShowcaseHero(HeroId.YanQing, true);
+            yield return new WaitForSecondsRealtime(0.12f);
+            yield return Shot("atk_YanQingCrit");
+            yield return new WaitForSecondsRealtime(0.6f);
+            foreach (HeroId id in Enum.GetValues(typeof(HeroId)))
+            {
+                if (HeroDef.Get(id).Hidden) continue;
+                view.ShowcaseUlt(id);
+                yield return new WaitForSecondsRealtime(0.3f);
+                yield return Shot("ult_" + id);
+                yield return new WaitForSecondsRealtime(1.2f);
+            }
             Application.Quit();
         }
 
