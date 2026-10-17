@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Rescue.Sim;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -16,6 +17,15 @@ namespace Rescue
         public static RectTransform Root { get; private set; }
 
         static RectTransform _canvasRt;
+        static CanvasScaler _scaler;
+        static readonly List<RectTransform> _bleeds = new List<RectTransform>();
+        static int _safeKey = int.MinValue;
+        static float _safeL, _safeB, _safeR, _safeT;
+        static float _barT, _menuT, _menuB, _menuL;
+
+        /// <summary>当前屏幕比 9:16 更高（真机）。宽窗口仍按手机框留桌面边。</summary>
+        public static bool TallScreen =>
+            Screen.height / Mathf.Max(1f, Screen.width) > DesignH / DesignW + 0.02f;
 
         public static void Init(Transform host)
         {
@@ -24,11 +34,11 @@ namespace Rescue
             Canvas = go.AddComponent<Canvas>();
             Canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             Canvas.sortingOrder = 100;
-            var scaler = go.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(DesignW, DesignH);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            _scaler = go.AddComponent<CanvasScaler>();
+            _scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            _scaler.referenceResolution = new Vector2(DesignW, DesignH);
+            _scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            _scaler.matchWidthOrHeight = 0.5f;
             go.AddComponent<GraphicRaycaster>();
             _canvasRt = (RectTransform)go.transform;
 
@@ -48,10 +58,22 @@ namespace Rescue
             }
         }
 
-        /// <summary>把 1080×1920 的手机画面缩进当前窗口正中，多出来的地方是桌面底。</summary>
+        /// <summary>
+        /// 宽窗口：1080×1920 缩进正中，多出来的是桌面底。
+        /// 更高的手机：宽度锁在 1080，高度跟着屏幕长，铺满；刘海和胶囊那一圈让出来。
+        /// </summary>
         public static void FitPhone()
         {
-            if (_canvasRt == null || Root == null) return;
+            if (_canvasRt == null || Root == null || _scaler == null) return;
+            bool tall = TallScreen;
+            float match = tall ? 0f : 0.5f;
+            if (!Mathf.Approximately(_scaler.matchWidthOrHeight, match))
+            {
+                _scaler.matchWidthOrHeight = match;
+                typeof(CanvasScaler).GetMethod("Handle", BindingFlags.Instance | BindingFlags.NonPublic)
+                    ?.Invoke(_scaler, null);
+                Canvas.ForceUpdateCanvases();
+            }
             var size = _canvasRt.rect.size;
             if (size.x < 1f || size.y < 1f)
             {
@@ -59,13 +81,204 @@ namespace Rescue
                 size = _canvasRt.rect.size;
                 if (size.x < 1f || size.y < 1f) return;
             }
-            float scale = Mathf.Min(size.x / DesignW, size.y / DesignH);
-            if (Mathf.Abs(Root.localScale.x - scale) < 0.0001f) return;
-            Root.localScale = new Vector3(scale, scale, 1f);
-            Root.anchoredPosition = Vector2.zero;
+
+            if (!tall)
+            {
+                var mid = new Vector2(0.5f, 0.5f);
+                if (Root.anchorMin != mid || Root.anchorMax != mid || Root.sizeDelta != new Vector2(DesignW, DesignH))
+                {
+                    Root.anchorMin = Root.anchorMax = mid;
+                    Root.pivot = mid;
+                    Root.sizeDelta = new Vector2(DesignW, DesignH);
+                    Root.anchoredPosition = Vector2.zero;
+                }
+                float scale = Mathf.Min(size.x / DesignW, size.y / DesignH);
+                if (Mathf.Abs(Root.localScale.x - scale) > 0.0001f)
+                    Root.localScale = new Vector3(scale, scale, 1f);
+                RefreshBleeds();
+                return;
+            }
+
+            SafePixels(out float left, out float bottom, out float right, out float top);
+            float l = left * size.x / Mathf.Max(1f, Screen.width);
+            float b = bottom * size.y / Mathf.Max(1f, Screen.height);
+            float r = right * size.x / Mathf.Max(1f, Screen.width);
+            float t = top * size.y / Mathf.Max(1f, Screen.height);
+            // 安全区太夸张就别吃掉画面
+            l = Mathf.Clamp(l, 0f, size.x * 0.2f);
+            r = Mathf.Clamp(r, 0f, size.x * 0.2f);
+            t = Mathf.Clamp(t, 0f, size.y * 0.2f);
+            b = Mathf.Clamp(b, 0f, size.y * 0.2f);
+
+            var insetMin = new Vector2(l, b);
+            var insetMax = new Vector2(-r, -t);
+            if (Root.anchorMin != Vector2.zero || Root.anchorMax != Vector2.one
+                || Root.localScale != Vector3.one
+                || (Root.offsetMin - insetMin).sqrMagnitude > 0.01f
+                || (Root.offsetMax - insetMax).sqrMagnitude > 0.01f)
+            {
+                Root.anchorMin = Vector2.zero;
+                Root.anchorMax = Vector2.one;
+                Root.pivot = new Vector2(0.5f, 0.5f);
+                Root.localScale = Vector3.one;
+                Root.anchoredPosition = Vector2.zero;
+                Root.offsetMin = insetMin;
+                Root.offsetMax = insetMax;
+            }
+            RefreshBleeds();
         }
 
-        /// <summary>与手机画面对齐的相机视口。窗口比 9:16 宽就左右留边，更高就上下留边。</summary>
+        /// <summary>背景拉出安全区，铺到屏幕物理边缘。布局仍停在安全区内。</summary>
+        public static void PinBleed(RectTransform rt)
+        {
+            if (rt == null) return;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            if (!_bleeds.Contains(rt)) _bleeds.Add(rt);
+            ApplyBleed(rt);
+        }
+
+        static void RefreshBleeds()
+        {
+            for (int i = _bleeds.Count - 1; i >= 0; i--)
+            {
+                if (_bleeds[i] == null) { _bleeds.RemoveAt(i); continue; }
+                ApplyBleed(_bleeds[i]);
+            }
+        }
+
+        static void ApplyBleed(RectTransform rt)
+        {
+            if (Root == null) return;
+            // Root 用拉伸锚点时，offset 就是安全区留白；背景按同样的量探出去。
+            Vector2 min, max;
+            if (Root.anchorMin == Vector2.zero && Root.anchorMax == Vector2.one)
+            {
+                min = new Vector2(-Root.offsetMin.x, -Root.offsetMin.y);
+                max = new Vector2(-Root.offsetMax.x, -Root.offsetMax.y);
+            }
+            else
+            {
+                min = Vector2.zero;
+                max = Vector2.zero;
+            }
+            if (rt.anchorMin != Vector2.zero || rt.anchorMax != Vector2.one
+                || (rt.offsetMin - min).sqrMagnitude > 0.01f
+                || (rt.offsetMax - max).sqrMagnitude > 0.01f)
+            {
+                rt.anchorMin = Vector2.zero;
+                rt.anchorMax = Vector2.one;
+                rt.offsetMin = min;
+                rt.offsetMax = max;
+            }
+        }
+
+        static void SafePixels(out float left, out float bottom, out float right, out float top)
+        {
+            int key = Screen.width * 73856093 ^ Screen.height * 19349663;
+            if (key != _safeKey)
+            {
+                _safeKey = key;
+                _menuT = _menuB = 0f;
+                _menuL = Screen.width;
+                if (!WxSafe(out _safeL, out _safeB, out _safeR, out _safeT))
+                {
+                    var sa = Screen.safeArea;
+                    _safeL = sa.x;
+                    _safeB = sa.y;
+                    _safeR = Mathf.Max(0f, Screen.width - sa.xMax);
+                    _safeT = Mathf.Max(0f, Screen.height - sa.yMax);
+                    _barT = _safeT;
+                }
+            }
+            left = _safeL;
+            bottom = _safeB;
+            right = _safeR;
+            top = _safeT;
+        }
+
+        /// <summary>
+        /// 战场相机用的屏幕留白（Screen 像素）：bar 是顶部状态栏高度，menuTop/menuBottom/menuLeft 是微信胶囊（没有时 menuBottom 为 0），
+        /// 这几个都从屏幕顶边、左边量；bottom 从底边量。
+        /// </summary>
+        public static void ScreenInsets(out float bar, out float menuTop, out float menuBottom, out float menuLeft, out float bottom)
+        {
+            SafePixels(out _, out bottom, out _, out _);
+            bar = Mathf.Clamp(_barT, 0f, Screen.height * 0.15f);
+            menuTop = _menuT;
+            menuBottom = _menuB;
+            menuLeft = _menuL;
+        }
+
+        /// <summary>微信安全区和右上角胶囊，单位换成和 Screen 一致的像素。桌面端没有这个接口。</summary>
+        static bool WxSafe(out float left, out float bottom, out float right, out float top)
+        {
+            left = bottom = right = top = 0f;
+            var wx = Type.GetType("WeChatWASM.WX, Wx") ?? Type.GetType("WeChatWASM.WX");
+            if (wx == null) return false;
+            var get = wx.GetMethod("GetWindowInfo", BindingFlags.Public | BindingFlags.Static);
+            if (get == null) return false;
+            object info;
+            try { info = get.Invoke(null, null); }
+            catch (Exception) { return false; }
+            if (info == null) return false;
+            float wxW = Num(info, "screenWidth");
+            float wxH = Num(info, "screenHeight");
+            if (wxW < 1f) wxW = Num(info, "windowWidth");
+            if (wxH < 1f) wxH = Num(info, "windowHeight");
+            if (wxW < 1f || wxH < 1f) return false;
+            object area = Member(info, "safeArea");
+            if (area == null) return false;
+            float sx = Screen.width / wxW;
+            float sy = Screen.height / wxH;
+            float aTop = Num(area, "top");
+            float aBottom = Num(area, "bottom");
+            float aLeft = Num(area, "left");
+            float aRight = Num(area, "right");
+            left = aLeft * sx;
+            right = Mathf.Max(0f, wxW - aRight) * sx;
+            top = aTop * sy;
+            bottom = Mathf.Max(0f, wxH - aBottom) * sy;
+            _barT = top;
+
+            var menu = wx.GetMethod("GetMenuButtonBoundingClientRect", BindingFlags.Public | BindingFlags.Static);
+            if (menu != null)
+            {
+                try
+                {
+                    object rect = menu.Invoke(null, null);
+                    float menuBottom = Num(rect, "bottom");
+                    if (menuBottom > 0f)
+                    {
+                        top = Mathf.Max(top, (menuBottom + 6f) * sy);
+                        _menuT = Num(rect, "top") * sy;
+                        _menuB = menuBottom * sy;
+                        _menuL = Num(rect, "left") * sx;
+                    }
+                }
+                catch (Exception) { }
+            }
+            return top > 0.5f || bottom > 0.5f || left > 0.5f || right > 0.5f;
+        }
+
+        static object Member(object o, string name)
+        {
+            if (o == null) return null;
+            var f = o.GetType().GetField(name);
+            if (f != null) return f.GetValue(o);
+            var p = o.GetType().GetProperty(name);
+            return p != null ? p.GetValue(o) : null;
+        }
+
+        static float Num(object o, string name)
+        {
+            object v = Member(o, name);
+            if (v == null) return 0f;
+            try { return Convert.ToSingle(v); }
+            catch (Exception) { return 0f; }
+        }
+
+        /// <summary>宽窗口左右留桌面边。更高的手机铺满，不再上下留黑。</summary>
         public static Rect CameraViewport()
         {
             float window = Screen.width / Mathf.Max(1f, Screen.height);
@@ -75,8 +288,7 @@ namespace Rescue
                 float w = target / window;
                 return new Rect((1f - w) * 0.5f, 0f, w, 1f);
             }
-            float h = window / target;
-            return new Rect(0f, (1f - h) * 0.5f, 1f, h);
+            return new Rect(0f, 0f, 1f, 1f);
         }
 
         public static bool PointerOverUi()
@@ -105,7 +317,27 @@ namespace Rescue
             var img = rt.gameObject.AddComponent<Image>();
             img.color = c;
             img.raycastTarget = block;
+            // 不透明的全屏层再垫一块拉出安全区的底，避免刘海处露出底下的画面。半透明不垫，否则会叠深。
+            if (c.a >= 0.99f && CoversPhone(parent))
+            {
+                var under = Rect(rt, "bleed");
+                under.SetAsFirstSibling();
+                PinBleed(under);
+                var u = under.gameObject.AddComponent<Image>();
+                u.color = c;
+                u.raycastTarget = false;
+            }
             return rt;
+        }
+
+        static bool CoversPhone(Transform parent)
+        {
+            if (parent == Root) return true;
+            var rt = parent as RectTransform;
+            if (rt == null || rt.parent == null) return false;
+            if (rt.anchorMin != Vector2.zero || rt.anchorMax != Vector2.one) return false;
+            if (rt.offsetMin.sqrMagnitude > 0.25f || rt.offsetMax.sqrMagnitude > 0.25f) return false;
+            return CoversPhone(rt.parent);
         }
 
         public static Image Box(Transform parent, Vector2 size, Vector2 pos, Color c, Sprite sprite = null, string name = "box")
@@ -309,6 +541,13 @@ namespace Rescue
         }
 
         /// <summary>屏幕中下方的深色提示条，自动消失。</summary>
+        /// <summary>点了但办不成：闷一下，再弹出原因。</summary>
+        public static void Nope(string s, float y = -260)
+        {
+            Sfx.Play(Snd.Deny);
+            Toast(s, y);
+        }
+
         public static void Toast(string s, float y = -260)
         {
             int len = Mathf.Max(6, s.Length);

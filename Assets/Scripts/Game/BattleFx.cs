@@ -69,7 +69,7 @@ namespace Rescue
             int n = 0;
             foreach (var e in M.Sides[side].Enemies)
             {
-                if (e.Dead || V2.Dist(e.Pos, center) > r) continue;
+                if (e.Dead || e.InBrush || V2.Dist(e.Pos, center) > r) continue;
                 yield return World(side, e.Pos);
                 if (++n >= max) yield break;
             }

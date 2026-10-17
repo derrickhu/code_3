@@ -112,7 +112,7 @@ namespace Rescue
             }
             Ui.Tap(face, () =>
             {
-                if (!open) { Toast(endless ? "打完蓼儿洼，聚义厅才开张" : "先赢下上一回才能解锁"); return; }
+                if (!open) { Nope(endless ? "打完蓼儿洼，聚义厅才开张" : "先赢下上一回才能解锁"); return; }
                 _selected = i;
                 Destroy(layer.gameObject);
                 RefreshChapter();
@@ -128,7 +128,7 @@ namespace Rescue
 
         public void ShowTeam()
         {
-            if (!Save.StoryDone) { Toast("打完蓼儿洼，聚义厅才开张"); return; }
+            if (!Save.StoryDone) { Nope("打完蓼儿洼，聚义厅才开张"); return; }
             _team ??= Save.Team();
             Sfx.PlayEpic();
             var layer = Panel("聚义厅 · 点将", out var card, new Vector2(1000, 1700), Sfx.PlayMenu);
@@ -182,10 +182,10 @@ namespace Rescue
             Ui.CartoonBtn(body, "羁绊推荐", new Vector2(270, 90), new Vector2(0, 345), Ui.BtnOrange, () => { _team = BondTeam(); refill(); }, 40);
             Ui.CartoonBtn(body, "出征", new Vector2(270, 90), new Vector2(310, 345), Ui.BtnRed, () =>
             {
-                if (_team.Count < ChapterDef.TeamSize) { Toast($"要点满{ChapterDef.TeamSize}位好汉"); return; }
+                if (_team.Count < ChapterDef.TeamSize) { Nope($"要点满{ChapterDef.TeamSize}位好汉"); return; }
                 int fighters = 0;
                 foreach (var id in _team) if (!HeroDef.Get(id).NoAttack) fighters++;
-                if (fighters < 3) { Toast("至少带三位能出手的好汉"); return; }
+                if (fighters < 3) { Nope("至少带三位能出手的好汉"); return; }
                 Save.D.team.Clear();
                 foreach (var id in _team) Save.D.team.Add((int)id);
                 Save.Write();
@@ -222,7 +222,7 @@ namespace Rescue
                 Ui.Tap(face, () =>
                 {
                     if (_team.Contains(id)) _team.Remove(id);
-                    else if (_team.Count >= ChapterDef.TeamSize) { Toast($"最多点{ChapterDef.TeamSize}将，先点上面的好汉换下"); return; }
+                    else if (_team.Count >= ChapterDef.TeamSize) { Nope($"最多点{ChapterDef.TeamSize}将，先点上面的好汉换下"); return; }
                     else _team.Add(id);
                     refill();
                 });

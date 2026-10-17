@@ -35,6 +35,10 @@ namespace Rescue.Sim
         public BossDef Boss;
         public float RivalSkill;
         public float RivalIncome = 1f;
+        /// <summary>保留字段。双方官兵血量相同，不再给对手单独加厚。</summary>
+        public float RivalFoeHp = 1f;
+        /// <summary>这一回双方官兵的血量。第一回是 1，越往后两边一起变厚。</summary>
+        public float FoeHp = 1f;
         public string RivalName;
         /// <summary>聚义厅第几阵；0 表示剧情回。</summary>
         public int Round;
@@ -45,16 +49,16 @@ namespace Rescue.Sim
 
         public static readonly Dictionary<string, string[]> Maps = new Dictionary<string, string[]>
         {
-            ["qingfeng"] = new[] { "S#######", ".ooo...#", ".#######", ".#..ooo.", ".######.", "......#G" },
-            ["jiangzhou"] = new[] { "S#.....o", ".#o####.", ".#o#oo#.", ".###oo#.", "......#.", "......#G" },
-            ["bailong"] = new[] { "~~~~~~~S", "########", "#.ooooo.", "########", ".......#", "G#######" },
-            ["snake"] = new[] { "S#######", ".oooo..#", "########", "#..oooo.", "########", ".......G" },
-            ["ring"] = new[] { "S#######", "...oo..#", ".o....o#", ".o....o#", "...oo..#", "G#######" },
-            ["jiuqu"] = new[] { "S.###.#G", "#o#.#.#.", "#.#o#o#.", "#o#.#.#o", "#.#o#.#.", "###.###." },
-            ["marsh"] = new[] { "~~S#####", "~ww...o#", "########", "#~~o~~w.", "#######.", "~~~~..#G" },
-            ["zigzag"] = new[] { "S#####..", ".oo..#..", "..o..#o.", ".o...#..", "..oo.###", ".......G" },
-            ["plain"] = new[] { "S.......", "#.oo.o..", "#..o....", "#.o..o..", "#.......", "#######G" },
-            ["river"] = new[] { "S###....", "...#.ww.", ".o.#o~~.", ".o.####.", "..w..o#.", ".~~~..#G" },
+            ["qingfeng"] = new[] { "S######.", ".ooo..#.", ".######.", ".#ooo...", ".######G" },
+            ["jiangzhou"] = new[] { "S#..ooo.", ".#.####.", ".#.#oo#.", ".###..#.", "......#G" },
+            ["bailong"] = new[] { "~~~~~~~S", "########", "#.ooooo.", "########", ".......G" },
+            ["snake"] = new[] { "S#######", ".oooo..#", "..######", "..#oooo.", "..#####G" },
+            ["ring"] = new[] { "S#######", "...oo..#", ".o....o#", "...oo..#", "G#######" },
+            ["jiuqu"] = new[] { "S.###.#G", "#o#.#.#.", "#.#o#o#.", "#o#.#.#o", "###.###." },
+            ["marsh"] = new[] { "~~~~S###", "~ww..o.#", "########", "#~~o~~w.", "#######G" },
+            ["zigzag"] = new[] { "S#####..", ".oo..#o.", "..o..#..", ".o.o.###", ".......G" },
+            ["plain"] = new[] { "S.......", "#.oo.o..", "#..o....", "#.o..o..", "#######G" },
+            ["river"] = new[] { "S###....", "...#.ww.", ".o.#o~~.", ".o.####.", "..w..o#G" },
         };
 
         static readonly string[] EndlessMaps = { "qingfeng", "jiangzhou", "bailong", "snake", "ring", "jiuqu", "marsh", "zigzag", "plain", "river" };
@@ -385,6 +389,8 @@ namespace Rescue.Sim
                 float k = Math.Min(1f, i / 45f);
                 list[i].RivalSkill = 0.25f + 0.65f * k;
                 list[i].RivalIncome = 0.6f + 0.4f * k;
+                list[i].RivalFoeHp = 1f;
+                list[i].FoeHp = 1f + 0.35f * k;
             }
             return list;
         }
@@ -444,6 +450,7 @@ namespace Rescue.Sim
                 RivalName = rivalPick.Nick + rivalPick.Name,
                 RivalSkill = 0.85f + 0.15f * k,
                 RivalIncome = 0.95f + 0.15f * k,
+                FoeHp = 1.25f + 0.3f * k,
             };
         }
 

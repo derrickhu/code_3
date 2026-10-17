@@ -32,6 +32,8 @@ namespace Rescue
         RivalAI _rival, _auto;
         RectTransform _overlay, _bannerLayer, _hint, _intro;
         Text _hintText;
+        CanvasGroup _hintGroup;
+        bool _hintWant;
         readonly Queue<Action> _banners = new Queue<Action>();
         float _bannerCd;
         bool _started, _ending, _hot;
@@ -63,6 +65,7 @@ namespace Rescue
             float skill = Mathf.Clamp01(ch.RivalSkill + Save.Major * 0.015f);
             _rival = new RivalAI(M.Rival, skill, seed + 99);
             if (Autoplay) _auto = new RivalAI(M.Player, 0.9f, seed + 7);
+            M.Player.ManualUlt = !Autoplay;
 
             View = gameObject.AddComponent<BattleView>();
             View.Build(M, cam);
@@ -103,6 +106,7 @@ namespace Rescue
 
         void Update()
         {
+            TickHint();
             if (!_started || M.Over || _ending) { UpdateBanners(); return; }
             if (!View.Paused && !M.Hold)
             {
@@ -178,7 +182,7 @@ namespace Rescue
             {
                 Destroy(layer.gameObject);
                 Begin();
-                Banner("官兵来了！", "守住宋江，别让他们碰到哥哥", Pal.Red, 0.9f);
+                Banner("官军探马", "看清来路，趁官兵未到先征兵布阵", Pal.Gold, 1.1f);
             }, 68);
             Tween.Pop(card.transform, 0.4f);
         }
@@ -217,6 +221,10 @@ namespace Rescue
                     if (_tutorialRun) Save.SetTut((int)Tut.Hero);
                     break;
                 }
+                case Ev.WaveStart when ev.A == 1:
+                    Sfx.Play(Snd.Warn, 0.7f);
+                    Banner("官兵来了！", "守住宋江，别让他们碰到哥哥", Pal.Red, 0.9f);
+                    break;
                 case Ev.Rain when mine:
                     Banner("及时雨！", $"宋江撒钱：炊饼 +{ev.Val:0}，快聚义反推！", Pal.Gold, 1f);
                     if (!Save.Tut((int)Tut.Rain)) { Save.SetTut((int)Tut.Rain); ShowHint("宋江每掉一颗心就会撒钱（及时雨）。\n赶紧聚义，把官兵打回去！", 4f); }
@@ -253,7 +261,7 @@ namespace Rescue
                     Banner("方便铲！", "鲁智深送来一把铲子，拖到草地上开荒", Pal.Willow, 0.8f);
                     break;
                 case Ev.Rescue when mine:
-                    Banner("宋江哥哥高枕无忧了！", "公孙胜作法：官兵清场，十二秒内宋江不掉血", Pal.Red, 1.2f);
+                    Banner("宋江哥哥有惊无险！", "公孙胜作法，把官兵都推回路口", Pal.Red, 1.2f);
                     break;
                 case Ev.Dig when mine && !Save.Tut((int)Tut.Dig):
                     Save.SetTut((int)Tut.Dig);
@@ -332,24 +340,63 @@ namespace Rescue
 
         // ─────────────────────────── 新手引导 ───────────────────────────
 
+        /// <summary>
+        /// 军师小贴士：贴在对手半区顶上（自己的棋盘一格不挡），整块不吃触摸，底下照常拖字；
+        /// 点一下贴士就收起，到时也自己淡出。分步引导的「点这/放这」不受影响。
+        /// </summary>
         void BuildHint()
         {
             _hint = Ui.Rect(_overlay, "hint");
             Ui.Anchor(_hint, 0.5f, 0.5f);
-            _hint.anchoredPosition = new Vector2(0, -60);
-            Ui.Box(_hint, new Vector2(940, 210), Vector2.zero, Pal.Ink.A(0.9f));
-            Ui.Box(_hint, new Vector2(110, 110), new Vector2(-400, 0), Pal.Red);
-            Ui.Label(_hint, "吴用", 40, Pal.Paper, new Vector2(-400, 0), new Vector2(110, 110), TextAnchor.MiddleCenter, Fonts.Brush);
-            _hintText = Ui.Label(_hint, "", 38, Pal.Paper, new Vector2(60, 0), new Vector2(780, 200), TextAnchor.MiddleLeft);
+            _hint.sizeDelta = new Vector2(HintW, HintH);
+            _hintGroup = _hint.gameObject.AddComponent<CanvasGroup>();
+            _hintGroup.blocksRaycasts = false;
+            _hintGroup.interactable = false;
+            Ui.Box(_hint, new Vector2(HintW, HintH), Vector2.zero, Pal.Ink.A(0.86f));
+            Ui.Box(_hint, new Vector2(96, 96), new Vector2(-HintW * 0.5f + 72, 6), Pal.Red);
+            Ui.Label(_hint, "吴用", 34, Pal.Paper, new Vector2(-HintW * 0.5f + 72, 6), new Vector2(96, 96), TextAnchor.MiddleCenter, Fonts.Brush);
+            _hintText = Ui.Label(_hint, "", 37, Pal.Paper, new Vector2(62, 8), new Vector2(HintW - 170, HintH - 30), TextAnchor.MiddleLeft);
+            Ui.Label(_hint, "轻点收起", 25, Pal.Paper.A(0.55f), new Vector2(HintW * 0.5f - 110, -HintH * 0.5f + 26), new Vector2(170, 32), TextAnchor.MiddleRight);
             _hint.gameObject.SetActive(false);
         }
+
+        const float HintW = 1000f, HintH = 196f;
 
         void ShowHint(string text, float dur)
         {
             _hintText.text = text;
             _hint.gameObject.SetActive(true);
+            _hintWant = true;
+            _hintGroup.alpha = 0f;
+            PlaceHint();
             Tween.Pop(_hint, 0.25f);
             _tutT = dur;
+        }
+
+        public void Coach(string text, float dur) => ShowHint(text, dur);
+
+        void HideHint(bool now = false)
+        {
+            _hintWant = false;
+            if (now) _hint.gameObject.SetActive(false);
+        }
+
+        void PlaceHint()
+        {
+            var screen = View.HintScreenTop;
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(_overlay, screen, null, out var local))
+                _hint.anchoredPosition = new Vector2(0f, local.y - HintH * 0.5f);
+        }
+
+        void TickHint()
+        {
+            if (!_hint.gameObject.activeSelf) return;
+            PlaceHint();
+            if (_hintWant && Input.GetMouseButtonDown(0)
+                && RectTransformUtility.RectangleContainsScreenPoint(_hint, Input.mousePosition, null))
+                _hintWant = false;
+            _hintGroup.alpha = Mathf.MoveTowards(_hintGroup.alpha, _hintWant ? 1f : 0f, Time.unscaledDeltaTime * 6f);
+            if (!_hintWant && _hintGroup.alpha <= 0f) _hint.gameObject.SetActive(false);
         }
 
         void StartTut(Tut t)
@@ -366,7 +413,7 @@ namespace Rescue
                     _ringPos = BattleView.CampWorld(0);
                     break;
                 case Tut.Merge:
-                    ShowHint("两个一样、同级的字拖到一起，\n就能合成升级，更猛！", 7f);
+                    ShowHint("两个一样、同级的兵拖到一起，\n就能合成升级，更猛！", 7f);
                     break;
                 case Tut.Gold:
                 {
@@ -384,7 +431,7 @@ namespace Rescue
             Save.SetTut((int)_tut.Value);
             if (_tut == Tut.Place) M.Hold = false;
             _tut = null;
-            _hint.gameObject.SetActive(false);
+            HideHint();
         }
 
         void UpdateTutorial()
@@ -407,15 +454,15 @@ namespace Rescue
             else if (_hint.gameObject.activeSelf)
             {
                 _tutT -= Time.deltaTime;
-                if (_tutT <= 0) _hint.gameObject.SetActive(false);
+                if (_tutT <= 0) HideHint();
             }
 
             if (_tut != null || M.Hold || Autoplay) return;
             var p = M.Player;
-            if (!Save.Tut((int)Tut.Danger) && p.InDanger && !p.RescueUsed)
+            if (!Save.Tut((int)Tut.Danger) && p.AtTheGate && !p.RescueUsed)
             {
                 Save.SetTut((int)Tut.Danger);
-                ShowHint("宋江危险！点山寨右边的「救」，\n看段广告请公孙胜作法清场护身。", 4f);
+                ShowHint("宋江危险！点山寨右边的「救」，\n看段广告把官兵推回路口。", 4f);
                 return;
             }
             if (!Save.Tut((int)Tut.Dismiss) && Save.Tut((int)Tut.Place) && p.EmptyCampSlots == 0 && !p.CanRecruit && p.Buns >= p.RecruitCost)
@@ -463,6 +510,7 @@ namespace Rescue
                 Sfx.On = !Sfx.On;
                 Save.D.sfx = Sfx.On;
                 Save.Write();
+                if (Sfx.On) Sfx.Play(Snd.Tap);
                 gearState.text = Sfx.On ? "声音开" : "声音关";
             });
 
@@ -525,7 +573,7 @@ namespace Rescue
         {
             if (_ending) return;
             _ending = true;
-            _hint.gameObject.SetActive(false);
+            HideHint(true);
             if (win) Sfx.PlayVictory();
             else Sfx.PlayDefeat();
             var r = new BattleResult

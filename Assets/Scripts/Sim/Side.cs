@@ -18,6 +18,8 @@ namespace Rescue.Sim
         public bool Dead;
 
         public bool IsBig => Def.Kind == EnemyKind.Bu || Def.Kind == EnemyKind.Boss;
+        /// <summary>还在出兵口草堆里，没走到看得见的路上。</summary>
+        public bool InBrush => Progress < Tuning.SpawnCover;
     }
 
     /// <summary>十字坡酒店买来的道具，带进下一局。</summary>
@@ -72,6 +74,8 @@ namespace Rescue.Sim
         public float EnemySlowT;
         public float HasteAllT;
         public float ItemHasteT;
+        /// <summary>主动道具各自的冷却，转完才能再放一次。</summary>
+        public float MengCd, BaoziCd, ShuCd, FuCd, TrapCd;
         float _steleCd;
 
         readonly Rng _rng;
@@ -119,7 +123,7 @@ namespace Rescue.Sim
             _charWeights.Sort((a, b) => a.Key.CompareTo(b.Key));
 
             if (Items.Gang) Buns += 30;
-            if (Items.Xuming) AddMaxHp(10);
+            if (Items.Xuming) AddMaxHp(Tuning.XumingHearts);
             ShovelStock = Items.Shovels;
             FillShovels();
         }
@@ -132,18 +136,27 @@ namespace Rescue.Sim
             Hp += n;
         }
 
-        /// <summary>危急：官兵快摸到宋江，或者只剩最后一颗心。</summary>
+        /// <summary>危急：官兵快摸到宋江，或者只剩最后一颗心。只用来换紧张的曲子。</summary>
         public bool InDanger
         {
             get
             {
                 if (Dead || M.Over) return false;
                 if (Hearts <= 1) return true;
-                int near = 0;
+                return AtTheGate;
+            }
+        }
+
+        /// <summary>有官兵走到宋江跟前。「危」字和救命广告都看这个。</summary>
+        public bool AtTheGate
+        {
+            get
+            {
+                if (Dead || M.Over) return false;
                 var goal = Board.Goal.Center;
                 foreach (var e in Enemies)
-                    if (!e.Dead && V2.Dist(e.Pos, goal) < 2.2f) near++;
-                return near >= 3;
+                    if (!e.Dead && V2.Dist(e.Pos, goal) < 2.2f) return true;
+                return false;
             }
         }
 
@@ -167,26 +180,38 @@ namespace Rescue.Sim
             return false;
         }
 
-        /// <summary>看广告请公孙胜作法：清掉场上小兵、头目掉三成血，之后十二秒宋江不掉血。一局一次。</summary>
+        /// <summary>看广告请公孙胜作法：场上官兵原样推回路口，血量不动，再走一遍。一局一次。</summary>
         public bool Rescue()
         {
             if (RescueUsed || Dead || M.Over) return false;
             RescueUsed = true;
-            ShieldT = 12f;
-            foreach (var e in Enemies)
+            var alive = new List<Enemy>();
+            foreach (var e in Enemies) if (!e.Dead) alive.Add(e);
+            alive.Sort((a, b) => a.Progress.CompareTo(b.Progress));
+            float front = Tuning.SpawnCover + 0.05f;
+            float limit = Math.Max(front, Board.PathLength - 1.5f);
+            float cursor = front;
+            foreach (var e in alive)
             {
-                if (e.Dead) continue;
-                Hit(e, e.IsBig ? e.MaxHp * 0.3f : e.Hp + 1f, null);
+                float dest = Math.Min(cursor, limit);
+                if (e.Progress > dest)
+                {
+                    e.Progress = dest;
+                    e.Pos = Board.PosAt(e.Progress);
+                    e.HasteT = 0f;
+                }
+                cursor += 0.32f;
             }
-            Emit(new SimEvent { Type = Ev.Rescue, P = Board.Goal.Center });
+            Emit(new SimEvent { Type = Ev.Rescue, P = Board.Goal.Center, Val = alive.Count });
             return true;
         }
 
         /// <summary>孙二娘的包子：五成五回一颗心，四成五吃坏肚子掉一颗心（不会因此丧命）。</summary>
         public bool UseBaozi()
         {
-            if (Items.Baozi <= 0 || M.Over || Dead) return false;
+            if (Items.Baozi <= 0 || BaoziCd > 0f || M.Over || Dead) return false;
             Items.Baozi--;
+            BaoziCd = Tuning.CdBaozi;
             bool good = _rng.Chance(0.55f);
             int before = Hp;
             Hp = good ? Math.Min(MaxHp, Hp + Tuning.HeartHp) : Math.Max(1, Hp - Tuning.HeartHp);
@@ -308,9 +333,9 @@ namespace Rescue.Sim
         public static bool CanMerge(Piece a, Piece b)
         {
             if (a == null || b == null || ReferenceEquals(a, b)) return false;
-            if (a.Type != b.Type || a.Type == PieceType.Shovel) return false;
+            if (a.Type != PieceType.Unit || b.Type != PieceType.Unit) return false;
             if (a.Level != b.Level || a.Level >= UnitDef.MaxLevel) return false;
-            return a.Type == PieceType.Unit ? a.Kind == b.Kind : a.Char == b.Char;
+            return a.Kind == b.Kind;
         }
 
         public bool CampToCell(int slot, int c, int r)
@@ -422,8 +447,9 @@ namespace Rescue.Sim
 
         public bool UseFu()
         {
-            if (Items.Fu <= 0 || M.Over) return false;
+            if (Items.Fu <= 0 || FuCd > 0f || M.Over) return false;
             Items.Fu--;
+            FuCd = Tuning.CdFu;
             ItemHasteT = 12f;
             Emit(new SimEvent { Type = Ev.ItemUsed, Text = "攻速符", Flag = 3 });
             return true;
@@ -463,8 +489,9 @@ namespace Rescue.Sim
 
         public bool UseMengHan()
         {
-            if (Items.MengHan <= 0 || M.Over) return false;
+            if (Items.MengHan <= 0 || MengCd > 0f || M.Over) return false;
             Items.MengHan--;
+            MengCd = Tuning.CdMeng;
             foreach (var e in Enemies) e.StunT = Math.Max(e.StunT, 3f);
             Emit(new SimEvent { Type = Ev.ItemUsed, Text = "蒙汗药" });
             return true;
@@ -473,8 +500,9 @@ namespace Rescue.Sim
         /// <summary>陷阱：官兵跌回去，一时爬不上来。头目跌得近一些。</summary>
         public bool UseTrap()
         {
-            if (Items.Trap <= 0 || M.Over) return false;
+            if (Items.Trap <= 0 || TrapCd > 0f || M.Over) return false;
             Items.Trap--;
+            TrapCd = Tuning.CdTrap;
             foreach (var e in Enemies)
             {
                 if (e.Dead) continue;
@@ -487,18 +515,19 @@ namespace Rescue.Sim
 
         public bool UseTianShu()
         {
-            if (Items.TianShu <= 0 || M.Over) return false;
+            if (Items.TianShu <= 0 || ShuCd > 0f || M.Over) return false;
             Piece best = null;
             var at = new V2();
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
                 {
                     var p = Board.Pieces[c, r];
-                    if (p == null || p.Level >= UnitDef.MaxLevel) continue;
+                    if (p == null || p.Type != PieceType.Unit || p.Level >= UnitDef.MaxLevel) continue;
                     if (best == null || p.Level < best.Level) { best = p; at = new CellPos(c, r).Center; }
                 }
             if (best == null) return false;
             Items.TianShu--;
+            ShuCd = Tuning.CdShu;
             MergeInto(best, at);
             RecomputeHeroes();
             Emit(new SimEvent { Type = Ev.ItemUsed, Text = "天书" });
@@ -586,6 +615,11 @@ namespace Rescue.Sim
             EnemySlowT = Math.Max(0, EnemySlowT - dt);
             HasteAllT = Math.Max(0, HasteAllT - dt);
             ItemHasteT = Math.Max(0, ItemHasteT - dt);
+            MengCd = Math.Max(0, MengCd - dt);
+            BaoziCd = Math.Max(0, BaoziCd - dt);
+            ShuCd = Math.Max(0, ShuCd - dt);
+            FuCd = Math.Max(0, FuCd - dt);
+            TrapCd = Math.Max(0, TrapCd - dt);
             RallyT = Math.Max(0, RallyT - dt);
             _steleCd = Math.Max(0, _steleCd - dt);
             ShieldT = Math.Max(0, ShieldT - dt);
@@ -630,9 +664,10 @@ namespace Rescue.Sim
             int heartsBefore = Hearts;
             Hp = Math.Max(0, Hp - e.LeakDamage);
             Emit(new SimEvent { Type = Ev.Leak, A = e.Id, Val = e.LeakDamage, P = e.Pos });
-            if (!Dead && Hearts < heartsBefore)
+            int lost = heartsBefore - Hearts;
+            if (!Dead && lost > 0)
             {
-                int gift = RecruitCost * 3;
+                int gift = Tuning.RainBuns * lost;
                 Buns += gift;
                 Rains++;
                 Emit(new SimEvent { Type = Ev.Rain, Val = gift, P = Board.Goal.Center });
@@ -711,8 +746,51 @@ namespace Rescue.Sim
             }
         }
 
+        /// <summary>开着时，带头好汉的大招不自己放，等玩家点技能钮。</summary>
+        public bool ManualUlt;
+
+        /// <summary>带头好汉：等级最高，同级看名字字数，再同就是先凑出来的。</summary>
+        public HeroInstance LeadHero
+        {
+            get
+            {
+                HeroInstance best = null;
+                foreach (var h in Heroes)
+                {
+                    if (best == null) { best = h; continue; }
+                    if (h.Level != best.Level) { if (h.Level > best.Level) best = h; continue; }
+                    if (h.Def.Name.Length != best.Def.Name.Length) { if (h.Def.Name.Length > best.Def.Name.Length) best = h; continue; }
+                    if (h.Id < best.Id) best = h;
+                }
+                return best;
+            }
+        }
+
+        public bool LeadUltReady
+        {
+            get { var h = LeadHero; return h != null && h.UltCd <= 0; }
+        }
+
+        /// <summary>这名好汉大招转满一圈要多久。兵器会把这一圈缩短。</summary>
+        public float UltMax(HeroInstance h) => h.Def.UltCooldown * AffixOf(h.Def).UltCd;
+
+        /// <summary>玩家点技能钮放带头好汉的大招。没有目标时不进冷却。</summary>
+        public bool CastLeadUlt()
+        {
+            if (Dead || M.Over) return false;
+            var h = LeadHero;
+            if (h == null || h.UltCd > 0) return false;
+            _curHero = h;
+            var aff = AffixOf(h.Def);
+            bool ok = TryUlt(h, h.Pos, aff);
+            _curHero = null;
+            if (ok) h.UltCd = h.Def.UltCooldown * aff.UltCd;
+            return ok;
+        }
+
         void TickHeroes(float dt)
         {
+            var lead = ManualUlt ? LeadHero : null;
             foreach (var h in Heroes)
             {
                 var def = h.Def;
@@ -722,7 +800,7 @@ namespace Rescue.Sim
                 _curHero = h;
                 var aff = AffixOf(def);
 
-                if (h.UltCd <= 0 && TryUlt(h, pos, aff)) h.UltCd = def.UltCooldown * aff.UltCd;
+                if (h != lead && h.UltCd <= 0 && TryUlt(h, pos, aff)) h.UltCd = def.UltCooldown * aff.UltCd;
 
                 if (def.NoAttack) GainXp(h, dt * 0.35f);
                 if (def.NoAttack || h.Cd > 0) continue;
@@ -730,7 +808,7 @@ namespace Rescue.Sim
                 if (range < 50f) range += aff.Range;
                 var target = FindTarget(pos, range, def.PreferBig);
                 if (target == null) { h.Cd = 0; continue; }
-                h.Cd = def.Cooldown * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd;
+                h.Cd = def.CooldownAt(h.Level) * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd;
                 float dmg = HeroDamage(h, aff);
                 int crit = 0;
                 float critChance = def.CritChance + aff.Crit;
@@ -816,7 +894,7 @@ namespace Rescue.Sim
                 case UltKind.Snipe:
                 {
                     Enemy best = null;
-                    foreach (var e in Enemies) if (!e.Dead && (best == null || e.Hp > best.Hp)) best = e;
+                    foreach (var e in Enemies) if (!e.Dead && !e.InBrush && (best == null || e.Hp > best.Hp)) best = e;
                     if (best == null) return false;
                     Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = best.Pos, Flag = 2 });
                     Hit(best, dmg * def.UltMul, def, true);
@@ -841,7 +919,7 @@ namespace Rescue.Sim
                     foreach (var e in InRange(pos, 4f))
                     {
                         int n = 0;
-                        foreach (var o in Enemies) if (!o.Dead && V2.Dist(o.Pos, e.Pos) < def.UltR) n++;
+                        foreach (var o in Enemies) if (!o.Dead && !o.InBrush && V2.Dist(o.Pos, e.Pos) < def.UltR) n++;
                         if (n > bestN) { bestN = n; center = e; }
                     }
                     if (center == null) return false;
@@ -987,7 +1065,7 @@ namespace Rescue.Sim
             float bestScore = float.MinValue;
             foreach (var e in Enemies)
             {
-                if (e.Dead || V2.Dist(pos, e.Pos) > range) continue;
+                if (e.Dead || e.InBrush || V2.Dist(pos, e.Pos) > range) continue;
                 float s = e.Progress + (preferBig && e.IsBig ? 1000f : 0f);
                 if (s > bestScore) { bestScore = s; best = e; }
             }
@@ -996,14 +1074,14 @@ namespace Rescue.Sim
 
         bool AreaAny(V2 pos, float r)
         {
-            foreach (var e in Enemies) if (!e.Dead && V2.Dist(pos, e.Pos) <= r) return true;
+            foreach (var e in Enemies) if (!e.Dead && !e.InBrush && V2.Dist(pos, e.Pos) <= r) return true;
             return false;
         }
 
         List<Enemy> InRange(V2 pos, float r)
         {
             var list = new List<Enemy>();
-            foreach (var e in Enemies) if (!e.Dead && V2.Dist(pos, e.Pos) <= r) list.Add(e);
+            foreach (var e in Enemies) if (!e.Dead && !e.InBrush && V2.Dist(pos, e.Pos) <= r) list.Add(e);
             return list;
         }
 
@@ -1013,7 +1091,7 @@ namespace Rescue.Sim
             var hits = new List<KeyValuePair<float, Enemy>>();
             foreach (var e in Enemies)
             {
-                if (e.Dead) continue;
+                if (e.Dead || e.InBrush) continue;
                 var d = e.Pos - from;
                 float along = V2.Dot(d, dir);
                 if (along < -0.2f || along > range + 0.4f) continue;
@@ -1028,7 +1106,7 @@ namespace Rescue.Sim
         void Splash(Enemy center, float radius, float dmg, HeroDef src)
         {
             foreach (var e in Enemies)
-                if (!e.Dead && !ReferenceEquals(e, center) && V2.Dist(e.Pos, center.Pos) <= radius) Hit(e, dmg, src);
+                if (!e.Dead && !e.InBrush && !ReferenceEquals(e, center) && V2.Dist(e.Pos, center.Pos) <= radius) Hit(e, dmg, src);
         }
 
         void Knock(Enemy e, float dist)
@@ -1039,7 +1117,7 @@ namespace Rescue.Sim
 
         void Hit(Enemy e, float dmg, HeroDef src, bool crit = false)
         {
-            if (e.Dead) return;
+            if (e.Dead || e.InBrush) return;
             if (Items.Flag) dmg *= 1.22f;
             int flag = crit ? 1 : 0;
             if (e.Boss != null)

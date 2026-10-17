@@ -35,7 +35,6 @@ namespace Rescue.Sim
             Sides[0] = new Side(0, this, false, seed * 7 + 1, playerItems);
             Sides[1] = new Side(1, this, true, seed * 13 + 5, null);
             Sides[1].IncomeMul = chapter.RivalIncome;
-            if (playerItems != null && playerItems.Xuming) Sides[1].AddMaxHp(6);
         }
 
         public float NextWaveIn => _qi < _queue.Count ? 0 : Math.Max(0, _nextWaveT - Time);
@@ -54,7 +53,7 @@ namespace Rescue.Sim
                     var kind = _queue[_qi++];
                     foreach (var s in Sides) SpawnOn(s, kind, 0);
                     _spawnT = _interval;
-                    if (_qi >= _queue.Count) _nextWaveT = Time + Tuning.WaveGap;
+                    if (_qi >= _queue.Count) _nextWaveT = Time + Tuning.WaveGap(Wave);
                 }
             }
 
@@ -75,7 +74,7 @@ namespace Rescue.Sim
             _queue.Clear();
             _qi = 0;
             _spawnT = 0;
-            _interval = Math.Max(0.28f, 0.85f - 0.025f * Wave);
+            _interval = Tuning.SpawnInterval(Wave);
 
             // 后期人数封顶、单兵变厚，总血量和收益不变，画面不至于糊成一片
             int crowd = Math.Min(10 + 2 * (Wave - 1), 44);
@@ -111,6 +110,7 @@ namespace Rescue.Sim
             bool grunt = kind == EnemyKind.Zu || kind == EnemyKind.Chai || kind == EnemyKind.Jia;
             float scale = grunt ? _crowdScale : 1f;
             hp *= scale;
+            hp *= Chapter.FoeHp;
             var e = new Enemy
             {
                 Id = _nextEnemyId++,
@@ -118,7 +118,8 @@ namespace Rescue.Sim
                 Hp = hp,
                 MaxHp = hp,
                 RewardMul = Tuning.KillGold,
-                LeakDamage = (int)Math.Round(def.LeakDamage * scale),
+                // 人挤进同一波时单兵更厚，漏过去仍只扣这只兵自己的心。
+                LeakDamage = def.LeakDamage,
                 Progress = progress,
                 Glyph = def.Glyph,
                 SkillT = 3f,

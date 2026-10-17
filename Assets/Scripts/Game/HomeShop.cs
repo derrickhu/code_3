@@ -67,7 +67,7 @@ namespace Rescue
             }
             Rebuild(null);
 
-            var tip = Ui.Label(_shop, "tip:道具仅当天有效", 42, Pal.Paper, new Vector2(0, -640), new Vector2(800, 60));
+            var tip = Ui.Label(_shop, "打完一局就换新货，道具仅当天有效", 42, Pal.Paper, new Vector2(0, -640), new Vector2(900, 60));
             tip.fontStyle = FontStyle.Bold;
             Tween.Pop(body, 0.3f);
         }
@@ -125,7 +125,7 @@ namespace Rescue
                 Ui.Label(t, (it.Active ? "主动:" : "被动:") + it.Desc, 28, Pal.Hex("4A3A2C"), new Vector2(-50, -24), new Vector2(320, 90), TextAnchor.UpperLeft)
                     .lineSpacing = 1.05f;
 
-                bool sold = Save.D.shopSold.Contains(it.Id) || Save.D.shopFree.Contains(it.Id) || it.Owned();
+                bool sold = Save.D.shopSold.Contains(it.Id) || Save.D.shopFree.Contains(it.Id);
                 if (sold)
                 {
                     var gone = Ui.Framed(t, new Vector2(212, 104), new Vector2(276, 0), Pal.Hex("4D4642"), Edge, 5f, "framedSold");
@@ -159,7 +159,7 @@ namespace Rescue
                 if (Save.D.coins < it.Price) price.color = Pal.Hex("A33A2A");
                 Ui.Tap(btn, () =>
                 {
-                    if (Save.D.coins < it.Price) { Toast("铜钱不够，打一局再来"); return; }
+                    if (Save.D.coins < it.Price) { Nope("铜钱不够，打一局再来"); return; }
                     if (!CanTake(it)) return;
                     Save.D.coins -= it.Price;
                     it.Give();
@@ -174,7 +174,8 @@ namespace Rescue
 
         static bool CanTake(ShopItem it)
         {
-            if (it.Active && it.Count() == 0 && ActiveKinds() >= ActiveSlots) { Toast($"主动道具最多带 {ActiveSlots} 种"); return false; }
+            if (!it.Active && it.Owned()) { Nope("这件已经有了"); return false; }
+            if (it.Active && it.Count() == 0 && ActiveKinds() >= ActiveSlots) { Nope($"主动道具最多带 {ActiveSlots} 种"); return false; }
             return true;
         }
 
@@ -235,7 +236,7 @@ namespace Rescue
             _spinNow = () => Spin(content, cells, hl, pool, rebuild);
             Ui.Tap(center, () =>
             {
-                if (Save.LottoLeft <= 0) { Toast("今天的抽奖次数用完了，明天再来"); return; }
+                if (Save.LottoLeft <= 0) { Nope("今天的抽奖次数用完了，明天再来"); return; }
                 AdStub.Show("抽奖", () => Spin(content, cells, hl, pool, rebuild));
             });
 

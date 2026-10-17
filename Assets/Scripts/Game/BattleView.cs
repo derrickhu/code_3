@@ -9,13 +9,23 @@ namespace Rescue
     public sealed partial class BattleView : MonoBehaviour
     {
         public const float Left = -4f;
-        public const float MyBottom = -5.9f;
-        public const float OppBottom = 1.0f;
-        public const float CampY = -7.05f;
-        public const float ButtonY = -8.3f;
-        public const float TopY = 8.05f;
+        public const float MyBottom = -4.25f;
+        public const float OppBottom = 1.13f;
+        public const float CampY = MyBottom - 0.47f;
+        public const float ButtonY = CampY - 1.22f;
+        /// <summary>主动道具一行，压在技能和聚义下面。</summary>
+        public const float ItemY = ButtonY - 1.06f;
+        public const float TopY = 6.39f;
         const float WallY = (MyBottom + Board.Rows + OppBottom) * 0.5f;
-        const int MaxShovelAds = 3;
+        const float HudHalf = 0.40f;
+        const float SkillX = -2.75f;
+        const float SkillD = 1.00f;
+        const float ItemGap = 1.0f;
+        const float ItemScale = 0.72f;
+        /// <summary>可见宽度正好是 8 格。再为了装高度而缩小，两侧就会露出地面。</summary>
+        const float WidthNeed = Board.Cols;
+        public static Vector3 CamBase = new Vector3(0f, -0.1f, -10f);
+        const int MaxShovelAds = 1;
         const float RecruitW = 2.7f;
         const float RecruitH = 1.0f;
 
@@ -33,7 +43,6 @@ namespace Rescue
         Transform _root, _fxRoot;
         float _acc;
         float _shake;
-        Vector3 _camBase;
         int _frame;
 
         readonly Transform[][,] _cellVis = { new Transform[Board.Cols, Board.Rows], new Transform[Board.Cols, Board.Rows] };
@@ -48,10 +57,14 @@ namespace Rescue
         readonly SpriteRenderer[] _campSlots = new SpriteRenderer[Tuning.CampSlots];
 
         SpriteRenderer _recruitBtn, _recruitFill, _pauseBtn, _mengBtn, _shuBtn, _baoziBtn, _fuBtn, _trapBtn, _rescueBtn;
-        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _fuText, _trapText, _rivalText, _titleText;
+        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _fuText, _trapText, _titleText;
         Transform _shovelRoot;
-        float _shovelShowT, _shovelSlide, _shovelCd = 18f;
-        const float ShovelOfferX = 3.68f;
+        float _shovelSlide;
+        bool _shovelForce;
+        const float ShovelOfferX = 3.47f;
+        const int ShovelOfferEmpty = 2;
+        /// <summary>白地比格子小一圈，圆角，格与格之间留出草地。边上和中间同一块。</summary>
+        const float TilePad = 0.88f;
         Transform _bunIcon, _rescueRoot;
         static readonly Vector3 _bunIconScale = new Vector3(0.5f, 0.5f, 1f);
         int _shovelAds;
@@ -62,10 +75,11 @@ namespace Rescue
         float _recruitFlash;
         bool _recruitWasFull;
 
-        // 点选属性卡 + 攻击范围
+        // 点选属性卡 + 攻击范围。卡贴在山寨下面，不压棋盘，射程圈才能看全。
         Transform _card;
-        SpriteRenderer _cardBg;
-        TextMesh _cardTitle, _cardLevel, _cardBody;
+        SpriteRenderer _cardBg, _cardShadow, _cardPaper, _cardSeal, _cardRule, _cardIcon;
+        TextMesh _cardTitle, _cardLevel, _cardBody, _cardGlyph;
+        Vector2 _cardSize;
         float _cardT;
         PieceView _picked;
 
@@ -88,6 +102,26 @@ namespace Rescue
 
         // ─────────────────────────── 布局 ───────────────────────────
 
+        /// <summary>
+        /// 宽度永远刚好是 8 格，左右贴边。不够高就收紧界面，不再把整张棋盘缩小。
+        /// 真机上标题让开微信胶囊，多出来的高度留在底下。
+        /// </summary>
+        public static void FitCamera(Camera cam)
+        {
+            var rect = cam.rect;
+            float vw = Mathf.Max(1f, rect.width * Screen.width), vh = Mathf.Max(1f, rect.height * Screen.height);
+            float bar = 0f, menuTop = 0f, menuBottom = 0f;
+            if (rect.width >= 0.999f && rect.height >= 0.999f)
+                Ui.ScreenInsets(out bar, out menuTop, out menuBottom, out _, out _);
+            float upp = WidthNeed / vw;
+            float topWorld = menuBottom > 0f
+                ? TopY + (menuTop + menuBottom) * 0.5f * upp
+                : TopY + HudHalf + 0.02f + bar * upp;
+            cam.orthographicSize = vh * upp * 0.5f;
+            CamBase = new Vector3(0f, topWorld - cam.orthographicSize, -10f);
+            cam.transform.position = CamBase;
+        }
+
         public static Vector2 World(int side, V2 p) =>
             side == 0 ? new Vector2(Left + p.x, MyBottom + p.y) : new Vector2(Left + (Board.Cols - p.x), OppBottom + (Board.Rows - p.y));
 
@@ -99,7 +133,6 @@ namespace Rescue
         {
             M = m;
             _cam = cam;
-            _camBase = cam.transform.position;
             _root = new GameObject("World").transform;
             _root.SetParent(transform, false);
             _fxRoot = new GameObject("Fx").transform;
@@ -112,6 +145,7 @@ namespace Rescue
 
             BuildFrame();
             for (int s = 0; s < 2; s++) BuildBoard(s);
+            BuildScouts();
             BuildCamp();
             BuildHud();
             BuildTip();
@@ -127,8 +161,8 @@ namespace Rescue
             float top = OppBottom + Board.Rows, bottom = MyBottom;
             var center = new Vector2(0, (top + bottom) * 0.5f);
             var size = new Vector2(Board.Cols, top - bottom);
-            Gfx.Sprite(_root, Art.Rounded, Pal.Shadow, center + new Vector2(0.08f, -0.14f), size + new Vector2(0.5f, 0.5f), 0, "board_shadow");
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink, center, size + new Vector2(0.34f, 0.34f), 1, "board_bg");
+            // 棋盘贴着屏幕左右边缘，深色边框会在两侧露出一条黑边，所以只在底下留一道阴影。
+            Gfx.Sprite(_root, Art.White, Pal.Shadow, center + new Vector2(0f, -0.1f), new Vector2(size.x, size.y + 0.16f), 0, "board_shadow");
 
             float wallH = OppBottom - (MyBottom + Board.Rows);
             var wall = Gfx.Sprite(_root, Art.Img("tex_stone"), Color.white, new Vector2(0, WallY), Vector2.one, 9, "wall");
@@ -186,9 +220,8 @@ namespace Rescue
                     break;
                 case Cell.Tile:
                     Gfx.Sprite(t, Art.Ground("tex_grass", c, r), Color.white, Vector2.zero, full, 8);
-                    Gfx.Sprite(t, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.06f), new Vector2(0.9f, 0.9f), 9);
-                    Gfx.Sprite(t, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.9f, 0.9f), 10);
-                    Gfx.Sprite(t, Art.Frame, Pal.Ink.A(0.18f), Vector2.zero, new Vector2(0.9f, 0.9f), 10);
+                    Gfx.Sprite(t, Art.Rounded, Pal.Shadow, new Vector2(0.02f, -0.03f), new Vector2(TilePad, TilePad), 9);
+                    Gfx.Sprite(t, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(TilePad, TilePad), 10);
                     break;
                 case Cell.Water:
                     Gfx.Sprite(t, Art.White, Pal.Water, Vector2.zero, full, 8);
@@ -200,6 +233,18 @@ namespace Rescue
                     break;
             }
             Decorate(t, side, kind, c, r);
+            BleedEdge(t, side, c, r, kind);
+        }
+
+        /// <summary>最外侧一列的地面向外铺出去，万一画面略宽，两侧仍是地面而不是露底。</summary>
+        void BleedEdge(Transform t, int side, int c, int r, Cell kind)
+        {
+            if (c != 0 && c != Board.Cols - 1) return;
+            int outward = (side == 0 ? 1 : -1) * (c == 0 ? -1 : 1);
+            var sprite = kind == Cell.Water ? Art.White : Art.Ground(kind == Cell.Path ? "tex_earth" : "tex_grass", c, r);
+            var color = kind == Cell.Water ? Pal.Water : Color.white;
+            for (int i = 1; i <= 3; i++)
+                Gfx.Sprite(t, sprite, color, new Vector2(outward * i, 0f), new Vector2(1.01f, 1.01f), 8);
         }
 
         void PathEdges(Transform t, int side, Board b, int c, int r)
@@ -220,9 +265,9 @@ namespace Rescue
 
         void BuildCamp()
         {
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-0.5f, CampY), new Vector2(7.4f, 1.22f), 1);
-            Gfx.Sprite(_root, Art.Rounded, Pal.PaperDark, new Vector2(-0.5f, CampY), new Vector2(7.28f, 1.1f), 2);
-            Gfx.Text(_root, "山寨", Fonts.Brush, 0.42f, Pal.RedDeep, new Vector2(-3.55f, CampY), 5);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-0.52f, CampY), new Vector2(6.88f, 1.22f), 1);
+            Gfx.Sprite(_root, Art.Rounded, Pal.PaperDark, new Vector2(-0.52f, CampY), new Vector2(6.76f, 1.1f), 2);
+            Gfx.Text(_root, "山寨", Fonts.Brush, 0.4f, Pal.RedDeep, new Vector2(-3.43f, CampY), 5);
             for (int i = 0; i < _campSlots.Length; i++)
             {
                 _campSlots[i] = Gfx.Sprite(_root, Art.Rounded, Pal.Paper.A(0.9f), CampWorld(i), new Vector2(0.98f, 0.98f), 4, "slot");
@@ -231,7 +276,7 @@ namespace Rescue
 
             _rescueRoot = new GameObject("rescue").transform;
             _rescueRoot.SetParent(_root, false);
-            _rescueRoot.localPosition = new Vector2(3.68f, CampY);
+            _rescueRoot.localPosition = new Vector2(ShovelOfferX, CampY);
             Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.07f), new Vector2(0.84f, 1.08f), 49);
             _rescueBtn = Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.GoldBright, Vector2.zero, new Vector2(0.84f, 1.08f), 50);
             Gfx.Sprite(_rescueRoot, Art.Frame, Pal.Gold, Vector2.zero, new Vector2(0.84f, 1.08f), 51);
@@ -254,38 +299,48 @@ namespace Rescue
             _shovelRoot.gameObject.SetActive(false);
         }
 
-        /// <summary>营寨栏右端的看广告送铲子：地快摆满、草地还能开时滑出来，晃一晃招手，十几秒没点就收回去。</summary>
+        /// <summary>白地快用完时挂在山寨右边，一直等到玩家看掉；手里有铲子或要救命时先收起来。</summary>
         void TickShovelOffer(float dt, bool rescue)
         {
             var p = M.Player;
-            bool campShovel = false;
-            foreach (var q in p.Camp) if (q != null && q.Type == PieceType.Shovel) campShovel = true;
-            bool eligible = _shovelAds < MaxShovelAds && !M.Over && !rescue && !campShovel && p.Board.AnyDiggable();
+            bool want = _shovelAds < MaxShovelAds && !M.Over && !rescue && (_shovelForce || ShovelMoment(p));
             bool shown = _shovelRoot.gameObject.activeSelf;
-            if (shown)
+            if (!want)
             {
-                _shovelShowT -= dt;
-                if (!eligible || _shovelShowT <= 0f)
-                {
-                    _shovelRoot.gameObject.SetActive(false);
-                    _shovelCd = 25f;
-                    return;
-                }
-                _shovelSlide = Mathf.Min(1f, _shovelSlide + dt / 0.35f);
-                float x = Mathf.Lerp(ShovelOfferX + 1.4f, ShovelOfferX, Tween.OutBack(_shovelSlide));
-                float wiggle = Mathf.Sin(Time.time * 9f) * 7f * (Mathf.Sin(Time.time * 1.6f) > 0.4f ? 1f : 0f);
-                _shovelRoot.localPosition = new Vector2(x, CampY + Mathf.Sin(Time.time * 3f) * 0.03f);
-                _shovelRoot.localRotation = Quaternion.Euler(0, 0, wiggle);
+                if (shown) _shovelRoot.gameObject.SetActive(false);
                 return;
             }
-            _shovelCd -= dt;
-            if (_shovelCd > 0f || !eligible || (p.EmptyCells() > 1 && M.Wave < 2)) return;
-            ShowShovelOffer();
+            if (!shown) SlideInShovel();
+            _shovelSlide = Mathf.Min(1f, _shovelSlide + dt / 0.35f);
+            float x = Mathf.Lerp(ShovelOfferX + 1.4f, ShovelOfferX, Tween.OutBack(_shovelSlide));
+            float wiggle = Mathf.Sin(Time.time * 9f) * 7f * (Mathf.Sin(Time.time * 1.6f) > 0.4f ? 1f : 0f);
+            _shovelRoot.localPosition = new Vector2(x, CampY + Mathf.Sin(Time.time * 3f) * 0.03f);
+            _shovelRoot.localRotation = Quaternion.Euler(0, 0, wiggle);
         }
 
+        static bool HasShovel(Side p)
+        {
+            if (p.ShovelStock > 0) return true;
+            foreach (var q in p.Camp) if (q != null && q.Type == PieceType.Shovel) return true;
+            return false;
+        }
+
+        /// <summary>白地最多还剩两格、还有草地能开、手里没铲子。</summary>
+        static bool ShovelMoment(Side p)
+        {
+            if (!p.Board.AnyDiggable() || HasShovel(p)) return false;
+            return p.EmptyCells() <= ShovelOfferEmpty;
+        }
+
+        /// <summary>截图流程用：不等时机直接挂出来。</summary>
         public void ShowShovelOffer()
         {
-            _shovelShowT = 15f;
+            _shovelForce = true;
+            SlideInShovel();
+        }
+
+        void SlideInShovel()
+        {
             _shovelSlide = 0f;
             _shovelRoot.gameObject.SetActive(true);
             _shovelRoot.localPosition = new Vector2(ShovelOfferX + 1.4f, CampY);
@@ -302,42 +357,46 @@ namespace Rescue
             _recruitCost = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(0.32f, ButtonY - 0.27f), 52);
             Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-0.06f, ButtonY - 0.27f), Vector2.one * 0.26f, 52);
 
-            _mengBtn = ItemButton(new Vector2(-3.4f, ButtonY), "it_menghan", "蒙汗药", Pal.Hex("C9A6EE"), out _mengText);
-            _baoziBtn = ItemButton(new Vector2(-2.15f, ButtonY), "bun", "包子", Pal.Hex("A4D8F2"), out _baoziText);
-            _shuBtn = ItemButton(new Vector2(2.55f, ButtonY), "it_tianshu", "天书", Pal.Hex("F6C46B"), out _shuText);
-            _fuBtn = ItemButton(new Vector2(3.85f, ButtonY), "it_fu", "攻速符", Pal.Hex("C9A6EE"), out _fuText);
-            _trapBtn = ItemButton(new Vector2(3.85f, ButtonY), "it_trap", "陷阱", Pal.Hex("C5E08A"), out _trapText);
+            BuildSkill();
 
-            _pauseBtn = Gfx.Sprite(_root, Art.Img("ui_pause"), Color.white, new Vector2(-3.6f, TopY), new Vector2(0.8f, 0.8f), 50, "pause");
+            _mengBtn = ItemButton(0, ItemSlot(0), "it_menghan", "蒙汗药", Pal.Hex("C9A6EE"), out _mengText);
+            _baoziBtn = ItemButton(1, ItemSlot(1), "bun", "包子", Pal.Hex("A4D8F2"), out _baoziText);
+            _shuBtn = ItemButton(2, ItemSlot(2), "it_tianshu", "天书", Pal.Hex("F6C46B"), out _shuText);
+            _fuBtn = ItemButton(3, ItemSlot(3), "it_fu", "攻速符", Pal.Hex("C9A6EE"), out _fuText);
+            _trapBtn = ItemButton(4, ItemSlot(3), "it_trap", "陷阱", Pal.Hex("C5E08A"), out _trapText);
 
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-2.15f, TopY), new Vector2(1.7f, 0.62f), 49);
-            _bunIcon = Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-2.8f, TopY), Vector2.one * 0.5f, 51, "bun").transform;
-            _bunsText = Gfx.Text(_root, "0", Fonts.Kai, 0.36f, Pal.Paper, new Vector2(-1.95f, TopY), 52);
+            _pauseBtn = Gfx.Sprite(_root, Art.Img("ui_pause"), Color.white, new Vector2(-3.5f, TopY), new Vector2(0.8f, 0.8f), 50, "pause");
 
-            _titleText = Gfx.Text(_root, M.Chapter.Name, Fonts.Brush, 0.46f, Pal.Ink, new Vector2(0.1f, TopY + 0.2f), 52);
-            _waveText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(0.1f, TopY - 0.27f), 52);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-2.1f, TopY), new Vector2(1.7f, 0.64f), 49);
+            _bunIcon = Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-2.75f, TopY), Vector2.one * 0.54f, 51, "bun").transform;
+            _bunsText = Gfx.Text(_root, "0", Fonts.Kai, 0.4f, Pal.Paper, new Vector2(-1.9f, TopY), 52);
 
-            _rivalText = Gfx.Text(_root, "对手·" + M.Chapter.RivalName, Fonts.Kai, 0.28f, Pal.InkSoft, new Vector2(4.0f, TopY), 52, TextAnchor.MiddleRight);
+            // 右上角留给微信胶囊，对手名并进波次那一行。
+            _titleText = Gfx.Text(_root, M.Chapter.Name, Fonts.Brush, 0.48f, Pal.Ink, new Vector2(0.15f, TopY + 0.10f), 52);
+            _waveText = Gfx.Text(_root, "", Fonts.Kai, 0.27f, Pal.InkSoft, new Vector2(0.15f, TopY - 0.18f), 52);
 
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, WallY), new Vector2(3.5f, 0.56f), 11);
-            Gfx.Sprite(_root, Art.Rounded, Pal.Paper, new Vector2(0, WallY), new Vector2(3.4f, 0.46f), 12);
-            _midText = Gfx.Text(_root, "", Fonts.Kai, 0.28f, Pal.Ink, new Vector2(0, WallY), 13);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, WallY), new Vector2(3.3f, 0.34f), 11);
+            Gfx.Sprite(_root, Art.Rounded, Pal.Paper, new Vector2(0, WallY), new Vector2(3.2f, 0.28f), 12);
+            _midText = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Ink, new Vector2(0, WallY), 13);
         }
 
         /// <summary>圆形道具钮：稀有度色圆底 + 图标 + 右上角红色数量角标 + 底部名字条，外圈金环。</summary>
-        SpriteRenderer ItemButton(Vector2 pos, string icon, string name, Color disc, out TextMesh text)
+        SpriteRenderer ItemButton(int index, Vector2 pos, string icon, string name, Color disc, out TextMesh text)
         {
             var btn = Gfx.Sprite(_root, Art.Circle, disc, pos, Vector2.one, 50, "item");
             var t = btn.transform;
             Gfx.Sprite(t, Art.Circle, Pal.Shadow, new Vector2(0.03f, -0.07f), Vector2.one * 1.04f, 47);
             Gfx.Sprite(t, Art.Circle, Pal.Ink, Vector2.zero, Vector2.one * 1.04f, 48);
             Gfx.Sprite(t, Art.Ring, Pal.GoldBright, Vector2.zero, Vector2.one * 1.12f, 49, "ring");
-            Gfx.Sprite(t, Art.Img(icon), Color.white, new Vector2(0, 0.06f), Vector2.one * 0.78f, 51);
-            Gfx.Sprite(t, Art.Rounded, Pal.Ink.A(0.82f), new Vector2(0, -0.38f), new Vector2(0.9f, 0.26f), 52);
-            Gfx.Text(t, name, Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0, -0.38f), 53);
-            Gfx.Sprite(t, Art.Circle, Pal.Paper, new Vector2(0.38f, 0.36f), Vector2.one * 0.36f, 53);
-            Gfx.Sprite(t, Art.Circle, Pal.Hex("D7362B"), new Vector2(0.38f, 0.36f), Vector2.one * 0.31f, 54);
-            text = Gfx.Text(t, "", Fonts.Kai, 0.22f, Pal.Paper, new Vector2(0.38f, 0.35f), 55);
+            Gfx.Sprite(t, Art.Img(icon), Color.white, new Vector2(0, 0.06f), Vector2.one * 0.72f, 54);
+            _itemCd[index] = new CooldownRing(t, 0.96f, 52);
+            Gfx.Sprite(t, Art.Rounded, Pal.Ink.A(0.82f), new Vector2(0, -0.38f), new Vector2(0.9f, 0.26f), 56);
+            Gfx.Text(t, name, Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0, -0.38f), 57);
+            Gfx.Sprite(t, Art.Circle, Pal.Paper, new Vector2(0.38f, 0.36f), Vector2.one * 0.36f, 58);
+            Gfx.Sprite(t, Art.Circle, Pal.Hex("D7362B"), new Vector2(0.38f, 0.36f), Vector2.one * 0.31f, 59);
+            text = Gfx.Text(t, "", Fonts.Kai, 0.22f, Pal.Paper, new Vector2(0.38f, 0.35f), 60);
+            _itemCdText[index] = Gfx.Text(t, "", Fonts.Kai, 0.30f, Pal.GoldBright, Vector2.zero, 61, name: "cd");
+            _itemCdText[index].gameObject.SetActive(false);
             return btn;
         }
 
@@ -354,11 +413,18 @@ namespace Rescue
             BuildRange();
             _card = new GameObject("card").transform;
             _card.SetParent(_root, false);
-            _cardBg = Gfx.Sprite(_card, Art.Rounded, Pal.Ink.A(0.92f), Vector2.zero, new Vector2(3.6f, 2f), 82);
-            _cardTitle = Gfx.Text(_card, "", Fonts.Brush, 0.42f, Pal.GoldBright, Vector2.zero, 83, TextAnchor.MiddleLeft);
-            _cardLevel = Gfx.Text(_card, "", Fonts.Kai, 0.26f, Pal.Paper, Vector2.zero, 83, TextAnchor.MiddleRight);
-            _cardBody = Gfx.Text(_card, "", Fonts.Kai, 0.24f, Pal.Paper, Vector2.zero, 83, TextAnchor.UpperLeft);
-            _cardBody.lineSpacing = 1.1f;
+            _cardShadow = Gfx.Sprite(_card, Art.Rounded, Pal.Shadow, Vector2.zero, new Vector2(3.6f, 2f), 80, "cardShadow");
+            _cardBg = Gfx.Sprite(_card, Art.Rounded, Pal.Ink, Vector2.zero, new Vector2(3.6f, 2f), 81, "cardRim");
+            _cardPaper = Gfx.Sprite(_card, Art.Rounded, Pal.Paper, Vector2.zero, new Vector2(3.4f, 1.8f), 82, "cardPaper");
+            _cardSeal = Gfx.Sprite(_card, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.68f, 0.68f), 83, "cardSeal");
+            _cardGlyph = Gfx.Text(_card, "", Fonts.Brush, 0.40f, Pal.RedDeep, Vector2.zero, 84);
+            _cardIcon = Gfx.Sprite(_card, Art.White, Color.white, Vector2.zero, Vector2.one * 0.56f, 85, "cardIcon");
+            _cardIcon.enabled = false;
+            _cardTitle = Gfx.Text(_card, "", Fonts.Brush, 0.32f, Pal.RedDeep, Vector2.zero, 84, TextAnchor.MiddleLeft);
+            _cardLevel = Gfx.Text(_card, "", Fonts.Kai, 0.22f, Pal.InkSoft, Vector2.zero, 84, TextAnchor.MiddleRight);
+            _cardRule = Gfx.Sprite(_card, Art.White, Pal.Gold.A(0.55f), Vector2.zero, new Vector2(4f, 0.018f), 84, "cardRule");
+            _cardBody = Gfx.Text(_card, "", Fonts.Kai, 0.22f, Pal.Ink, Vector2.zero, 84, TextAnchor.UpperLeft);
+            _cardBody.lineSpacing = 1f;
             HideCard();
         }
 
@@ -392,13 +458,14 @@ namespace Rescue
             if (!Paused) TickLater(Time.deltaTime);
             UpdateFx(Time.deltaTime);
             TickMap(Time.deltaTime);
+            TickScouts(Paused ? 0f : Time.deltaTime);
             UpdateTip(Time.deltaTime);
             UpdateCard(Time.deltaTime);
             TickRange(Time.deltaTime);
             UpdateIdleHint(Time.deltaTime);
 
             _shake = Mathf.Max(0, _shake - Time.deltaTime * 2.5f);
-            _cam.transform.position = _camBase + (Vector3)(UnityEngine.Random.insideUnitCircle * _shake * 0.18f);
+            _cam.transform.position = CamBase + (Vector3)(UnityEngine.Random.insideUnitCircle * _shake * 0.18f);
         }
 
         public void ExternalTick() => FlushEvents();
@@ -453,14 +520,15 @@ namespace Rescue
             _recruitLabel.text = dismiss ? "遣散" : p.EmptyCampSlots == 0 ? "寨满" : "聚  义";
             _recruitCost.text = dismiss ? "+" + Side.DismissRefund(_drag.Piece) : p.RecruitCost.ToString();
 
-            SetItem(_mengBtn, _mengText, p.Items.MengHan, "蒙汗药");
-            SetItem(_baoziBtn, _baoziText, p.Items.Baozi, "包子");
-            SetItem(_shuBtn, _shuText, p.Items.TianShu, "天书");
-            SetItem(_fuBtn, _fuText, p.Items.Fu, "攻速");
-            SetItem(_trapBtn, _trapText, p.Items.Trap, "陷阱");
+            SyncItem(0, _mengBtn, _mengText, p.Items.MengHan, p.MengCd, Tuning.CdMeng);
+            SyncItem(1, _baoziBtn, _baoziText, p.Items.Baozi, p.BaoziCd, Tuning.CdBaozi);
+            SyncItem(2, _shuBtn, _shuText, p.Items.TianShu, p.ShuCd, Tuning.CdShu);
+            SyncItem(3, _fuBtn, _fuText, p.Items.Fu, p.FuCd, Tuning.CdFu);
+            SyncItem(4, _trapBtn, _trapText, p.Items.Trap, p.TrapCd, Tuning.CdTrap);
             PlaceItems();
+            SyncSkill();
 
-            bool rescue = p.InDanger && !p.RescueUsed;
+            bool rescue = p.AtTheGate && !p.RescueUsed;
             if (!Paused) TickShovelOffer(Time.deltaTime, rescue);
             if (rescue != _rescueRoot.gameObject.activeSelf)
             {
@@ -469,9 +537,9 @@ namespace Rescue
             }
             if (rescue) _rescueRoot.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 8f) * 0.06f);
 
-            _waveText.text = M.Wave > 0 ? $"第 {M.Wave} 波" : "备战";
+            _waveText.text = (M.Wave > 0 ? $"第 {M.Wave} 波" : "备战") + " · 对手" + M.Chapter.RivalName;
             float next = M.NextWaveIn;
-            _midText.text = p.ShieldT > 0 ? $"公孙胜护法 {p.ShieldT:0} 秒"
+            _midText.text = p.ShieldT > 0 ? $"宋江护体 {p.ShieldT:0} 秒"
                 : M.Wave == 0 ? $"官兵 {next:0} 秒后到" : next > 0.1f ? $"下一波 {next:0} 秒" : $"第 {M.Wave} 波来袭";
 
             for (int s = 0; s < 2; s++) SyncSide(s, snap);
@@ -481,35 +549,201 @@ namespace Rescue
             CleanupStale();
         }
 
-        static void SetItem(SpriteRenderer btn, TextMesh text, int n, string name)
+        void SyncItem(int i, SpriteRenderer btn, TextMesh text, int n, float cd, float max)
         {
             if (btn.gameObject.activeSelf != n > 0) btn.gameObject.SetActive(n > 0);
             text.text = n.ToString();
-            if (n > 0) btn.transform.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 4f) * 0.025f);
+            bool cooling = n > 0 && cd > 0.05f;
+            if (_itemCooling[i] && !cooling && n > 0)
+            {
+                _itemFlash[i] = 1f;
+                Sfx.Play(Snd.Tap, 0.4f, 1.45f);
+            }
+            _itemCooling[i] = cooling;
+            _itemFlash[i] = Mathf.Max(0f, _itemFlash[i] - Time.deltaTime * 2.6f);
+            if (n > 0)
+            {
+                float breathe = cooling ? 1f : 1f + Mathf.Sin(Time.time * 4f) * 0.025f;
+                float pop = 1f + 0.12f * _itemFlash[i];
+                btn.transform.localScale = Vector3.one * ItemScale * breathe * pop;
+            }
+            float remain = max <= 0f ? 0f : Mathf.Clamp01(cd / max);
+            if (cooling) _itemCd[i].ShowVeil(remain);
+            else _itemCd[i].Hide();
+            var label = _itemCdText[i];
+            if (label.gameObject.activeSelf != cooling) label.gameObject.SetActive(cooling);
+            if (cooling) label.text = Mathf.CeilToInt(cd).ToString();
         }
 
+        static Vector2 ItemSlot(int i) => new Vector2(-1.5f + i * ItemGap, ItemY);
+
+        /// <summary>带进来的主动道具在技能和聚义下面排一行，从左往右挤着放。</summary>
         void PlaceItems()
         {
-            var slots = new[]
-            {
-                new Vector2(-3.45f, ButtonY),
-                new Vector2(-2.2f, ButtonY),
-                new Vector2(2.5f, ButtonY),
-                new Vector2(3.75f, ButtonY),
-            };
             var btns = new[] { _mengBtn, _baoziBtn, _shuBtn, _fuBtn, _trapBtn };
+            int shown = 0;
+            foreach (var b in btns) if (b.gameObject.activeSelf) shown++;
+            shown = Mathf.Min(shown, 4);
+            float x0 = 0.2f - (shown - 1) * ItemGap * 0.5f;
             int s = 0;
             for (int i = 0; i < btns.Length; i++)
             {
                 if (!btns[i].gameObject.activeSelf) continue;
-                if (s >= slots.Length)
+                if (s >= 4)
                 {
                     btns[i].gameObject.SetActive(false);
                     continue;
                 }
-                btns[i].transform.localPosition = slots[s];
+                btns[i].transform.localPosition = new Vector2(x0 + s * ItemGap, ItemY);
                 s++;
             }
+        }
+
+        // ─────────────────────────── 技能钮 ───────────────────────────
+
+        Transform _skillRoot;
+        SpriteRenderer _skillDisc, _skillRing, _skillGlow, _skillIcon;
+        TextMesh _skillName, _skillSub;
+        CooldownRing _skillCd;
+        readonly CooldownRing[] _itemCd = new CooldownRing[5];
+        readonly TextMesh[] _itemCdText = new TextMesh[5];
+        readonly bool[] _itemCooling = new bool[5];
+        readonly float[] _itemFlash = new float[5];
+        bool _skillWasReady, _skillHinted;
+
+        /// <summary>聚义左边的圆钮：带头好汉的大招。冷却时暖色从十二点转满一圈，转好了亮起来，玩家点了才放。</summary>
+        void BuildSkill()
+        {
+            _skillRoot = new GameObject("skill").transform;
+            _skillRoot.SetParent(_root, false);
+            _skillRoot.localPosition = new Vector2(SkillX, ButtonY);
+            Gfx.Sprite(_skillRoot, Art.Circle, Pal.Shadow, new Vector2(0.04f, -0.09f), Vector2.one * (SkillD + 0.08f), 47);
+            _skillGlow = Gfx.Sprite(_skillRoot, Art.Blob, Pal.GoldBright.A(0f), Vector2.zero, Vector2.one * (SkillD + 0.7f), 47);
+            Gfx.Sprite(_skillRoot, Art.Circle, Pal.Ink, Vector2.zero, Vector2.one * (SkillD + 0.08f), 48);
+            _skillDisc = Gfx.Sprite(_skillRoot, Art.Circle, Pal.Hex("3A342C"), Vector2.zero, Vector2.one * SkillD, 49, "skill");
+            _skillCd = new CooldownRing(_skillRoot, SkillD * 0.96f, 50);
+            _skillRing = Gfx.Sprite(_skillRoot, Art.Ring, Pal.InkSoft, Vector2.zero, Vector2.one * (SkillD + 0.12f), 52);
+            _skillIcon = Gfx.Sprite(_skillRoot, Art.White, Color.white, new Vector2(0, 0.08f), Vector2.one * 0.74f, 53, "skillIcon");
+            _skillIcon.enabled = false;
+            _skillName = Gfx.Text(_skillRoot, "技", Fonts.Brush, 0.34f, Pal.Paper, new Vector2(0, 0.1f), 54);
+            Gfx.Sprite(_skillRoot, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, -SkillD * 0.42f), new Vector2(SkillD * 0.95f, 0.3f), 55);
+            _skillSub = Gfx.Text(_skillRoot, "", Fonts.Kai, 0.19f, Pal.Paper, new Vector2(0, -SkillD * 0.42f), 56);
+        }
+
+        void SyncSkill()
+        {
+            var p = M.Player;
+            var h = p.LeadHero;
+            bool ready = h != null && h.UltCd <= 0 && !M.Over;
+            float progress = 0f;
+            if (h != null && h.UltCd > 0.04f)
+            {
+                float max = Mathf.Max(0.05f, p.UltMax(h));
+                progress = 1f - Mathf.Clamp01(h.UltCd / max);
+                _skillCd.ShowFill(progress);
+            }
+            else _skillCd.Hide();
+            if (h == null)
+            {
+                _skillIcon.enabled = false;
+                _skillName.text = "技";
+                Gfx.SetHeight(_skillName, 0.34f);
+                _skillSub.text = "凑好汉";
+            }
+            else
+            {
+                var icon = SkillIcon(h.Def);
+                if (_skillIcon.sprite != icon) _skillIcon.sprite = icon;
+                _skillIcon.enabled = true;
+                _skillIcon.color = ready ? Color.white : new Color(1f, 1f, 1f, 0.78f);
+                _skillName.text = "";
+                _skillSub.text = ready ? ShortUlt(h.Def.UltName) : $"{Mathf.CeilToInt(h.UltCd)} 秒";
+            }
+            _skillDisc.color = ready ? Pal.Hex("C0392B") : Pal.Hex("3A342C");
+            _skillRing.color = ready ? Pal.GoldBright : Color.Lerp(Pal.InkSoft, Pal.Hex("E88862"), progress);
+            _skillName.color = ready ? Pal.GoldBright : Pal.Paper.A(h == null ? 0.45f : 1f);
+            float breathe = ready ? 0.5f + 0.5f * Mathf.Sin(Time.time * 5f) : 0f;
+            _skillGlow.color = Pal.GoldBright.A(0.55f * breathe);
+            _skillRoot.localScale = Vector3.one * (ready ? 1f + 0.05f * breathe : 1f);
+            if (ready && !_skillWasReady)
+            {
+                Sfx.Play(Snd.Merge, 0.5f, 1.3f);
+                if (!_skillHinted)
+                {
+                    _skillHinted = true;
+                    Tip(new Vector2(SkillX + 1.2f, ButtonY + 1.0f), h.Def.Name + "的大招好了，点我放！");
+                }
+            }
+            _skillWasReady = ready;
+        }
+
+        void PressSkill()
+        {
+            var p = M.Player;
+            var h = p.LeadHero;
+            var tipAt = new Vector2(SkillX + 1.2f, ButtonY + 1.0f);
+            if (h == null) { Sfx.Play(Snd.Deny); Tip(tipAt, "先凑出一位好汉，才有大招"); return; }
+            bool cooling = h.UltCd > 0.05f;
+            bool cast = !cooling && p.CastLeadUlt();
+            Sfx.Play(cast ? Snd.Tap : Snd.Deny);
+            ShowSkillCard(h, cast, cooling);
+        }
+
+        void ShowSkillCard(HeroInstance h, bool cast, bool cooling)
+        {
+            var d = h.Def;
+            string state = cast ? "已经放出"
+                : cooling ? $"还要 {Mathf.CeilToInt(h.UltCd)} 秒"
+                : "附近没有官兵，留着等会儿放";
+            int cd = Mathf.Max(1, Mathf.CeilToInt(M.Player.UltMax(h)));
+            string body = FitLines(26, 5, $"冷却 {cd} 秒　{state}", d.Ult, d.Skill);
+            var seal = d.Disha ? Pal.Hex("E4D4F2") : Pal.TileHero;
+            PlaceCard(string.IsNullOrEmpty(d.UltName) ? "大招" : d.UltName, d.Name, body, "", seal, SkillIcon(d));
+        }
+
+        static string ShortUlt(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "大招";
+            return name.Length <= 4 ? name : name.Substring(0, 2);
+        }
+
+        /// <summary>技能钮上的图：招式本身能看懂的用招式图，其余用这名好汉的兵器。</summary>
+        static Sprite SkillIcon(HeroDef d)
+        {
+            switch (d.UltKind)
+            {
+                case UltKind.Heal: return Art.Heart;
+                case UltKind.Shield: return Art.Img("ui_shield");
+                case UltKind.Rally: return Art.Img("ui_flag");
+                case UltKind.Buns: return Art.Img("bun");
+                case UltKind.Upgrade: return Art.Img("it_tianshu");
+                case UltKind.Steal: return Art.Img("coin");
+                case UltKind.HasteAll: return Art.Img("ui_bolt");
+                case UltKind.SlowAll: return Art.Img("ui_cloud");
+                case UltKind.Shovel: return Art.Img("shovel");
+                case UltKind.Storm: return Art.Img("ui_bolt");
+                case UltKind.Lasso: return Art.Img("wp_rope");
+            }
+            string weapon = d.WKind switch
+            {
+                WeaponKind.Blade => "wp_blade",
+                WeaponKind.Spear => "wp_spear",
+                WeaponKind.Bow => "wp_bow",
+                WeaponKind.Axe => "wp_axe",
+                WeaponKind.Club => "wp_club",
+                WeaponKind.Whip => "wp_whip",
+                WeaponKind.Hammer => "wp_hammer",
+                WeaponKind.Fork => "wp_fork",
+                WeaponKind.Sword => "wp_sword",
+                WeaponKind.Stone => "wp_stone",
+                WeaponKind.Rope => "wp_rope",
+                WeaponKind.Staff => "wp_staff",
+                WeaponKind.Halberd => "wp_halberd",
+                WeaponKind.Cannon => "wp_cannon",
+                WeaponKind.Fist => "wp_fist",
+                _ => null,
+            };
+            return Art.Img(weapon ?? "ui_swords");
         }
 
         void SyncSide(int s, bool snap)
@@ -630,6 +864,7 @@ namespace Rescue
                     if (mine)
                     {
                         Sfx.Play(Snd.Recruit);
+                        if (M.Player.EmptyCampSlots == 0) After(0.28f, () => Sfx.Play(Snd.CampFull));
                         _rowRefresh = true;
                         SweepCamp();
                     }
@@ -1003,16 +1238,29 @@ namespace Rescue
         void RescueFx(int side)
         {
             var b = M.Sides[side].Board;
-            var goal = CellWorld(side, b.Goal.c, b.Goal.r);
-            float baseY = side == 0 ? MyBottom : OppBottom;
-            for (int i = 0; i < 4; i++)
+            var goal = World(side, b.Goal.Center);
+            for (int i = 0; i < 7; i++)
             {
-                var p = new Vector2(Left + 1.5f + (i % 2) * 5f, baseY + 1.5f + (i / 2) * 2.6f);
-                InkSwirl(p, 2.2f, Pal.Red.A(0.4f), 0.7f + i * 0.08f);
+                float from = b.PathLength * Mathf.Lerp(0.95f, 0.3f, i / 6f);
+                float to = Mathf.Max(Tuning.SpawnCover, from - b.PathLength * 0.55f);
+                var a = World(side, b.PosAt(from));
+                var c = World(side, b.PosAt(to));
+                var fx = NewSpriteFx(Art.SoftDot, Pal.Paper, a, new Vector2(0.7f, 0.16f), 46, 0.42f, (f, k) =>
+                {
+                    f.Go.transform.localPosition = Vector2.Lerp(f.A, f.B, Tween.OutCubic(k));
+                    f.Sr.color = Pal.Paper.A(1f - k);
+                });
+                fx.A = a;
+                fx.B = c;
+                fx.Go.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(c.y - a.y, c.x - a.x) * Mathf.Rad2Deg);
             }
-            InkSwirl(goal, 2.2f, Pal.Red.A(0.8f), 1.2f);
-            Ring(goal, 4f, Pal.Red, 0.8f, 45);
-            if (side == 0) { _shake = 1f; Sfx.Play(Snd.Ult); Sfx.Play(Snd.Rain, 0.6f); }
+            FloatText(goal + Vector2.up * 0.55f, "推回去", Pal.Red, 0.4f, 0.9f);
+            if (side == 0)
+            {
+                _shake = 0.7f;
+                Sfx.Play(Snd.UltWind);
+                _goals[0].Say("有惊无险！", 2.2f);
+            }
         }
 
         public void FloatText(Vector2 pos, string s, Color c, float h, float life)
@@ -1146,22 +1394,30 @@ namespace Rescue
             {
                 _idleT = 0;
                 if (Ui.PointerOverUi()) return;
+                if (OverCard(w)) { _downPos = w; _dragMoved = false; return; }
                 _downPos = w;
                 _dragMoved = false;
                 if (In(w, _recruitBtn.transform.localPosition, new Vector2(2.8f, 1.1f)))
                 {
-                    if (p.Recruit()) Tween.Punch(_recruitBtn.transform, 0.15f, 0.12f);
-                    else Tip(_recruitBtn.transform.localPosition + Vector3.up * 1.1f, p.EmptyCampSlots == 0 ? "山寨满了，先把字拖上战场" : "炊饼不够，多杀几个官兵");
+                    if (p.Recruit()) { Sfx.Play(Snd.Tap); Tween.Punch(_recruitBtn.transform, 0.15f, 0.12f); }
+                    else
+                    {
+                        bool full = p.EmptyCampSlots == 0;
+                        Sfx.Play(full ? Snd.CampFull : Snd.Deny);
+                        Tip(_recruitBtn.transform.localPosition + Vector3.up * 1.1f, full ? "山寨满了，先把字拖上战场" : "炊饼不够，多杀几个官兵");
+                    }
                     return;
                 }
-                if (In(w, _pauseBtn.transform.localPosition, new Vector2(0.9f, 0.9f))) { OnPauseClicked?.Invoke(); return; }
-                if (_mengBtn.gameObject.activeSelf && In(w, _mengBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseMengHan(); return; }
-                if (_baoziBtn.gameObject.activeSelf && In(w, _baoziBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseBaozi(); return; }
-                if (_shuBtn.gameObject.activeSelf && In(w, _shuBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseTianShu(); return; }
-                if (_fuBtn.gameObject.activeSelf && In(w, _fuBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseFu(); return; }
-                if (_trapBtn.gameObject.activeSelf && In(w, _trapBtn.transform.localPosition, new Vector2(1.2f, 0.8f))) { p.UseTrap(); return; }
-                if (_shovelRoot.gameObject.activeSelf && In(w, _shovelRoot.localPosition, new Vector2(0.95f, 1.1f))) { ShovelAd(); return; }
-                if (_rescueRoot.gameObject.activeSelf && In(w, _rescueRoot.localPosition, new Vector2(0.95f, 1.2f))) { RescueAd(); return; }
+                if (In(w, _pauseBtn.transform.localPosition, new Vector2(0.9f, 0.9f))) { Sfx.Play(Snd.Tap); OnPauseClicked?.Invoke(); return; }
+                if (In(w, _skillRoot.localPosition, Vector2.one * (SkillD + 0.2f))) { PressSkill(); return; }
+                var itemHit = new Vector2(ItemGap * 0.95f, 0.95f);
+                if (HitItem(_mengBtn, w, itemHit)) { PressActive(() => p.UseMengHan(), () => p.MengCd, Tuning.CdMeng, () => p.Items.MengHan, "蒙汗药", "全场官兵昏睡 3 秒", "it_menghan"); return; }
+                if (HitItem(_baoziBtn, w, itemHit)) { PressActive(() => p.UseBaozi(), () => p.BaoziCd, Tuning.CdBaozi, () => p.Items.Baozi, "包子", "五成半回一颗心，否则掉一颗", "bun"); return; }
+                if (HitItem(_shuBtn, w, itemHit)) { PressActive(() => p.UseTianShu(), () => p.ShuCd, Tuning.CdShu, () => p.Items.TianShu, "天书", "场上最低级的兵升一级", "it_tianshu"); return; }
+                if (HitItem(_fuBtn, w, itemHit)) { PressActive(() => p.UseFu(), () => p.FuCd, Tuning.CdFu, () => p.Items.Fu, "攻速符", "单位攻速 +40%，持续十二秒", "it_fu"); return; }
+                if (HitItem(_trapBtn, w, itemHit)) { PressActive(() => p.UseTrap(), () => p.TrapCd, Tuning.CdTrap, () => p.Items.Trap, "陷阱", "敌人跌回去，一时爬不上来", "it_trap"); return; }
+                if (_shovelRoot.gameObject.activeSelf && In(w, _shovelRoot.localPosition, new Vector2(0.95f, 1.1f))) { Sfx.Play(Snd.Tap); ShovelAd(); return; }
+                if (_rescueRoot.gameObject.activeSelf && In(w, _rescueRoot.localPosition, new Vector2(0.95f, 1.2f))) { Sfx.Play(Snd.Tap); RescueAd(); return; }
 
                 int slot = CampAt(w);
                 if (slot >= 0 && p.Camp[slot] != null && _pieces.TryGetValue(p.Camp[slot].Id, out var cv))
@@ -1175,7 +1431,10 @@ namespace Rescue
                     return;
                 }
                 if (TryMyCell(w, out c, out r) && p.Board.Diggable(c, r))
+                {
+                    Sfx.Play(Snd.Deny);
                     Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "草地要先用铲子开荒才能摆字");
+                }
             }
 
             if (_drag != null)
@@ -1188,6 +1447,31 @@ namespace Rescue
             }
         }
 
+        static bool HitItem(SpriteRenderer btn, Vector2 w, Vector2 size) =>
+            btn.gameObject.activeSelf && In(w, btn.transform.localPosition, size);
+
+        void PressActive(Func<bool> use, Func<float> cd, float max, Func<int> count, string name, string desc, string icon)
+        {
+            if (cd() > 0.05f)
+            {
+                Sfx.Play(Snd.Deny);
+                ShowItemCard(name, desc, icon, count(), cd(), max, false, true);
+                return;
+            }
+            bool ok = use();
+            Sfx.Play(ok ? Snd.Tap : Snd.Deny);
+            ShowItemCard(name, desc, icon, count(), cd(), max, ok, false);
+        }
+
+        void ShowItemCard(string name, string desc, string icon, int count, float cd, float max, bool used, bool cooling)
+        {
+            string state = cooling ? $"还要 {Mathf.CeilToInt(cd)} 秒"
+                : used ? "已经用掉"
+                : name == "天书" ? "场上没有能升级的兵" : "现在用不了";
+            string body = FitLines(26, 4, desc, $"还剩 {Mathf.Max(0, count)} 个　冷却 {Mathf.CeilToInt(max)} 秒", state);
+            PlaceCard(name, "道具", body, "", Pal.Tile, Art.Img(icon));
+        }
+
         public void ShovelAd()
         {
             var p = M.Player;
@@ -1196,7 +1480,7 @@ namespace Rescue
             if (_shovelAds >= MaxShovelAds) { Tip(tipAt, "这一局的铲子广告看完了"); return; }
             if (!p.Board.AnyDiggable()) { Tip(tipAt, "地已经全开出来了"); return; }
             _shovelRoot.gameObject.SetActive(false);
-            _shovelCd = 25f;
+            _shovelForce = false;
             ShowAd("鲁智深送铲子", () =>
             {
                 _shovelAds++;
@@ -1220,6 +1504,7 @@ namespace Rescue
             _dragCamp = campSlot;
             _dragCell = cell;
             v.SetDragging(true);
+            Sfx.Play(Snd.Tap, 0.55f);
             OnDragStart?.Invoke(v.Piece);
         }
 
@@ -1257,7 +1542,8 @@ namespace Rescue
                 else if (v.Piece.Type == PieceType.Shovel) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "铲子只能挖草地");
                 else if (p.Board.Diggable(c, r)) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "这块是草地，先用铲子开荒");
             }
-            if (!ok) v.Punch(0.1f);
+            if (ok && slot >= 0) Sfx.Play(Snd.Tap, 0.7f);
+            if (!ok) { Sfx.Play(Snd.Deny); v.Punch(0.1f); }
         }
 
         void ShowHighlights(Piece piece, Vector2 w)
@@ -1412,6 +1698,7 @@ namespace Rescue
             float range = 0;
             var style = RangeStyle.Unit;
             Vector2 center = v.Root.localPosition;
+            Color seal = Pal.Tile;
             if (piece.Type == PieceType.Unit)
             {
                 var d = UnitDef.Get(piece.Kind);
@@ -1424,7 +1711,8 @@ namespace Rescue
             {
                 title = "方便铲";
                 level = "道具";
-                body = "鲁智深的方便铲\n拖到草地上，开出一块能摆字的白地\n招兵偶尔会掉，也能看广告领";
+                seal = Pal.Earth;
+                body = "拖到草地上，开出一块能摆字的白地\n招兵偶尔会掉，也能看广告领";
             }
             else if (v.Hero != null)
             {
@@ -1432,20 +1720,21 @@ namespace Rescue
                 var d = h.Def;
                 title = d.Name;
                 level = $"Lv.{h.Level}";
+                seal = d.Disha ? Pal.Hex("E4D4F2") : Pal.TileHero;
                 center = World(0, h.Pos);
                 bool armed = M.Player.Armed(d);
                 int wlv = armed && M.Player.Items.WeaponLv != null && (int)d.Id < M.Player.Items.WeaponLv.Length ? Mathf.Max(1, M.Player.Items.WeaponLv[(int)d.Id]) : 1;
                 float wmul = armed ? HeroDef.ArmedMul(wlv, d.WGrade) : 1f;
                 float bond = M.Player.BondBonus(d.Id);
                 wmul *= 1f + bond;
-                string xp = h.Level >= UnitDef.MaxLevel ? "已满级" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}";
-                string atk = d.NoAttack ? "不出手" : $"攻击力：{d.DamageAt(h.Level) * (h.OnWater ? d.WaterBonus : 1f) * wmul:0.#}　攻速：{1f / d.Cooldown:0.0}次/秒";
-                string gear = armed ? $"\n兵器 {d.Weapon}（{Weapons.Grades[Mathf.Clamp(d.WGrade, 0, 3)]}）伤害 +{Mathf.RoundToInt((HeroDef.ArmedMul(wlv, d.WGrade) - 1f) * 100f)}%\n{Weapons.AffixText(d.WKind)}" : "";
+                string xp = h.Level >= UnitDef.MaxLevel ? "已满级" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}　满级{UnitDef.MaxLevel}级";
+                string atk = d.NoAttack ? "不出手" : $"攻击力：{d.DamageAt(h.Level) * (h.OnWater ? d.WaterBonus : 1f) * wmul:0.#}　攻速：{1f / d.CooldownAt(h.Level):0.0}次/秒";
+                string gear = armed ? $"兵器 {d.Weapon}（{Weapons.Grades[Mathf.Clamp(d.WGrade, 0, 3)]}）伤害 +{Mathf.RoundToInt((HeroDef.ArmedMul(wlv, d.WGrade) - 1f) * 100f)}%　{Weapons.AffixText(d.WKind)}" : "";
                 string bonds = "";
                 foreach (var bd in M.Player.ActiveBonds) if (System.Array.IndexOf(bd.Members, d.Id) >= 0) bonds += (bonds.Length > 0 ? "、" : "") + bd.Name;
-                if (bonds.Length > 0) bonds = $"\n羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
+                if (bonds.Length > 0) gear = (gear.Length > 0 ? gear + "　" : "") + $"羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
                 string star = d.Rank > 0 ? d.Star : "隐藏好汉";
-                body = $"{star}·{d.Nick}　类型：{d.TypeLabel}\n{atk}\n{xp}　满级{UnitDef.MaxLevel}级\n{d.Skill}{gear}{bonds}";
+                body = FitLines(26, 5, $"{star}·{d.Nick}　类型：{d.TypeLabel}", atk, xp, d.Skill, gear);
                 range = d.NoAttack ? 0f : d.RangeWith(M.Player.Items.Far);
                 style = d.Disha ? RangeStyle.Disha : RangeStyle.Hero;
             }
@@ -1456,38 +1745,113 @@ namespace Rescue
                     if (h.Name.IndexOf(piece.Char) >= 0) names.Add(h.Hidden ? "？？？" : h.Name);
                 title = "「" + piece.Char + "」";
                 level = $"Lv.{piece.Level}";
-                body = $"金字，还没成名\n可组成：{string.Join("、", names)}\n按名字顺序左到右或上到下摆好";
+                seal = Pal.Hex("F8E7B0");
+                body = FitLines(26, 5, "金字，还没成名", "可组成：" + string.Join("、", names), "按名字顺序左到右或上到下摆好", "凑成好汉后，击杀官兵才一起升级");
             }
 
-            int lines = 1, maxLen = title.Length + 4, cur = 0;
-            foreach (var ch in body)
-            {
-                if (ch == '\n') { lines++; maxLen = Mathf.Max(maxLen, cur); cur = 0; }
-                else cur++;
-            }
-            maxLen = Mathf.Max(maxLen, cur);
-            var size = new Vector2(Mathf.Max(3.2f, maxLen * 0.25f + 0.5f), lines * 0.34f + 0.95f);
-            var pos = center + new Vector2(0, 0.6f + size.y * 0.5f);
-            if (pos.y + size.y * 0.5f > 7.5f) pos = center - new Vector2(0, 0.6f + size.y * 0.5f);
-            pos.x = Mathf.Clamp(pos.x, -4.1f + size.x * 0.5f, 4.1f - size.x * 0.5f);
-
-            _card.gameObject.SetActive(true);
-            _card.localPosition = pos;
-            _cardBg.size = size;
-            _cardTitle.text = title;
-            _cardTitle.transform.localPosition = new Vector2(-size.x * 0.5f + 0.22f, size.y * 0.5f - 0.32f);
-            _cardLevel.text = level;
-            _cardLevel.transform.localPosition = new Vector2(size.x * 0.5f - 0.22f, size.y * 0.5f - 0.32f);
-            _cardBody.text = body;
-            _cardBody.transform.localPosition = new Vector2(-size.x * 0.5f + 0.22f, size.y * 0.5f - 0.66f);
-            Tween.Pop(_card, 0.2f);
+            PlaceCard(title, level, body, piece.Glyph.ToString(), seal, null);
 
             SetPicked(v);
             if (range > 0f && piece.Type != PieceType.Shovel) ShowRange(center, range, style, false);
             else HideRange();
             _cardT = 4f;
             v.Punch(0.15f);
-            Sfx.Play(Snd.Tap, 0.6f);
+        }
+
+        /// <summary>纸签钉在山寨下沿。原点在纸签顶边中点，弹出时只往下长，不会拱进棋盘。</summary>
+        void PlaceCard(string title, string level, string body, string glyph, Color seal, Sprite icon)
+        {
+            const float width = 7.56f;
+            const float pitch = 0.26f;
+            int lines = 1;
+            foreach (var ch in body) if (ch == '\n') lines++;
+            if (string.IsNullOrEmpty(body)) lines = 0;
+            float h = Mathf.Clamp(0.72f + lines * pitch, 1.28f, 2.02f);
+
+            _card.gameObject.SetActive(true);
+            _card.localPosition = new Vector2(0f, CampY - 0.66f);
+            _cardSize = new Vector2(width, h);
+            float cy = -h * 0.5f;
+            _cardShadow.transform.localPosition = new Vector2(0.04f, cy - 0.05f);
+            _cardShadow.size = _cardSize;
+            _cardBg.transform.localPosition = new Vector2(0f, cy);
+            _cardBg.size = _cardSize;
+            _cardPaper.transform.localPosition = new Vector2(0f, cy);
+            _cardPaper.size = _cardSize - new Vector2(0.1f, 0.1f);
+
+            const float sealS = 0.68f;
+            float sealX = -width * 0.5f + 0.18f + sealS * 0.5f;
+            float sealY = -0.18f - sealS * 0.5f;
+            _cardSeal.transform.localPosition = new Vector2(sealX, sealY);
+            _cardSeal.size = new Vector2(sealS, sealS);
+            _cardSeal.color = seal;
+            _cardGlyph.text = icon == null ? glyph : "";
+            _cardGlyph.transform.localPosition = new Vector2(sealX, sealY - 0.02f);
+            _cardIcon.enabled = icon != null;
+            if (icon != null)
+            {
+                _cardIcon.sprite = icon;
+                _cardIcon.transform.localPosition = new Vector2(sealX, sealY);
+                _cardIcon.transform.localScale = Vector3.one * (sealS * 0.86f);
+            }
+
+            float textL = sealX + sealS * 0.5f + 0.16f;
+            _cardTitle.text = title;
+            _cardTitle.transform.localPosition = new Vector2(textL, -0.32f);
+            _cardLevel.text = level;
+            _cardLevel.transform.localPosition = new Vector2(width * 0.5f - 0.2f, -0.32f);
+            float ruleW = width * 0.5f - 0.2f - textL;
+            _cardRule.transform.localPosition = new Vector2(textL + ruleW * 0.5f, -0.54f);
+            _cardRule.transform.localScale = new Vector3(Mathf.Max(0.4f, ruleW), 0.04f, 1f);
+            _cardBody.text = body;
+            _cardBody.transform.localPosition = new Vector2(textL, -0.60f);
+            Tween.Pop(_card, 0.18f);
+        }
+
+        bool OverCard(Vector2 w)
+        {
+            if (_card == null || !_card.gameObject.activeSelf) return false;
+            var top = (Vector2)_card.localPosition;
+            return w.x >= top.x - _cardSize.x * 0.5f && w.x <= top.x + _cardSize.x * 0.5f
+                && w.y <= top.y + 0.05f && w.y >= top.y - _cardSize.y;
+        }
+
+        static string FitLines(int width, int maxLines, params string[] parts)
+        {
+            var sb = new System.Text.StringBuilder();
+            int lines = 0;
+            foreach (var part in parts)
+            {
+                if (string.IsNullOrEmpty(part)) continue;
+                int col = 0;
+                foreach (var ch in part)
+                {
+                    if (ch == '\n')
+                    {
+                        if (lines + 1 >= maxLines) return sb.ToString();
+                        sb.Append('\n');
+                        lines++;
+                        col = 0;
+                        continue;
+                    }
+                    if (col >= width)
+                    {
+                        if (lines + 1 >= maxLines) return sb.ToString();
+                        sb.Append('\n');
+                        lines++;
+                        col = 0;
+                    }
+                    if (col == 0 && sb.Length > 0 && sb[sb.Length - 1] != '\n')
+                    {
+                        if (lines + 1 >= maxLines) return sb.ToString();
+                        sb.Append('\n');
+                        lines++;
+                    }
+                    sb.Append(ch);
+                    col++;
+                }
+            }
+            return sb.ToString();
         }
 
         /// <summary>验收截图：在指定位置画出某个射程圆。</summary>
@@ -1632,8 +1996,8 @@ namespace Rescue
             }
             maxLen = Mathf.Max(maxLen, cur);
             var size = new Vector2(maxLen * 0.29f + 0.5f, lines * 0.38f + 0.3f);
-            pos.x = Mathf.Clamp(pos.x, -4.1f + size.x * 0.5f, 4.1f - size.x * 0.5f);
-            pos.y = Mathf.Min(pos.y, 7.4f);
+            pos.x = Mathf.Clamp(pos.x, -3.94f + size.x * 0.5f, 3.94f - size.x * 0.5f);
+            pos.y = Mathf.Min(pos.y, 6.4f - size.y * 0.5f);
             _tipBg.transform.localPosition = pos;
             _tipBg.size = size;
             _tipText.transform.localPosition = pos;
@@ -1664,6 +2028,8 @@ namespace Rescue
         }
 
         public Vector2 RecruitButtonPos => _recruitBtn.transform.localPosition;
+        /// <summary>军师贴士的上沿：HUD 下面、对手半区顶上，换成屏幕像素。</summary>
+        public Vector2 HintScreenTop => _cam.WorldToScreenPoint(new Vector3(0f, TopY - HudHalf - 0.1f, 0f));
 
         public bool TryFindEmptyCell(out Vector2 pos)
         {
@@ -1707,12 +2073,12 @@ namespace Rescue
                 Side = side;
                 Root = new GameObject("piece" + p.Id).transform;
                 Root.SetParent(parent, false);
-                _shadow = Gfx.Sprite(Root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.07f), new Vector2(0.86f, 0.86f), 20);
-                _tile = Gfx.Sprite(Root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.86f, 0.86f), 21);
-                _edge = Gfx.Sprite(Root, Art.Frame, Pal.Ink.A(0.22f), Vector2.zero, new Vector2(0.86f, 0.86f), 21);
-                _glyph = Gfx.Text(Root, p.Type == PieceType.Shovel ? "" : p.Glyph.ToString(), Fonts.Brush, 0.66f, Pal.Ink, new Vector2(0, -0.02f), 22);
+                _shadow = Gfx.Sprite(Root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.07f), new Vector2(0.92f, 0.92f), 20);
+                _tile = Gfx.Sprite(Root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.92f, 0.92f), 21);
+                _edge = Gfx.Sprite(Root, Art.Frame, Pal.Ink.A(0.22f), Vector2.zero, new Vector2(0.92f, 0.92f), 21);
+                _glyph = Gfx.Text(Root, p.Type == PieceType.Shovel ? "" : p.Glyph.ToString(), Fonts.Brush, 0.74f, Pal.Ink, new Vector2(0, -0.03f), 22);
                 _glyphT = _glyph.transform;
-                _level = Gfx.Text(Root, "", Fonts.Kai, 0.22f, Pal.InkSoft, new Vector2(0.29f, 0.29f), 23);
+                _level = Gfx.Text(Root, "", Fonts.Kai, 0.25f, Pal.InkSoft, new Vector2(0.31f, 0.31f), 23);
                 if (p.Type == PieceType.Shovel)
                     _icon = Gfx.Sprite(Root, Art.Img("shovel"), Color.white, Vector2.zero, Vector2.one * 0.72f, 22);
                 if (p.Type == PieceType.Unit)
@@ -2043,9 +2409,10 @@ namespace Rescue
                 float y = boss ? 0.55f : 0.4f;
                 _hpBg = Gfx.Sprite(Root, Art.White, Pal.Ink.A(0.55f), new Vector2(0, y), new Vector2(_barW + 0.04f, 0.09f), 33);
                 _hpFg = Gfx.Sprite(Root, Art.White, Pal.Hp, new Vector2(0, y), new Vector2(_barW, 0.06f), 34);
-                Root.localScale = Vector3.one * 0.2f;
-                Tween.Run(Root, 0.2f, k => { if (Root) Root.localScale = Vector3.one * Mathf.Lerp(0.2f, 1f, k); });
+                Root.gameObject.SetActive(false);
             }
+
+            bool _out;
 
             public void Flash() => _flash = 1f;
 
@@ -2066,8 +2433,21 @@ namespace Rescue
 
             public void Sync(Enemy e, Vector2 pos, float dt)
             {
-                _kick = Vector2.Lerp(_kick, Vector2.zero, 1f - Mathf.Exp(-dt * 14f));
                 Root.localPosition = pos + _jitter + _kick + new Vector2(0, Mathf.Abs(Mathf.Sin(Time.time * 9f + e.Id)) * 0.04f);
+                if (e.InBrush)
+                {
+                    _out = false;
+                    if (Root.gameObject.activeSelf) Root.gameObject.SetActive(false);
+                    return;
+                }
+                if (!_out)
+                {
+                    _out = true;
+                    Root.gameObject.SetActive(true);
+                    Root.localScale = Vector3.one * 0.2f;
+                    Tween.Run(Root, 0.2f, k => { if (Root) Root.localScale = Vector3.one * Mathf.Lerp(0.2f, 1f, k); });
+                }
+                _kick = Vector2.Lerp(_kick, Vector2.zero, 1f - Mathf.Exp(-dt * 14f));
                 float k = Mathf.Clamp01(e.Hp / e.MaxHp);
                 bool showBar = _big || k < 0.999f;
                 _hpBg.enabled = _hpFg.enabled = showBar;
@@ -2096,7 +2476,7 @@ namespace Rescue
             readonly SpriteRenderer _bubble, _shield;
             readonly TextMesh _bubbleText;
             readonly SpriteRenderer _bg;
-            readonly float _heartY;
+            readonly float _heartY, _inward;
             float _hurt;
             float _bubbleT;
             int _lastHearts;
@@ -2111,20 +2491,21 @@ namespace Rescue
                 _root = new GameObject("goal" + side).transform;
                 _root.SetParent(v._root, false);
                 _root.localPosition = pos;
-                Gfx.Sprite(_root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.08f), new Vector2(0.95f, 0.95f), 24);
-                _bg = Gfx.Sprite(_root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.95f, 0.95f), 25);
-                Gfx.Sprite(_root, Art.Frame, Pal.RedDeep, Vector2.zero, new Vector2(0.98f, 0.98f), 26);
-                _glyph = Gfx.Text(_root, "宋", Fonts.Brush, 0.6f, Pal.RedDeep, new Vector2(0, -0.1f), 27);
-                Gfx.Sprite(_root, Art.Img("hat"), Color.white, new Vector2(0, 0.3f), Vector2.one * 0.92f, 28);
+                _bg = Gfx.Sprite(_root, Art.White, Pal.Tile, Vector2.zero, Vector2.one, 24);
+                Gfx.Sprite(_root, Art.White, Pal.RedDeep, new Vector2(0f, side == 0 ? -0.46f : 0.46f), new Vector2(1f, 0.08f), 25);
+                _glyph = Gfx.Text(_root, "宋", Fonts.Brush, 0.55f, Pal.RedDeep, new Vector2(0, -0.06f), 27);
+                Gfx.Sprite(_root, Art.Img("hat"), Color.white, new Vector2(0, 0.16f), Vector2.one * 0.62f, 28);
                 _shield = Gfx.Sprite(_root, Art.Swirl, Pal.Red.A(0.75f), Vector2.zero, Vector2.one * 1.9f, 29);
                 _shield.enabled = false;
-                _heartY = side == 0 ? -0.86f : 0.86f;
+                // 心留在这一格里，贴着格子上沿，不再飘到旁边的草地上。
+                _heartY = side == 0 ? 0.28f : -0.28f;
                 _lastHearts = s.Hearts;
-                _danger = Gfx.Text(_root, "危", Fonts.Brush, 0.6f, Pal.Red, new Vector2(-1.0f, 0), 30);
+                _inward = pos.x > 0f ? -1f : 1f;
+                _danger = Gfx.Text(_root, "危", Fonts.Brush, 0.6f, Pal.Red, new Vector2(_inward, 0), 30);
                 _danger.gameObject.SetActive(false);
                 float by = side == 0 ? 1.45f : -1.45f;
-                _bubble = Gfx.Sprite(_root, Art.Rounded, Color.white, new Vector2(-1.2f, by), new Vector2(2.2f, 0.55f), 70);
-                _bubbleText = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Ink, new Vector2(-1.2f, by), 71);
+                _bubble = Gfx.Sprite(_root, Art.Rounded, Color.white, new Vector2(_inward * 1.2f, by), new Vector2(2.2f, 0.55f), 70);
+                _bubbleText = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Ink, new Vector2(_inward * 1.2f, by), 71);
                 _bubble.enabled = false;
             }
 
@@ -2143,6 +2524,11 @@ namespace Rescue
             {
                 _bubbleText.text = text;
                 _bubble.size = new Vector2(text.Length * 0.28f + 0.5f, 0.55f);
+                float half = _bubble.size.x * 0.5f, x0 = _root.localPosition.x;
+                float x = Mathf.Clamp(x0 + _inward * 1.2f, -3.94f + half, 3.94f - half) - x0;
+                var bt = _bubble.transform;
+                bt.localPosition = new Vector2(x, bt.localPosition.y);
+                _bubbleText.transform.localPosition = new Vector2(x, bt.localPosition.y);
                 _bubble.enabled = true;
                 _bubbleT = dur;
             }
@@ -2151,17 +2537,21 @@ namespace Rescue
             {
                 var s = _v.M.Sides[_side];
                 float dt = Time.deltaTime;
-                int n = Mathf.Min(5, s.MaxHearts);
+                int n = s.MaxHearts;
+                float gap = n <= 4 ? 0.4f : 0.22f;
+                float size = n <= 4 ? 0.36f : 0.22f;
                 while (_hearts.Count < n)
-                    _hearts.Add(Gfx.Sprite(_root, Art.Heart, Pal.Red, Vector2.zero, new Vector2(0.36f, 0.36f), 40));
+                    _hearts.Add(Gfx.Sprite(_root, Art.Heart, Pal.Red, Vector2.zero, Vector2.one * size, 40));
+                float rowHalf = (n - 1) * gap * 0.5f + size * 0.5f, x0 = _root.localPosition.x;
+                float rowX = Mathf.Clamp(x0, -3.96f + rowHalf, 3.96f - rowHalf) - x0;
                 for (int i = 0; i < _hearts.Count; i++)
                 {
                     var heart = _hearts[i];
                     heart.enabled = i < n;
-                    heart.transform.localPosition = new Vector2((i - (n - 1) * 0.5f) * 0.4f, _heartY);
+                    heart.transform.localPosition = new Vector2(rowX + (i - (n - 1) * 0.5f) * gap, _heartY);
                     float fill = Mathf.Clamp01((s.Hp - i * Tuning.HeartHp) / (float)Tuning.HeartHp);
                     heart.color = fill <= 0 ? Pal.Ink.A(0.28f) : Color.Lerp(Pal.Hex("E8A0A0"), Pal.Red, fill);
-                    heart.transform.localScale = Vector3.one * (0.34f + 0.06f * fill) * (1f + _hurt * 0.25f);
+                    heart.transform.localScale = Vector3.one * size * (0.85f + 0.15f * fill) * (1f + _hurt * 0.25f);
                 }
                 if (s.Hearts > _lastHearts) _lastHearts = s.Hearts;
                 _hurt = Mathf.Max(0, _hurt - dt * 3f);

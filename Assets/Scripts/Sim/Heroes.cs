@@ -58,6 +58,7 @@ namespace Rescue.Sim
         public int WGrade;
 
         public float DamageAt(int level) => Damage * (float)Math.Pow(Tuning.LevelMul, level - 1);
+        public float CooldownAt(int level) => Tuning.LevelCd(Cooldown, level);
 
         public bool Disha => Rank > 36;
         public string Star => Rank <= 0 ? "" : Rank <= 36 ? "天" + TianStars[Rank - 1] + "星" : "地" + DiStars[Rank - 37] + "星";

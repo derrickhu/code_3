@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace Rescue.Sim
 {
     public enum WeaponKind { None, Blade, Spear, Bow, Axe, Club, Whip, Hammer, Fork, Sword, Stone, Rope, Staff, Halberd, Cannon, Relic, Fist }
@@ -105,6 +108,20 @@ namespace Rescue.Sim
 
         /// <summary>掉落权重：神兵最难得。</summary>
         public static int DropWeight(int grade) => grade switch { 3 => 1, 2 => 2, 1 => 3, _ => 4 };
+
+        /// <summary>
+        /// 缴获谁的兵器：先看这局凑出来的、已经入伙的；一个都没有，才从这一回里已经入伙的人里抽。
+        /// 还没入伙的不掉，所以没过关之前，这一回才出场的人兵器不会亮。
+        /// </summary>
+        public static void CollectDropCandidates(IList<HeroId> formed, IList<HeroId> pool, Func<HeroId, bool> joined, List<HeroId> into)
+        {
+            if (formed != null)
+                foreach (var id in formed)
+                    if (joined(id) && !string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) into.Add(id);
+            if (into.Count > 0 || pool == null) return;
+            foreach (var id in pool)
+                if (joined(id) && !string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) into.Add(id);
+        }
     }
 
     /// <summary>羁绊：同时凑出若干名有渊源的好汉，他们伤害提高。</summary>

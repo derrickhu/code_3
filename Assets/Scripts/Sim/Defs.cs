@@ -45,16 +45,16 @@ namespace Rescue.Sim
         public const int MaxLevel = 5;
 
         public float DamageAt(int level) => Damage * (float)Math.Pow(Tuning.LevelMul, level - 1);
-        public float CooldownAt(int level) => Cooldown * (1f - 0.06f * (level - 1));
+        public float CooldownAt(int level) => Tuning.LevelCd(Cooldown, level);
 
         public string TypeLabel => Pierce > 1 ? "穿透" : Splash > 0 ? "范围" : Knockback > 0 ? "击退" : "单体";
 
         static readonly UnitDef[] All =
         {
-            new UnitDef { Kind = UnitKind.Dao, Glyph = '刀', Role = "近战劈砍，附带小范围溅射", Range = 1.25f, Cooldown = 0.9f, Damage = 3.2f, Splash = 0.5f },
-            new UnitDef { Kind = UnitKind.Qiang, Glyph = '枪', Role = "直线突刺，穿透三人", Range = 2.15f, Cooldown = 1.0f, Damage = 2.55f, Pierce = 3 },
-            new UnitDef { Kind = UnitKind.Gong, Glyph = '弓', Role = "远程放箭", Range = 2.65f, Cooldown = 1.15f, Damage = 3.0f },
-            new UnitDef { Kind = UnitKind.Qi, Glyph = '骑', Role = "快速冲撞，击退敌人", Range = 1.5f, Cooldown = 0.5f, Damage = 1.3f, Knockback = 0.22f },
+            new UnitDef { Kind = UnitKind.Dao, Glyph = '刀', Role = "近战劈砍，附带小范围溅射", Range = 1.25f, Cooldown = 0.85f, Damage = 3.15f, Splash = 0.5f },
+            new UnitDef { Kind = UnitKind.Qiang, Glyph = '枪', Role = "直线突刺，穿透三人", Range = 2.15f, Cooldown = 1.05f, Damage = 2.7f, Pierce = 3 },
+            new UnitDef { Kind = UnitKind.Gong, Glyph = '弓', Role = "远程放箭", Range = 2.65f, Cooldown = 1.22f, Damage = 3.25f },
+            new UnitDef { Kind = UnitKind.Qi, Glyph = '骑', Role = "快速冲撞，击退敌人", Range = 1.5f, Cooldown = 0.42f, Damage = 1.12f, Knockback = 0.22f },
         };
 
         public static UnitDef Get(UnitKind k) => All[(int)k];
@@ -71,11 +71,11 @@ namespace Rescue.Sim
 
         static readonly EnemyDef[] All =
         {
-            new EnemyDef { Kind = EnemyKind.Zu, Glyph = "卒", HpMul = 1f, Speed = 0.95f, LeakDamage = 1, Reward = 1 },
+            new EnemyDef { Kind = EnemyKind.Zu, Glyph = "卒", HpMul = 1f, Speed = 1.0f, LeakDamage = 1, Reward = 1 },
             new EnemyDef { Kind = EnemyKind.Chai, Glyph = "差", HpMul = 0.6f, Speed = 1.55f, LeakDamage = 1, Reward = 1 },
-            new EnemyDef { Kind = EnemyKind.Jia, Glyph = "甲", HpMul = 2.3f, Speed = 0.7f, Armor = 0.35f, LeakDamage = 2, Reward = 2 },
-            new EnemyDef { Kind = EnemyKind.Bu, Glyph = "捕", HpMul = 9f, Speed = 0.85f, LeakDamage = 4, Reward = 5 },
-            new EnemyDef { Kind = EnemyKind.Boss, Glyph = "", HpMul = 45f, Speed = 0.45f, LeakDamage = 12, Reward = 20 },
+            new EnemyDef { Kind = EnemyKind.Jia, Glyph = "甲", HpMul = 2.3f, Speed = 0.74f, Armor = 0.35f, LeakDamage = 1, Reward = 2 },
+            new EnemyDef { Kind = EnemyKind.Bu, Glyph = "捕", HpMul = 9f, Speed = 0.85f, LeakDamage = 2, Reward = 5 },
+            new EnemyDef { Kind = EnemyKind.Boss, Glyph = "", HpMul = 14f, Speed = 0.45f, LeakDamage = 2, Reward = 20 },
         };
 
         public static EnemyDef Get(EnemyKind k) => All[(int)k];
@@ -83,34 +83,74 @@ namespace Rescue.Sim
 
     public static class Tuning
     {
+        /// <summary>每边 8 列 5 行，和原作一样紧，摆错一格就疼。</summary>
         public const int Cols = 8;
-        public const int Rows = 6;
+        public const int Rows = 5;
         public const int CampSlots = 5;
-        public const int MaxHp = 30;
-        public const int HeartHp = 10;
-        public const int StartBuns = 12;
-        public const int StartCost = 12;
-        /// <summary>杀敌入账倍率。原作第 3 波进度约一半、第 6 波约四成，按这个压过每只都 +1 的进账。</summary>
-        public const float KillGold = 0.4f;
+        /// <summary>一颗心就是 1 点血。开局三颗，漏一只小怪掉一颗。</summary>
+        public const int MaxHp = 3;
+        public const int HeartHp = 1;
+        /// <summary>续命丹加的心。3 + 8 = 11，第一波十个卒全放过去还剩 1 颗。</summary>
+        public const int XumingHearts = 8;
+        /// <summary>原作开局 20 包子、首次征兵 10：摆完第一轮手里还剩 10，第一波打完就能接上第二次。</summary>
+        public const int StartBuns = 20;
+        public const int StartCost = 10;
+        /// <summary>杀敌入账倍率：前五次征兵大约每 25 秒一次，后期棋盘满了再多包子也花不出去。</summary>
+        public const float KillGold = 0.75f;
         public const int CostStep = 2;
+        /// <summary>掉一颗心补 10 个炊饼。平常漏一两只只够再征一次；带续命丹故意放第一波才会囤上一大笔。</summary>
+        public const int RainBuns = 10;
         public const float HeroCharChance = 0.24f;
         public const float ShovelChance = 0.12f;
         public const int AdShovels = 2;
         public const int GoldPity = 5;
         public const float PairBias = 0.4f;
         public const int MaxWaveCount = 24;
-        public const double LevelMul = 2.25;
+        /// <summary>每级伤害。比攻速陡，但不再一合成就翻两倍多，免得满级把血量曲线盖过去。</summary>
+        public const double LevelMul = 1.88;
+        /// <summary>每级攻速。连乘，五级大约比一级快七成半，出手节奏听得出来。</summary>
+        public const float SpeedMul = 1.15f;
         public const float BossNemesisMul = 5f;
-        public const float FirstWaveAt = 4f;
-        public const float WaveGap = 3.5f;
+        /// <summary>出兵口草堆盖住的那段路。怪走出之前看不见，也不能被打到。</summary>
+        public const float SpawnCover = 0.72f;
+        /// <summary>开局先让探马沿路走一圈，玩家趁这段时间征兵布阵，再出第一波。</summary>
+        public const float FirstWaveAt = 12f;
+        public const float ScoutStart = 0.8f;
+        public const float ScoutWalk = 7.5f;
+        /// <summary>主动道具放完要转完这一圈才能再放。攻速符和它的十二秒效果一样长，刚好接上。</summary>
+        public const float CdMeng = 8f;
+        public const float CdBaozi = 6f;
+        public const float CdShu = 10f;
+        public const float CdFu = 12f;
+        public const float CdTrap = 8f;
 
-        public static float WaveHp(int wave) => 5f * (float)Math.Pow(1.18, wave - 1);
+        /// <summary>前两波之后留口气看局面，后面逐步收紧。</summary>
+        public static float WaveGap(int wave) => wave <= 2 ? 6f : wave <= 5 ? 4.5f : 3.5f;
+
+        /// <summary>同一波里两个官兵的间隔：头几波稀疏，越往后越密。</summary>
+        public static float SpawnInterval(int wave) => Math.Max(0.28f, wave <= 2 ? 1.3f - 0.1f * wave : 0.95f - 0.03f * wave);
+
+        /// <summary>等级换算后的出手间隔。一级用基础值，之后每级按 SpeedMul 加快。</summary>
+        public static float LevelCd(float cooldown, int level)
+        {
+            if (level < 1) level = 1;
+            if (level > UnitDef.MaxLevel) level = UnitDef.MaxLevel;
+            return cooldown / (float)Math.Pow(SpeedMul, level - 1);
+        }
+
+        /// <summary>普通官兵的基础血。前两波只略厚，第三波起明显加快，合成上去之后小兵不再一戳就破。</summary>
+        public static float WaveHp(int wave)
+        {
+            if (wave < 1) wave = 1;
+            float grow = (float)Math.Pow(1.22, wave - 1);
+            float extra = 1f + 0.04f * Math.Max(0, wave - 2);
+            return 7.6f * grow * extra;
+        }
     }
 
     /// <summary>
     /// 梁山座次：十一个大阶各分叁、贰、壹三小阶，顶上是不封顶的「天魁星」。
-    /// 胜加星，满星再胜升一小阶；败掉星，零星再败降一小阶，但不会跌出当前大阶。
-    /// 提辖以下败了不掉星，新手只升不降。
+    /// 每一小阶都是五星，集满五星升下一小阶；败了掉一星，没星再败降一小阶，但不会跌出当前大阶。
     /// </summary>
     public static class RankRules
     {
@@ -140,13 +180,8 @@ namespace Rescue.Sim
 
         public static int Clamp(int flat) => flat < 0 ? 0 : flat > Top ? Top : flat;
 
-        /// <summary>这一小阶满几颗星升阶；天魁星不封顶返回 0。</summary>
-        public static int StarsAt(int flat)
-        {
-            int m = Major(flat);
-            if (m >= TopMajor) return 0;
-            return m <= 2 ? 3 : m <= 6 ? 4 : 5;
-        }
+        /// <summary>这一小阶集满几颗星就升；天魁星不封顶返回 0。对标原作，每一小阶都是五星。</summary>
+        public static int StarsAt(int flat) => Major(flat) >= TopMajor ? 0 : MaxStars;
 
         public static string Name(int flat)
         {
@@ -155,8 +190,6 @@ namespace Rescue.Sim
         }
 
         public static string MajorName(int flat) => Majors[Major(flat)];
-
-        public static bool SafeStars(int flat) => Major(flat) < 3;
 
         /// <summary>局外排名分：升一小阶比任何星数都多。</summary>
         public static int Score(int flat, int stars) => Clamp(flat) * 100 + Math.Min(stars, 99) * 10;
@@ -170,7 +203,7 @@ namespace Rescue.Sim
             if (cap > 0 && stars > cap) stars = cap;
             if (win)
             {
-                if (cap > 0 && stars >= cap)
+                if (cap > 0 && stars + 1 >= cap)
                 {
                     tier++;
                     stars = 0;
@@ -179,12 +212,12 @@ namespace Rescue.Sim
                 else stars++;
                 return;
             }
-            if (SafeStars(tier)) return;
             if (stars > 0) { stars--; return; }
             if (tier < Top && Sub(tier) > 0)
             {
                 tier--;
-                stars = StarsAt(tier) - 1;
+                int back = StarsAt(tier);
+                stars = back > 0 ? back - 1 : 0;
                 demoted = true;
             }
         }

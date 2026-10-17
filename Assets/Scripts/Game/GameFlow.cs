@@ -62,7 +62,7 @@ namespace Rescue
             _backdrop.orthographic = true;
             _backdrop.cullingMask = 0;
             _backdrop.clearFlags = CameraClearFlags.SolidColor;
-            _backdrop.backgroundColor = Pal.Hex("1A1612");
+            _backdrop.backgroundColor = Pal.Paper;
             _backdrop.depth = _cam.depth - 1;
             FitCamera();
 
@@ -76,7 +76,8 @@ namespace Rescue
             else
             {
                 CloudSync.Imported += OnCloudImported;
-                CloudSync.Startup(ShowHome);
+                var loading = LoadingScreen.Open(transform);
+                CloudSync.Startup(() => StartCoroutine(FinishBoot(loading)));
             }
         }
 
@@ -90,6 +91,7 @@ namespace Rescue
             if (_battle != null) return;
             if (_home != null) Destroy(_home.gameObject);
             _home = null;
+            if (FindObjectOfType<LoadingScreen>() != null) return;
             ShowHome();
         }
 
@@ -105,9 +107,17 @@ namespace Rescue
         {
             _aspect = Screen.width / Mathf.Max(1f, Screen.height);
             _cam.rect = Ui.CameraViewport();
-            float phone = Ui.DesignW / Ui.DesignH;
-            _cam.orthographicSize = Mathf.Max(8.8f, 4.35f / phone);
+            BattleView.FitCamera(_cam);
             Ui.FitPhone();
+        }
+
+        IEnumerator FinishBoot(LoadingScreen loading)
+        {
+            if (loading) yield return loading.WaitMin();
+            ShowHome();
+            if (!loading) yield break;
+            loading.BringToFront();
+            yield return loading.FadeOut();
         }
 
         void ShowHome()
@@ -142,8 +152,7 @@ namespace Rescue
 
         void OpenBattle(int chapter, bool autoplay)
         {
-            var loadout = autoplay ? new Loadout() : Save.D.TakeLoadout();
-            Save.Write();
+            var loadout = autoplay ? new Loadout() : Save.D.PeekLoadout();
             var ch = _pending ?? Resolve(chapter);
             _pending = null;
             _battle = BattleScreen.Open(transform, ch, _cam, loadout, autoplay, r =>
@@ -170,6 +179,8 @@ namespace Rescue
             var layer = Ui.Fill(Ui.Root, Color.white, true, "match");
             var bg = layer.GetComponent<Image>();
             bg.sprite = Art.Img("home_bg2");
+            var bleed = layer.Find("bleed")?.GetComponent<Image>();
+            if (bleed != null) bleed.sprite = bg.sprite;
             Ui.Fill(layer, new Color(0.08f, 0.06f, 0.04f, 0.72f), false, "dim");
             var title = Ui.Title(layer, "匹配完成", new Vector2(0, 600), 110, Pal.GoldBright);
             Tween.Pop(title.transform, 0.35f);
@@ -260,6 +271,14 @@ namespace Rescue
             yield return Shot("shop");
 
             StartBattle(chapter, true);
+            for (int i = 0; i < 2; i++)
+            {
+                yield return new WaitForSecondsRealtime(1.6f);
+                yield return Shot("scout");
+            }
+            _battle.Coach("开出来的白地才能摆字。\n招兵偶尔会掉铲子，上方铲子按钮看广告也能领。", 3f);
+            yield return new WaitForSecondsRealtime(0.5f);
+            yield return Shot("hint");
             int heroShots = 0;
             _battle.View.OnEvent += ev =>
             {

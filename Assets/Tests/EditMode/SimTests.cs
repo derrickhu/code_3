@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using Rescue.Sim;
 
@@ -60,7 +61,7 @@ namespace Rescue.Tests
                     for (int r = 0; r < Board.Rows; r++)
                         if (b.Cells[c, r] != Cell.Path && b.Cells[c, r] != Cell.Rock) potential++;
                 Assert.That(start, Is.InRange(5, 8), ch.Name + " 开局白地应是一小块");
-                Assert.GreaterOrEqual(potential, 18, ch.Name + " 能开荒的地太少");
+                Assert.GreaterOrEqual(potential, 16, ch.Name + " 能开荒的地太少");
                 Assert.IsTrue(b.AnyDiggable(), ch.Name);
             }
         }
@@ -84,10 +85,36 @@ namespace Rescue.Tests
         }
 
         [Test]
+        public void LevelGrowthFavorsAttackSpeedAndWavesOutpaceBoss()
+        {
+            var dao = UnitDef.Get(UnitKind.Dao);
+            Assert.AreEqual(3.15f * (float)Tuning.LevelMul, dao.DamageAt(2), 0.02f);
+            float speedUp = dao.CooldownAt(1) / dao.CooldownAt(5);
+            Assert.Greater(speedUp, 1.7f, "五级攻速要比一级快出一截");
+            Assert.Less(speedUp, 1.85f);
+
+            var hero = HeroDef.Get(HeroId.LinChong);
+            Assert.Less(hero.CooldownAt(5), hero.CooldownAt(1) * 0.6f, "好汉升级也要加快出手");
+            Assert.Greater(hero.DamageAt(5), hero.DamageAt(1) * 10f);
+
+            Assert.Less(Tuning.WaveHp(3) / Tuning.WaveHp(1), 1.6f, "前三波别一下子变厚");
+            Assert.Greater(Tuning.WaveHp(8) / Tuning.WaveHp(1), 3.4f, "头目那一波的小兵要比开局厚一截");
+            float boss = EnemyDef.Get(EnemyKind.Boss).HpMul;
+            float elite = EnemyDef.Get(EnemyKind.Bu).HpMul;
+            Assert.Greater(boss, elite, "头目要比捕快厚");
+            Assert.Less(boss, elite * 2.2f, "头目不要再厚过同波捕快一倍多");
+
+            Assert.AreEqual(1f, ChapterDef.All[0].FoeHp, 0.001f);
+            Assert.AreEqual(1f, ChapterDef.All[0].RivalFoeHp, 0.001f);
+            Assert.AreEqual(1f, ChapterDef.All[5].RivalFoeHp, 0.001f);
+            Assert.Greater(ChapterDef.All[ChapterDef.StoryCount - 1].FoeHp, ChapterDef.All[0].FoeHp);
+        }
+
+        [Test]
         public void MaxLevelDoesNotMerge()
         {
             Assert.IsFalse(Side.CanMerge(Piece.Unit(UnitKind.Qi, UnitDef.MaxLevel), Piece.Unit(UnitKind.Qi, UnitDef.MaxLevel)));
-            Assert.IsTrue(Side.CanMerge(Piece.Hero('武'), Piece.Hero('武')));
+            Assert.IsFalse(Side.CanMerge(Piece.Hero('武'), Piece.Hero('武')));
             Assert.IsFalse(Side.CanMerge(Piece.Hero('武'), Piece.Hero('松')));
             Assert.IsFalse(Side.CanMerge(Piece.Shovel(), Piece.Shovel()));
         }
@@ -167,20 +194,25 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void HeroSurvivesUnrelatedChanges_AndLevelIsMinOfChars()
+        public void HeroCharsDoNotMerge_LevelStaysMinOfName()
         {
             var s = PoolMatch(HeroId.WuSong).Player;
             Clear(s);
             var at = FindRun(s, 2, new CellPos(1, 0));
-            s.Board.Pieces[at.c, at.r] = Piece.Hero('武', 2);
-            s.Board.Pieces[at.c + 1, at.r] = Piece.Hero('松', 1);
+            var wu = Piece.Hero('武', 2);
+            var song = Piece.Hero('松', 1);
+            s.Board.Pieces[at.c, at.r] = wu;
+            s.Board.Pieces[at.c + 1, at.r] = song;
             s.RecomputeHeroes();
-            var h = s.Heroes[0];
-            Assert.AreEqual(1, h.Level);
-            s.Camp[0] = Piece.Hero('松', 1);
-            s.CampToCell(0, at.c + 1, at.r);
-            Assert.AreSame(h, s.Heroes[0], "合成后应仍是同一个好汉实例");
-            Assert.AreEqual(2, s.Heroes[0].Level);
+            Assert.AreEqual(1, s.Heroes[0].Level);
+            var fresh = Piece.Hero('松', 1);
+            s.Camp[0] = fresh;
+            Assert.IsTrue(s.CampToCell(0, at.c + 1, at.r));
+            Assert.AreSame(fresh, s.Board.Pieces[at.c + 1, at.r], "同字相叠只换位");
+            Assert.AreSame(song, s.Camp[0]);
+            Assert.AreEqual(1, fresh.Level);
+            Assert.AreEqual(2, wu.Level);
+            Assert.AreEqual(1, s.Heroes[0].Level);
         }
 
         [Test]
@@ -263,7 +295,7 @@ namespace Rescue.Tests
             var h = s.Heroes[0];
             h.UltCd = 999;
             h.Xp = HeroInstance.XpNeed(1) - 0.1f;
-            m.SpawnOn(s, EnemyKind.Zu, 0);
+            m.SpawnOn(s, EnemyKind.Zu, Tuning.SpawnCover);
             s.Enemies[0].Pos = h.Pos;
             s.Enemies[0].StunT = 999;
             for (int i = 0; i < 30 && h.Level == 1; i++) m.Step(0.05f);
@@ -273,39 +305,70 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void RescueClearsGruntsAndShieldsGoal()
+        public void RescuePushesEnemiesBackToTheFront()
         {
             var m = NewMatch();
             var s = m.Player;
             for (int i = 0; i < 4; i++) m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.5f);
-            Assert.IsTrue(s.InDanger);
+            m.SpawnOn(s, EnemyKind.Boss, s.Board.PathLength - 1f);
+            var boss = s.Enemies[s.Enemies.Count - 1];
+            float bossHp = boss.Hp;
+            Assert.IsTrue(s.AtTheGate);
             Assert.IsTrue(s.Rescue());
             Assert.IsFalse(s.Rescue(), "一局只能请一次");
-            foreach (var e in s.Enemies) Assert.IsTrue(e.Dead);
-            m.Step(0.02f);
+            Assert.AreEqual(bossHp, boss.Hp, "推回去不掉血");
+            foreach (var e in s.Enemies)
+            {
+                Assert.IsFalse(e.Dead);
+                Assert.Less(e.Progress, Tuning.SpawnCover + 2f, "应推到路口");
+            }
             int hp = s.Hp;
-            m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.01f);
-            m.Step(0.05f);
-            Assert.AreEqual(hp, s.Hp, "护身期间不掉血");
+            m.Step(0.4f);
+            Assert.AreEqual(hp, s.Hp, "推回路口之后一时漏不到宋江");
         }
 
         [Test]
         public void BaoziMovesOneHeartEitherWay()
         {
             var s = new Match(ChapterDef.All[0], 42, new Loadout { Baozi = 1 }).Player;
-            s.Hp = 15;
+            s.Hp = 2;
             Assert.IsTrue(s.UseBaozi());
-            Assert.That(s.Hp == 25 || s.Hp == 5, "包子只会回或掉一颗心");
+            Assert.That(s.Hp == 3 || s.Hp == 1, "包子只会回或掉一颗心");
             Assert.IsFalse(s.UseBaozi());
         }
 
         [Test]
-        public void XumingRaisesBothSidesUnevenly()
+        public void XumingAddsHeartsOnlyForThePlayer()
         {
             var m = new Match(ChapterDef.All[0], 42, new Loadout { Xuming = true });
-            Assert.AreEqual(Tuning.MaxHp + 10, m.Player.Hp);
-            Assert.AreEqual(Tuning.MaxHp + 6, m.Rival.Hp);
-            Assert.AreEqual(4, m.Player.MaxHearts);
+            Assert.AreEqual(Tuning.MaxHp + Tuning.XumingHearts, m.Player.Hp);
+            Assert.AreEqual(11, m.Player.MaxHearts);
+            Assert.AreEqual(Tuning.MaxHp, m.Rival.Hp);
+        }
+
+        [Test]
+        public void GruntLeakRemovesOneHeartAndPaysBuns()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            Assert.AreEqual(3, s.Hp);
+            int buns = s.Buns;
+            m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.01f);
+            m.Step(0.05f);
+            Assert.AreEqual(2, s.Hp);
+            Assert.AreEqual(buns + Tuning.RainBuns, s.Buns);
+            Assert.AreEqual(1, s.Rains);
+        }
+
+        [Test]
+        public void XumingSurvivesTenGruntLeaks()
+        {
+            var m = new Match(ChapterDef.All[0], 7, new Loadout { Xuming = true });
+            var s = m.Player;
+            for (int i = 0; i < 10; i++) m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.01f);
+            m.Step(0.05f);
+            Assert.AreEqual(1, s.Hp, "十一颗心吃满十个卒还剩一颗");
+            Assert.IsFalse(s.Dead);
         }
 
         [Test]
@@ -313,13 +376,12 @@ namespace Rescue.Tests
         {
             var m = NewMatch();
             var s = m.Player;
-            s.Hp = Tuning.HeartHp * 2 + 1;
             int buns = s.Buns;
             for (int i = 0; i < 2; i++) m.SpawnOn(s, EnemyKind.Zu, s.Board.PathLength - 0.01f);
             m.Step(0.05f);
-            Assert.AreEqual(Tuning.HeartHp * 2 - 1, s.Hp);
-            Assert.AreEqual(1, s.Rains);
-            Assert.Greater(s.Buns, buns);
+            Assert.AreEqual(1, s.Hp);
+            Assert.AreEqual(2, s.Rains, "每掉一颗心发一次及时雨");
+            Assert.AreEqual(buns + Tuning.RainBuns * 2, s.Buns);
         }
 
         [Test]
@@ -360,7 +422,7 @@ namespace Rescue.Tests
             UnityEngine.Debug.Log($"[平衡] {m.Chapter.Name}: {m.Time / 60f:0.0} 分钟, 第 {m.Wave} 波, 胜者 {m.Winner}, " +
                 $"好汉 {m.Player.FormedEver.Count}/{m.Rival.FormedEver.Count}, 聚义 {m.Player.Recruits}/{m.Rival.Recruits}, 及时雨 {m.Player.Rains}/{m.Rival.Rains}");
             Assert.IsTrue(m.Over, "20 分钟还没分出胜负");
-            Assert.Greater(m.Time, 150f, "对局太短");
+            Assert.Greater(m.Time, 70f, "对局太短");
             Assert.Less(m.Time, 12 * 60f, "对局太长");
         }
 
@@ -383,7 +445,64 @@ namespace Rescue.Tests
                 if (m.Winner == 0) wins++;
             }
             UnityEngine.Debug.Log($"[平衡] 第一回 中等玩家胜率 {wins}/8");
-            Assert.GreaterOrEqual(wins, 5);
+            Assert.GreaterOrEqual(wins, 5, "双方官兵一样厚，第一回大约八局赢五局");
+        }
+
+        [Test]
+        public void FirstChapterPacing()
+        {
+            var fresh = new Match(ChapterDef.All[0], 1).Player;
+            Assert.IsTrue(fresh.Recruit());
+            Assert.AreEqual(10, fresh.Buns, "摆完第一轮还剩 10 个包子");
+            Assert.IsFalse(fresh.CanRecruit);
+
+            float second = 0, end = 0, foeLeak = 0, playerHp = 0;
+            const int runs = 6;
+            for (uint seed = 1; seed <= runs; seed++)
+            {
+                var m = new Match(ChapterDef.All[0], seed);
+                var player = new RivalAI(m.Player, 0.6f, seed * 3);
+                var rival = new RivalAI(m.Rival, ChapterDef.All[0].RivalSkill, seed * 5);
+                float secondAt = 0;
+                int leakWave = 0;
+                while (!m.Over && m.Time < 20 * 60)
+                {
+                    player.Tick(1f / 30f);
+                    rival.Tick(1f / 30f);
+                    m.Step(1f / 30f);
+                    m.Events.Clear();
+                    if (secondAt == 0 && m.Player.Recruits >= 2) secondAt = m.Time;
+                    if (leakWave == 0 && m.Rival.Hp < m.Rival.MaxHp) leakWave = m.Wave;
+                }
+                second += secondAt;
+                end += m.Time;
+                foeLeak += leakWave == 0 ? m.Wave : leakWave;
+                playerHp += m.Player.Hp;
+            }
+            second /= runs; end /= runs; foeLeak /= runs; playerHp /= runs;
+            UnityEngine.Debug.Log($"[平衡] 第一回 第二次征兵 {second:0}s, 对手首次掉心第 {foeLeak:0.0} 波, 对局 {end:0}s, 玩家剩血 {playerHp:0}");
+            Assert.Less(second, 35f, "第一波打完就该接上第二次征兵");
+            Assert.Less(foeLeak, 12f, "对手最迟要在头目波开始掉心");
+            Assert.Less(end, 270f, "第一回别拖太久");
+        }
+
+        [Test]
+        public void EnemyInSpawnBrushCannotBeHit()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            Clear(s);
+            var sp = s.Board.Spawn;
+            Assert.IsTrue(s.Board.Placeable(sp.c + 1, sp.r - 1));
+            s.Board.Pieces[sp.c + 1, sp.r - 1] = Piece.Unit(UnitKind.Gong);
+            m.SpawnOn(s, EnemyKind.Zu, 0f);
+            var e = s.Enemies[0];
+            float hp = e.Hp;
+            m.Step(0.05f);
+            Assert.AreEqual(hp, e.Hp, 0.01f, "草堆里不该掉血");
+            e.Progress = Tuning.SpawnCover;
+            m.Step(0.05f);
+            Assert.Less(e.Hp, hp, "走出草堆就该挨打");
         }
 
         [Test]
@@ -391,23 +510,41 @@ namespace Rescue.Tests
         {
             int tier = 0, stars = 0;
             RankRules.Apply(ref tier, ref stars, false, out bool up, out bool down);
-            Assert.AreEqual(0, tier, "新手败了不掉");
+            Assert.AreEqual(0, tier);
+            Assert.AreEqual(0, stars, "喽啰·叁没有星，再败也没得掉");
             Assert.IsFalse(down);
 
-            for (int i = 0; i < RankRules.StarsAt(0); i++) RankRules.Apply(ref tier, ref stars, true, out up, out down);
-            Assert.AreEqual(RankRules.StarsAt(0), stars);
+            stars = 2;
+            RankRules.Apply(ref tier, ref stars, false, out up, out down);
+            Assert.AreEqual(1, stars, "最低阶输了也掉星");
+            Assert.AreEqual(0, tier);
+            Assert.IsFalse(down);
+
+            stars = 0;
+            for (int i = 0; i < 4; i++) RankRules.Apply(ref tier, ref stars, true, out up, out down);
+            Assert.AreEqual(4, stars);
+            Assert.IsFalse(up);
             RankRules.Apply(ref tier, ref stars, true, out up, out down);
-            Assert.IsTrue(up);
+            Assert.IsTrue(up, "第五颗星升一小阶");
             Assert.AreEqual(1, tier);
             Assert.AreEqual(0, stars);
             Assert.AreEqual("喽啰·贰", RankRules.Name(tier));
+
+            RankRules.Apply(ref tier, ref stars, false, out up, out down);
+            Assert.IsTrue(down, "没星再败降回上一小阶");
+            Assert.AreEqual(0, tier);
+            Assert.AreEqual(4, stars);
+
+            for (int t = 0; t < RankRules.Top; t++)
+                Assert.AreEqual(RankRules.MaxStars, RankRules.StarsAt(t), RankRules.Name(t) + " 应是五星");
+            Assert.AreEqual(0, RankRules.StarsAt(RankRules.Top));
 
             tier = 4 * RankRules.SubPerMajor + 1;
             stars = 0;
             RankRules.Apply(ref tier, ref stars, false, out up, out down);
             Assert.IsTrue(down);
             Assert.AreEqual(4 * RankRules.SubPerMajor, tier);
-            Assert.AreEqual(RankRules.StarsAt(tier) - 1, stars);
+            Assert.AreEqual(RankRules.MaxStars - 1, stars);
 
             stars = 0;
             RankRules.Apply(ref tier, ref stars, false, out up, out down);
@@ -419,6 +556,9 @@ namespace Rescue.Tests
             RankRules.Apply(ref tier, ref stars, true, out up, out down);
             Assert.AreEqual(RankRules.Top, tier, "天魁星封顶");
             Assert.AreEqual(41, stars);
+            RankRules.Apply(ref tier, ref stars, false, out up, out down);
+            Assert.AreEqual(RankRules.Top, tier, "天魁星败了只掉星");
+            Assert.AreEqual(40, stars);
             Assert.AreEqual("天魁星", RankRules.Name(tier));
 
             Assert.AreEqual(12, RankRules.Majors.Length);
@@ -548,6 +688,29 @@ namespace Rescue.Tests
         }
 
         [Test]
+        public void WeaponDropsOnlyAfterJoining()
+        {
+            var pool = ChapterDef.All[0].Pool;
+            var none = new List<HeroId>();
+            Weapons.CollectDropCandidates(none, pool, id => false, none);
+            Assert.AreEqual(0, none.Count, "第一关没人入伙时，撑过四波也不该掉史进的兵器");
+
+            var formed = new List<HeroId> { HeroId.ShiJin };
+            var beforeJoin = new List<HeroId>();
+            Weapons.CollectDropCandidates(formed, pool, id => false, beforeJoin);
+            Assert.AreEqual(0, beforeJoin.Count, "凑出了名字但还没入伙，也不掉");
+
+            var afterJoin = new List<HeroId>();
+            Weapons.CollectDropCandidates(formed, pool, id => id == HeroId.ShiJin, afterJoin);
+            Assert.AreEqual(1, afterJoin.Count);
+            Assert.AreEqual(HeroId.ShiJin, afterJoin[0]);
+
+            var fallback = new List<HeroId>();
+            Weapons.CollectDropCandidates(new List<HeroId>(), pool, id => id == HeroId.ChenDa || id == HeroId.ShiJin, fallback);
+            CollectionAssert.AreEquivalent(new[] { HeroId.ChenDa, HeroId.ShiJin }, fallback);
+        }
+
+        [Test]
         public void ArmedWeaponScalesAndNeverWeakerThanBare()
         {
             Assert.AreEqual(1f, HeroDef.ArmedMul(0), 0.001f);
@@ -592,8 +755,8 @@ namespace Rescue.Tests
             m.SpawnOn(s, EnemyKind.Boss, 2f);
             var boss = s.Enemies[0];
             float hp = boss.Hp;
-            s.Board.Pieces[5, 3] = Piece.Hero('李');
-            s.Board.Pieces[6, 3] = Piece.Hero('逵');
+            s.Board.Pieces[5, 2] = Piece.Hero('李');
+            s.Board.Pieces[6, 2] = Piece.Hero('逵');
             s.RecomputeHeroes();
             Assert.AreEqual(1, s.Heroes.Count, "白龙庙应能凑出李逵");
             s.Heroes[0].UltCd = 999f;
@@ -609,6 +772,62 @@ namespace Rescue.Tests
             Assert.IsTrue(found, "李逵应打到黄文炳");
             float full = HeroDef.Get(HeroId.LiKui).DamageAt(1);
             Assert.AreEqual(hp - full * 0.5f, boss.Hp, 0.05f);
+        }
+
+        [Test]
+        public void ManualUltWaitsForTheSkillButton()
+        {
+            var ch = Named("白龙庙");
+            var m = new Match(ch.WithPool(HeroId.LiKui), 42);
+            var s = m.Player;
+            Clear(s);
+            s.ManualUlt = true;
+            m.SpawnOn(s, EnemyKind.Boss, 2f);
+            s.Board.Pieces[5, 2] = Piece.Hero('李');
+            s.Board.Pieces[6, 2] = Piece.Hero('逵');
+            s.RecomputeHeroes();
+            var h = s.LeadHero;
+            Assert.IsNotNull(h);
+            h.UltCd = 0f;
+            m.Events.Clear();
+            m.Step(0.05f);
+            foreach (var ev in m.Events)
+                Assert.IsFalse(ev.Type == Ev.Ult && ev.A == h.Id && ev.Flag == 0, "手动模式下大招不该自己放");
+            Assert.IsTrue(s.LeadUltReady);
+            Assert.IsTrue(s.CastLeadUlt(), "点技能钮应能放出大招");
+            Assert.Greater(h.UltCd, 0f);
+            Assert.IsFalse(s.CastLeadUlt(), "冷却中不能再放");
+        }
+
+        [Test]
+        public void ActiveItemsWaitOutTheirCooldown()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            s.Items.MengHan = 2;
+            s.Items.TianShu = 1;
+            s.Items.Fu = 2;
+
+            Assert.IsFalse(s.UseTianShu(), "没有兵不能用天书");
+            Assert.AreEqual(1, s.Items.TianShu);
+            Assert.AreEqual(0f, s.ShuCd, 0.001f);
+
+            Assert.IsTrue(s.UseFu());
+            Assert.AreEqual(1, s.Items.Fu);
+            Assert.AreEqual(Tuning.CdFu, s.FuCd, 0.01f);
+            Assert.Greater(s.ItemHasteT, 0f);
+            Assert.IsFalse(s.UseFu(), "冷却中不能连放");
+            Assert.AreEqual(1, s.Items.Fu);
+
+            Assert.IsTrue(s.UseMengHan());
+            Assert.AreEqual(1, s.Items.MengHan);
+            Assert.IsFalse(s.UseMengHan(), "冷却中不能连放");
+            m.Step(1f);
+            Assert.AreEqual(Tuning.CdMeng - 1f, s.MengCd, 0.02f);
+            s.Tick(s.MengCd);
+            Assert.AreEqual(0f, s.MengCd, 0.001f);
+            Assert.IsTrue(s.UseMengHan());
+            Assert.AreEqual(0, s.Items.MengHan);
         }
     }
 }

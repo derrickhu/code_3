@@ -164,7 +164,7 @@ namespace Rescue
             RectTransform btn = null;
             btn = Ui.CartoonBtn(t, can ? "领取" : "已领取", new Vector2(190, 96), new Vector2(310, 0), can ? Ui.BtnYellow : Ui.BtnDark, () =>
             {
-                if (Save.D.claimTaken || Save.D.claimDay != Save.Today) { Toast("明天按今天的座次再发俸禄"); return; }
+                if (Save.D.claimTaken || Save.D.claimDay != Save.Today) { Nope("明天按今天的座次再发俸禄"); return; }
                 Save.D.coins += Save.DailyCoins;
                 Save.D.claimTaken = true;
                 Save.Write();
@@ -304,7 +304,7 @@ namespace Rescue
             Ui.CartoonBtn(top, "一键回收", new Vector2(240, 80), new Vector2(370, -508), Ui.BtnYellow, () =>
             {
                 int got = RecycleSpare();
-                if (got <= 0) { Toast("没有多余的兵器可回收"); return; }
+                if (got <= 0) { Nope("没有多余的兵器可回收"); return; }
                 ShowArmory();
             }, 38, null, Edge);
 
@@ -416,7 +416,7 @@ namespace Rescue
                 new Vector2(0, -255), new Vector2(720, 60));
 
             bool joined = Save.Joined(d.Id);
-            string tip = !own ? "打仗凑出他的名字或在他出场的回目里撑过四波，有机会缴获"
+            string tip = !own ? "入伙之后，凑出他的名字或在他出场的回目里撑过四波，才有机会缴获"
                 : !joined ? $"{d.Name}还没入伙，入伙后才能装备" : on ? "已装备，下一局自动带上" : "装备后下一局生效";
             Ui.Label(t, tip, 28, joined || !own ? Pal.Willow : Pal.Red, new Vector2(0, -330), new Vector2(760, 50));
             if (own)
@@ -434,8 +434,8 @@ namespace Rescue
             if (Save.D.armed.Contains(k)) Save.D.armed.Remove(k);
             else
             {
-                if (!Save.Joined(id)) { Toast("这位好汉还没入伙，用不了他的兵器"); return; }
-                if (Save.D.armed.Count >= Save.MaxArmed) { Toast("最多同时装备三件兵器"); return; }
+                if (!Save.Joined(id)) { Nope("这位好汉还没入伙，用不了他的兵器"); return; }
+                if (Save.D.armed.Count >= Save.MaxArmed) { Nope("最多同时装备三件兵器"); return; }
                 Save.D.armed.Add(k);
                 Sfx.Play(Snd.Merge);
             }

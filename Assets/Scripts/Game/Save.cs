@@ -18,6 +18,8 @@ namespace Rescue
         public long staminaAt;
         public int staminaRule;
         public string shopDay = "";
+        /// <summary>这批货是第几局之后摆上的。打完一局才换，同一局再看不会刷新。</summary>
+        public int shopBattle = -1;
         public List<int> shopOffer = new List<int>();
         public List<int> shopSold = new List<int>();
         public List<int> shopFree = new List<int>();
@@ -54,13 +56,6 @@ namespace Rescue
             if (armed != null)
                 foreach (var id in armed)
                     if (id >= 0 && id < l.WeaponLv.Length) l.WeaponLv[id] = Save.WeaponCount(id);
-            return l;
-        }
-
-        public Loadout TakeLoadout()
-        {
-            var l = PeekLoadout();
-            ClearItems();
             return l;
         }
 
@@ -117,10 +112,12 @@ namespace Rescue
             if (D.shopOffer == null) D.shopOffer = new List<int>();
             if (D.shopSold == null) D.shopSold = new List<int>();
             if (D.shopFree == null) D.shopFree = new List<int>();
+            if (D.joined == null) D.joined = new List<int>();
             if (D.weapons == null) D.weapons = new List<int>();
+            // 旧规则没过关也会掉兵器，清掉还没入伙的人那几件。
+            D.weapons.RemoveAll(id => id < 0 || id >= HeroDef.All.Length || !Joined(id));
             if (D.armed == null) D.armed = new List<int>();
             D.armed.RemoveAll(id => WeaponCount(id) <= 0 || id < 0 || id >= HeroDef.All.Length);
-            if (D.joined == null) D.joined = new List<int>();
             if (D.team == null) D.team = new List<int>();
             if (D.ver < Version)
             {
@@ -163,7 +160,7 @@ namespace Rescue
 
         public static string Today => DateTime.Now.ToString("yyyyMMdd");
 
-        /// <summary>神秘商人每天换货；没用掉的道具过了今天作废。</summary>
+        /// <summary>过零点才清背包。打完一局只换货架上的新货，已经买下的留到当天结束。</summary>
         public static void RefreshShopDay()
         {
             if (D.lottoDay != Today)
@@ -171,17 +168,22 @@ namespace Rescue
                 D.lottoDay = Today;
                 D.lottoUsed = 0;
             }
-            if (D.shopDay == Today && D.shopOffer.Count == OfferCount) return;
-            if (!string.IsNullOrEmpty(D.shopDay) && D.shopDay != Today) D.ClearItems();
+            bool newDay = D.shopDay != Today;
+            bool newMatch = D.shopBattle != D.battles || D.shopOffer.Count != OfferCount;
+            if (newDay && !string.IsNullOrEmpty(D.shopDay)) D.ClearItems();
+            else RestoreBoughtItems();
+            if (!newDay && !newMatch) return;
             D.shopDay = Today;
+            D.shopBattle = D.battles;
             D.shopSold.Clear();
             D.shopFree.Clear();
             D.shopOffer.Clear();
-            var rng = new System.Random(int.Parse(Today));
+            var rng = new System.Random(int.Parse(Today) * 397 + D.battles * 17 + 11);
             void Pick(bool active, int n)
             {
                 var pool = new List<int>();
-                foreach (var it in ShopItem.All) if (it.Active == active) pool.Add(it.Id);
+                foreach (var it in ShopItem.All)
+                    if (it.Active == active && (active || !it.Owned())) pool.Add(it.Id);
                 for (int i = 0; i < n && pool.Count > 0; i++)
                 {
                     int k = rng.Next(pool.Count);
@@ -190,8 +192,31 @@ namespace Rescue
                 }
             }
             Pick(true, 2);
+            int before = D.shopOffer.Count;
             Pick(false, OfferCount - 2);
+            if (D.shopOffer.Count == before) Pick(true, OfferCount - D.shopOffer.Count);
             Write();
+        }
+
+        /// <summary>旧版本一进对局就清背包，货架却还写着已售完。同一天再进店时把买过、看过广告的货补回背包。</summary>
+        static void RestoreBoughtItems()
+        {
+            bool changed = false;
+            void Back(List<int> ids)
+            {
+                if (ids == null) return;
+                foreach (var id in ids)
+                {
+                    if (id < 0 || id >= ShopItem.All.Length) continue;
+                    var it = ShopItem.All[id];
+                    if (it.Count() > 0) continue;
+                    it.Give();
+                    changed = true;
+                }
+            }
+            Back(D.shopSold);
+            Back(D.shopFree);
+            if (changed) Write();
         }
 
         public const int OfferCount = 3;
@@ -222,7 +247,7 @@ namespace Rescue
             public int OldTier, OldStars;
         }
 
-        /// <summary>胜加星，满星再胜升阶；败掉星，零星再败降一小阶（不跌出大阶）。</summary>
+        /// <summary>胜加星，第五颗星升一小阶；败掉星，没星再败降一小阶（不跌出大阶）。</summary>
         public static RankDelta ApplyResult(bool win)
         {
             var d = new RankDelta { OldTier = D.tier, OldStars = D.stars };
@@ -323,16 +348,12 @@ namespace Rescue
 
         public const int MaxWeapons = 60;
 
-        /// <summary>赢下或撑到第四波掉一件兵器：凑出过的好汉优先，品级越高越难掉。</summary>
+        /// <summary>撑到第四波掉一件兵器：只掉已经入伙的，凑出来的优先，品级越高越难掉。过关入伙发生在这一步之前。</summary>
         public static string RollWeapon(BattleResult r)
         {
             if (r.Quit || r.Wave < 4) return "";
             var cands = new List<HeroId>();
-            foreach (var id in r.Formed)
-                if (!string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) cands.Add(id);
-            if (cands.Count == 0 && r.Pool != null)
-                foreach (var id in r.Pool)
-                    if (!string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) cands.Add(id);
+            Weapons.CollectDropCandidates(r.Formed, r.Pool, Joined, cands);
             if (cands.Count == 0 || UnityEngine.Random.value > 0.72f) return "";
             int total = 0;
             foreach (var id in cands) total += Weapons.DropWeight(HeroDef.Get(id).WGrade);

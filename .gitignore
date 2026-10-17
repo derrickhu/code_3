@@ -18,3 +18,4 @@
 .vscode/
 .idea/
 node_modules/
+/Packages/com.qq.weixin.minigame/
