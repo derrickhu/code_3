@@ -103,15 +103,15 @@ namespace Rescue
         }
 
         /// <summary>出兵口：草丛后插一面迎风飘的官军战旗。</summary>
-        void BuildSpawn(Vector2 sp)
+        void BuildSpawn(Transform parent, Vector2 sp)
         {
             var pole = new GameObject("banner").transform;
-            pole.SetParent(_root, false);
+            pole.SetParent(parent, false);
             pole.localPosition = sp + new Vector2(0.28f, 0.42f);
             var flag = Gfx.Sprite(pole, Art.Img("map_banner"), Color.white, new Vector2(0.18f, 0f), Vector2.one * 0.62f, 12);
             Gfx.Text(flag.transform, "官", Fonts.Brush, 0.46f, Pal.Paper, new Vector2(0.1f, 0.06f), 13);
             AddSway(flag.transform, 5f, 3.2f, true);
-            Gfx.Sprite(_root, Art.Img("bush"), Color.white, sp + new Vector2(0, 0.05f), Vector2.one * 1.2f, 13, "spawn");
+            Gfx.Sprite(parent, Art.Img("bush"), Color.white, sp + new Vector2(0, 0.05f), Vector2.one * 1.2f, 13, "spawn");
         }
 
         /// <summary>城墙上插几面旗，两端摆木桶栅栏。</summary>
@@ -120,11 +120,11 @@ namespace Rescue
             float h = Mathf.Min(0.62f, wallH * 0.85f);
             for (int i = 0; i < 2; i++)
             {
-                var flag = Gfx.Sprite(_root, Art.Img("map_banner"), Color.white, new Vector2(i == 0 ? -2.75f : 2.75f, wallY + 0.02f), Vector2.one * h, 11, "wallflag");
+                var flag = Gfx.Sprite(_frameRoot, Art.Img("map_banner"), Color.white, new Vector2(i == 0 ? -2.75f : 2.75f, wallY + 0.02f), Vector2.one * h, 11, "wallflag");
                 AddSway(flag.transform, 5f, 2.6f, true);
             }
-            Gfx.Sprite(_root, Art.Img("map_barrel"), Color.white, new Vector2(Left + 0.32f, wallY + 0.02f), Vector2.one * 0.42f, 11);
-            Gfx.Sprite(_root, Art.Img("map_fence"), Color.white, new Vector2(-Left - 0.42f, wallY + 0.02f), Vector2.one * 0.55f, 11);
+            Gfx.Sprite(_frameRoot, Art.Img("map_barrel"), Color.white, new Vector2(Left + 0.32f, wallY + 0.02f), Vector2.one * 0.42f, 11);
+            Gfx.Sprite(_frameRoot, Art.Img("map_fence"), Color.white, new Vector2(-Left - 0.42f, wallY + 0.02f), Vector2.one * 0.55f, 11);
         }
 
         void BuildAmbient()

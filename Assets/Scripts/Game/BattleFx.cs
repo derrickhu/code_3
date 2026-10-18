@@ -412,6 +412,184 @@ namespace Rescue
 
         // ─────────────────────────── 好汉出手 ───────────────────────────
 
+        enum HeroSwing { Arc, Thrust, Loose, Hurl, Whip, Fist }
+
+        /// <summary>普攻兵器：优先用这名好汉自己的兵器，没有兵器图时按出手样子挑。</summary>
+        static string HeroWeaponSprite(HeroDef d)
+        {
+            string named = d.WKind switch
+            {
+                WeaponKind.Blade => "wp_blade",
+                WeaponKind.Spear => "wp_spear",
+                WeaponKind.Bow => "wp_bow",
+                WeaponKind.Axe => "wp_axe",
+                WeaponKind.Club => "wp_club",
+                WeaponKind.Whip => "wp_whip",
+                WeaponKind.Hammer => "wp_hammer",
+                WeaponKind.Fork => "wp_fork",
+                WeaponKind.Sword => "wp_sword",
+                WeaponKind.Stone => "wp_stone",
+                WeaponKind.Rope => "wp_rope",
+                WeaponKind.Staff => "wp_staff",
+                WeaponKind.Halberd => "wp_halberd",
+                WeaponKind.Cannon => "wp_cannon",
+                WeaponKind.Fist => "wp_fist",
+                _ => null,
+            };
+            if (named != null) return named;
+            return d.Look switch
+            {
+                Look.Spear => "wp_spear",
+                Look.Bow => "wp_bow",
+                Look.Axe => "wp_axe",
+                Look.Staff => "wp_staff",
+                Look.Whip => "wp_whip",
+                Look.Hammer => "wp_hammer",
+                Look.Fork => "wp_fork",
+                Look.Sword => "wp_sword",
+                Look.Dart => "wp_stone",
+                Look.Lasso => "wp_rope",
+                Look.Fist => "wp_fist",
+                Look.Fire => "wp_cannon",
+                _ => "wp_blade",
+            };
+        }
+
+        static HeroSwing SwingOf(HeroDef d)
+        {
+            switch (d.WKind)
+            {
+                case WeaponKind.Spear:
+                case WeaponKind.Fork: return HeroSwing.Thrust;
+                case WeaponKind.Bow:
+                case WeaponKind.Cannon: return HeroSwing.Loose;
+                case WeaponKind.Stone: return HeroSwing.Hurl;
+                case WeaponKind.Whip: return HeroSwing.Whip;
+                case WeaponKind.Rope: return HeroSwing.Whip;
+                case WeaponKind.Fist: return HeroSwing.Fist;
+                case WeaponKind.Relic:
+                case WeaponKind.None:
+                    return d.Look switch
+                    {
+                        Look.Spear or Look.Fork => HeroSwing.Thrust,
+                        Look.Bow or Look.Fire => HeroSwing.Loose,
+                        Look.Dart => HeroSwing.Hurl,
+                        Look.Whip or Look.Lasso => HeroSwing.Whip,
+                        Look.Fist => HeroSwing.Fist,
+                        _ => HeroSwing.Arc,
+                    };
+                default: return HeroSwing.Arc;
+            }
+        }
+
+        /// <summary>兵器从好汉身上挥到目标。图是斜着画的，减 45° 才对准出手方向。</summary>
+        void ShowHeroWeapon(HeroDef d, Vector2 from, Vector2 to, Vector2 n)
+        {
+            if ((d.WKind == WeaponKind.Relic || d.WKind == WeaponKind.None) && d.Look == Look.Poison)
+            {
+                HurlWeapon("fx_dust", from, to, 0.8f);
+                return;
+            }
+            string img = HeroWeaponSprite(d);
+            switch (SwingOf(d))
+            {
+                case HeroSwing.Thrust: ThrustWeapon(img, from, to, n, 1.9f); break;
+                case HeroSwing.Loose: LooseWeapon(img, from, to, n, d.WKind == WeaponKind.Cannon || d.Look == Look.Fire); break;
+                case HeroSwing.Hurl: HurlWeapon(img, from, to, 0.85f); break;
+                case HeroSwing.Whip: WhipWeapon(img, from, to, n); break;
+                case HeroSwing.Fist: FistWeapon(img, from, to, n); break;
+                default: ArcWeapon(img, from, to, n); break;
+            }
+        }
+
+        const int WeaponOrder = 48;
+
+        void ArcWeapon(string img, Vector2 from, Vector2 to, Vector2 n)
+        {
+            float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg;
+            var start = from + n * 0.15f;
+            var end = Vector2.Lerp(from, to, 0.78f);
+            const float size = 1.75f;
+            NewSpriteFx(Art.Img(img), Color.white, start, Vector2.one * size, WeaponOrder, 0.38f, (f, k) =>
+            {
+                float e = Tween.OutCubic(k);
+                f.Go.transform.localPosition = Vector2.Lerp(start, end, e);
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang - 45f + Mathf.Lerp(80f, -110f, e));
+                f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.28f)));
+            });
+            Streak(start, end, 0.15f, 0.22f, Pal.GoldBright.A(0.9f), Color.white, 0.26f, WeaponOrder - 1);
+        }
+
+        void ThrustWeapon(string img, Vector2 from, Vector2 to, Vector2 n, float size)
+        {
+            float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
+            var start = from + n * 0.1f;
+            var end = to - n * Mathf.Min(0.35f, (to - from).magnitude * 0.25f);
+            NewSpriteFx(Art.Img(img), Color.white, start, Vector2.one * size, WeaponOrder, 0.32f, (f, k) =>
+            {
+                float e = Mathf.Sin(Mathf.Clamp01(k) * Mathf.PI);
+                f.Go.transform.localPosition = Vector2.Lerp(start, end, e);
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang);
+                f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.22f)));
+            });
+            Streak(start, end, 0.2f, 0.16f, Pal.GoldBright.A(0.75f), Color.white, 0.22f, WeaponOrder - 1, 0f);
+        }
+
+        void LooseWeapon(string img, Vector2 from, Vector2 to, Vector2 n, bool cannon)
+        {
+            float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
+            var at = from + n * 0.35f;
+            const float size = 1.3f;
+            NewSpriteFx(Art.Img(img), Color.white, at, Vector2.one * size, WeaponOrder, 0.34f, (f, k) =>
+            {
+                float draw = 1f - 0.22f * Mathf.Sin(Mathf.Min(1f, k * 1.8f) * Mathf.PI);
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang);
+                f.Go.transform.localScale = new Vector3(size * draw, size, 1);
+                f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.25f)));
+            });
+            if (cannon) HurlWeapon("fx_fire", from + n * 0.5f, to, 0.7f);
+        }
+
+        void HurlWeapon(string img, Vector2 from, Vector2 to, float size)
+        {
+            float dist = (to - from).magnitude;
+            float life = Mathf.Clamp(0.14f + dist * 0.045f, 0.16f, 0.42f);
+            float arc = Mathf.Min(0.55f, dist * 0.12f);
+            NewSpriteFx(Art.Img(img), Color.white, from, Vector2.one * size, WeaponOrder, life, (f, k) =>
+            {
+                var p = Vector2.Lerp(from, to, k) + Vector2.up * Mathf.Sin(k * Mathf.PI) * arc;
+                f.Go.transform.localPosition = p;
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, k * 360f);
+                f.Sr.color = Color.white.A(k < 0.85f ? 1f : (1f - k) / 0.15f);
+            });
+        }
+
+        void WhipWeapon(string img, Vector2 from, Vector2 to, Vector2 n)
+        {
+            float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
+            NewSpriteFx(Art.Img(img), Color.white, from + n * 0.25f, Vector2.one * 1.25f, WeaponOrder, 0.28f, (f, k) =>
+            {
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang + Mathf.Sin(k * Mathf.PI) * 35f);
+                f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.25f)));
+            });
+            Streak(from + n * 0.3f, to, 0.1f, 0.18f, Pal.Ink, Pal.GoldBright, 0.22f, WeaponOrder - 1);
+        }
+
+        void FistWeapon(string img, Vector2 from, Vector2 to, Vector2 n)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                var off = new Vector2(i == 0 ? -0.12f : 0.12f, 0f);
+                After(i * 0.08f, () => HurlWeapon(img, from + n * 0.15f + off, to + off, 0.8f));
+            }
+        }
+
+        void LungeHero(int heroId, Vector2 dir)
+        {
+            foreach (var v in _pieces.Values)
+                if (v.Hero != null && v.Hero.Id == heroId) v.Lunge(dir);
+        }
+
         void HeroAttackFx(SimEvent ev)
         {
             var from = World(ev.Side, ev.P);
@@ -423,10 +601,11 @@ namespace Rescue
             var hd = HeroDef.Get(id);
             var gold = Pal.GoldBright;
             var glow = Color.Lerp(Pal.GoldBright, Color.white, 0.45f);
+            ShowHeroWeapon(hd, from, to, n);
+            LungeHero(ev.A, n);
 
             if (ev.Flag == 2)
             {
-                WeaponFlash(from, "bow", n, UnitKind.Gong, 1.1f);
                 InkArrow(from, to, Pal.Red, Pal.GoldBright, 1.1f, 0.24f, () =>
                 {
                     StuckArrow(to, n, Pal.Red, 1.0f);
@@ -480,7 +659,6 @@ namespace Rescue
                 case Look.Spear:
                 {
                     if (mine) Sfx.Play(Snd.Spear, 0.5f, 0.85f);
-                    WeaponFlash(from, "spear", n, UnitKind.Qiang, 1.1f);
                     var tip = to + n * 1.4f;
                     Streak(from + n * 0.75f, to, 1.4f, 0.1f, glow.A(0.85f), glow, 0.2f, 43, 0f);
                     After(0.05f, () =>
@@ -518,7 +696,6 @@ namespace Rescue
                 }
                 case Look.Bow:
                     if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Bow, 0.45f);
-                    WeaponFlash(from, "bow", n, UnitKind.Gong, 0.95f);
                     InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.8f, 0.18f, () =>
                     {
                         if (mine) Sfx.Play(Snd.ArrowHit, 0.4f);

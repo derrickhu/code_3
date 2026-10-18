@@ -33,7 +33,7 @@ namespace Rescue
         void BuildRange()
         {
             var mask = new GameObject("rangeMask").AddComponent<SpriteMask>();
-            mask.transform.SetParent(_root, false);
+            mask.transform.SetParent(_low, false);
             mask.sprite = Art.White;
             mask.transform.localPosition = new Vector2(0f, MyBottom + Board.Rows * 0.5f);
             mask.transform.localScale = new Vector3(Board.Cols, Board.Rows, 1f);

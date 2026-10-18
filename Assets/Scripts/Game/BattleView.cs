@@ -9,14 +9,18 @@ namespace Rescue
     public sealed partial class BattleView : MonoBehaviour
     {
         public const float Left = -4f;
-        public const float MyBottom = -4.25f;
+        /// <summary>9:16 时自己棋盘的底边。更高的屏幕整块下移，见 LowerShift。</summary>
+        public const float MyBottom0 = -4.25f;
+        /// <summary>比 9:16 多出来的高度。下半场（自己的棋盘、山寨、聚义）整体下移这么多，底边留白和 9:16 一样。</summary>
+        public static float LowerShift { get; private set; }
+        public static float MyBottom => MyBottom0 - LowerShift;
         public const float OppBottom = 1.13f;
-        public const float CampY = MyBottom - 0.47f;
-        public const float ButtonY = CampY - 1.22f;
+        public static float CampY => MyBottom - 0.47f;
+        public static float ButtonY => CampY - 1.22f;
         /// <summary>被动道具一行，排在聚义下面。主动道具和聚义同一行，靠左。</summary>
-        public const float ItemY = ButtonY - 1.06f;
+        public static float ItemY => ButtonY - 1.06f;
         public const float TopY = 6.39f;
-        const float WallY = (MyBottom + Board.Rows + OppBottom) * 0.5f;
+        static float WallY => (MyBottom + Board.Rows + OppBottom) * 0.5f;
         const float HudHalf = 0.40f;
         const float ItemGap = 1.0f;
         float _activeScale = 0.96f;
@@ -39,7 +43,9 @@ namespace Rescue
         public event Action OnPlaced;
 
         Camera _cam;
-        Transform _root, _fxRoot;
+        Transform _root, _fxRoot, _low, _frameRoot;
+        float _layoutShift;
+        SpriteRenderer _midInk, _midPaper;
         float _acc;
         float _shake;
         int _frame;
@@ -111,15 +117,15 @@ namespace Rescue
 
         /// <summary>
         /// 宽度永远刚好是 8 格，左右贴边。不够高就收紧界面，不再把整张棋盘缩小。
-        /// 真机上标题让开微信胶囊，多出来的高度留在底下。
+        /// 真机上标题让开微信胶囊。比 9:16 更高时，多出来的高度补在两军之间，下半场贴着屏幕底，底下不再空出一大块。
         /// </summary>
         public static void FitCamera(Camera cam)
         {
             var rect = cam.rect;
             float vw = Mathf.Max(1f, rect.width * Screen.width), vh = Mathf.Max(1f, rect.height * Screen.height);
-            float bar = 0f, menuTop = 0f, menuBottom = 0f;
+            float bar = 0f, menuTop = 0f, menuBottom = 0f, bottomPx = 0f;
             if (rect.width >= 0.999f && rect.height >= 0.999f)
-                Ui.ScreenInsets(out bar, out menuTop, out menuBottom, out _, out _);
+                Ui.ScreenInsets(out bar, out menuTop, out menuBottom, out _, out bottomPx);
             float upp = WidthNeed / vw;
             float topWorld = menuBottom > 0f
                 ? TopY + (menuTop + menuBottom) * 0.5f * upp
@@ -127,6 +133,13 @@ namespace Rescue
             cam.orthographicSize = vh * upp * 0.5f;
             CamBase = new Vector3(0f, topWorld - cam.orthographicSize, -10f);
             cam.transform.position = CamBase;
+
+            float viewH = cam.orthographicSize * 2f;
+            float designH = WidthNeed * (Ui.DesignH / Ui.DesignW);
+            float extra = Mathf.Max(0f, viewH - designH);
+            // 底部安全区只留指示条那一截。报得太大时不能把多出来的高度又吃回去。
+            float inset = Mathf.Clamp(bottomPx, 0f, vh * 0.08f) * upp;
+            LowerShift = Mathf.Max(0f, extra - inset);
         }
 
         public static Vector2 World(int side, V2 p) =>
@@ -142,6 +155,9 @@ namespace Rescue
             _cam = cam;
             _root = new GameObject("World").transform;
             _root.SetParent(transform, false);
+            _low = new GameObject("Low").transform;
+            _low.SetParent(_root, false);
+            _layoutShift = LowerShift;
             _fxRoot = new GameObject("Fx").transform;
             _fxRoot.SetParent(transform, false);
 
@@ -164,22 +180,79 @@ namespace Rescue
             SyncAll(true);
         }
 
-        /// <summary>原作是一整张棋盘：上半对手、下半自己，中间一道城墙。</summary>
+        /// <summary>屏幕变高后，把已经摆好的下半场平移到新位置。父节点停在原点，本地坐标仍是世界坐标。</summary>
+        public void CatchLayout()
+        {
+            if (_low == null) return;
+            float dy = -(LowerShift - _layoutShift);
+            if (Mathf.Abs(dy) < 0.001f) return;
+            _layoutShift = LowerShift;
+            for (int i = 0; i < _low.childCount; i++)
+            {
+                var c = _low.GetChild(i);
+                var p = c.localPosition;
+                p.y += dy;
+                c.localPosition = p;
+            }
+            foreach (var v in _pieces.Values)
+                if (v.Side == 0) v.Target.y += dy;
+            if (_card != null && _card.gameObject.activeSelf)
+            {
+                var p = _card.localPosition;
+                p.y += dy;
+                _card.localPosition = p;
+            }
+            if (_bubble != null && _bubble.gameObject.activeSelf)
+            {
+                var p = _bubble.localPosition;
+                p.y += dy;
+                _bubble.localPosition = p;
+            }
+            BuildFrame();
+            PlaceMid();
+        }
+
+        /// <summary>原作是一整张棋盘：上半对手、下半自己，中间一道城墙。更高的屏幕把多出来的空补成草地。</summary>
         void BuildFrame()
         {
-            float wallH = OppBottom - (MyBottom + Board.Rows);
-            var wall = Gfx.Sprite(_root, Art.Img("tex_stone"), Color.white, new Vector2(0, WallY), Vector2.one, 9, "wall");
+            if (_frameRoot != null) Destroy(_frameRoot.gameObject);
+            _frameRoot = new GameObject("frame").transform;
+            _frameRoot.SetParent(_root, false);
+
+            float gapBottom = MyBottom + Board.Rows;
+            float gapTop = OppBottom;
+            float gapH = Mathf.Max(0.05f, gapTop - gapBottom);
+            float mid = (gapBottom + gapTop) * 0.5f;
+            if (gapH > 0.5f)
+            {
+                int row = 0;
+                for (float y = gapBottom + 0.5f; y < gapTop + 0.51f; y += 1f, row++)
+                    for (int c = -2; c < Board.Cols + 2; c++)
+                        Gfx.Sprite(_frameRoot, Art.Ground("tex_grass", c, row), Color.white, new Vector2(Left + c + 0.5f, y), Vector2.one * 1.02f, 7, "gap");
+            }
+
+            float stoneH = Mathf.Min(0.38f, gapH);
+            var wall = Gfx.Sprite(_frameRoot, Art.Img("tex_stone"), Color.white, new Vector2(0, mid), Vector2.one, 9, "wall");
             wall.drawMode = SpriteDrawMode.Tiled;
             wall.transform.localScale = Vector3.one;
-            wall.size = new Vector2(Board.Cols, wallH);
-            Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.75f), new Vector2(0, WallY + wallH * 0.5f), new Vector2(Board.Cols, 0.05f), 10);
-            Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.75f), new Vector2(0, WallY - wallH * 0.5f), new Vector2(Board.Cols, 0.05f), 10);
+            wall.size = new Vector2(Board.Cols, stoneH);
+            Gfx.Sprite(_frameRoot, Art.White, Pal.Ink.A(0.75f), new Vector2(0, mid + stoneH * 0.5f), new Vector2(Board.Cols, 0.05f), 10);
+            Gfx.Sprite(_frameRoot, Art.White, Pal.Ink.A(0.75f), new Vector2(0, mid - stoneH * 0.5f), new Vector2(Board.Cols, 0.05f), 10);
             for (float x = Left + 0.25f; x < -Left; x += 0.5f)
             {
-                Gfx.Sprite(_root, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, WallY + wallH * 0.5f + 0.06f), new Vector2(0.26f, 0.1f), 10);
-                Gfx.Sprite(_root, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, WallY - wallH * 0.5f - 0.06f), new Vector2(0.26f, 0.1f), 10);
+                Gfx.Sprite(_frameRoot, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, mid + stoneH * 0.5f + 0.06f), new Vector2(0.26f, 0.1f), 10);
+                Gfx.Sprite(_frameRoot, Art.White, Pal.InkSoft.A(0.85f), new Vector2(x, mid - stoneH * 0.5f - 0.06f), new Vector2(0.26f, 0.1f), 10);
             }
-            DecorateWall(WallY, wallH);
+            DecorateWall(mid, stoneH);
+        }
+
+        void PlaceMid()
+        {
+            if (_midText == null) return;
+            float y = WallY;
+            if (_midInk != null) _midInk.transform.localPosition = new Vector2(0f, y);
+            if (_midPaper != null) _midPaper.transform.localPosition = new Vector2(0f, y);
+            _midText.transform.localPosition = new Vector2(0f, y);
         }
 
         void BuildBoard(int side)
@@ -192,12 +265,13 @@ namespace Rescue
                     if (side == 0)
                     {
                         var pos = CellWorld(side, c, r);
-                        _hl[c, r] = Gfx.Sprite(_root, Art.Rounded, Color.clear, pos, new Vector2(0.95f, 0.95f), 14, "hl");
-                        _hlMark[c, r] = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.RedDeep, pos + new Vector2(0, -0.33f), 15);
+                        _hl[c, r] = Gfx.Sprite(_low, Art.Rounded, Color.clear, pos, new Vector2(0.95f, 0.95f), 14, "hl");
+                        _hlMark[c, r] = Gfx.Text(_low, "", Fonts.Kai, 0.26f, Pal.RedDeep, pos + new Vector2(0, -0.33f), 15);
                     }
                 }
 
-            BuildSpawn(CellWorld(side, b.Spawn.c, b.Spawn.r));
+            var sp = CellWorld(side, b.Spawn.c, b.Spawn.r);
+            BuildSpawn(side == 0 ? _low : _root, sp);
         }
 
         void BuildCell(int side, int c, int r)
@@ -207,7 +281,7 @@ namespace Rescue
             _cellKind[side][c, r] = kind;
             if (_cellVis[side][c, r] != null) Destroy(_cellVis[side][c, r].gameObject);
             var t = new GameObject("cell").transform;
-            t.SetParent(_root, false);
+            t.SetParent(side == 0 ? _low : _root, false);
             t.localPosition = CellWorld(side, c, r);
             _cellVis[side][c, r] = t;
             var full = new Vector2(1.01f, 1.01f);
@@ -268,17 +342,17 @@ namespace Rescue
 
         void BuildCamp()
         {
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-0.52f, CampY), new Vector2(6.88f, 1.22f), 1);
-            Gfx.Sprite(_root, Art.Rounded, Pal.PaperDark, new Vector2(-0.52f, CampY), new Vector2(6.76f, 1.1f), 2);
-            Gfx.Text(_root, "山寨", Fonts.Brush, 0.4f, Pal.RedDeep, new Vector2(-3.43f, CampY), 5);
+            Gfx.Sprite(_low, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(-0.52f, CampY), new Vector2(6.88f, 1.22f), 1);
+            Gfx.Sprite(_low, Art.Rounded, Pal.PaperDark, new Vector2(-0.52f, CampY), new Vector2(6.76f, 1.1f), 2);
+            Gfx.Text(_low, "山寨", Fonts.Brush, 0.4f, Pal.RedDeep, new Vector2(-3.43f, CampY), 5);
             for (int i = 0; i < _campSlots.Length; i++)
             {
-                _campSlots[i] = Gfx.Sprite(_root, Art.Rounded, Pal.Paper.A(0.9f), CampWorld(i), new Vector2(0.98f, 0.98f), 4, "slot");
-                _campPlus[i] = Gfx.Text(_root, "", Fonts.Kai, 0.48f, Pal.InkSoft, CampWorld(i), 6);
+                _campSlots[i] = Gfx.Sprite(_low, Art.Rounded, Pal.Paper.A(0.9f), CampWorld(i), new Vector2(0.98f, 0.98f), 4, "slot");
+                _campPlus[i] = Gfx.Text(_low, "", Fonts.Kai, 0.48f, Pal.InkSoft, CampWorld(i), 6);
             }
 
             _rescueRoot = new GameObject("rescue").transform;
-            _rescueRoot.SetParent(_root, false);
+            _rescueRoot.SetParent(_low, false);
             _rescueRoot.localPosition = new Vector2(ShovelOfferX, CampY);
             Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.07f), new Vector2(0.84f, 1.08f), 49);
             _rescueBtn = Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.GoldBright, Vector2.zero, new Vector2(0.84f, 1.08f), 50);
@@ -290,7 +364,7 @@ namespace Rescue
             _rescueRoot.gameObject.SetActive(false);
 
             _shovelRoot = new GameObject("shovelOffer").transform;
-            _shovelRoot.SetParent(_root, false);
+            _shovelRoot.SetParent(_low, false);
             _shovelRoot.localPosition = new Vector2(ShovelOfferX, CampY);
             Gfx.Sprite(_shovelRoot, Art.Rounded, Pal.Shadow, new Vector2(0.03f, -0.07f), new Vector2(0.84f, 0.92f), 49);
             Gfx.Sprite(_shovelRoot, Art.Rounded, Pal.Hex("E89A2C"), Vector2.zero, new Vector2(0.84f, 0.92f), 50, "shovelAd");
@@ -351,14 +425,14 @@ namespace Rescue
 
         void BuildHud()
         {
-            Gfx.Sprite(_root, Art.Rounded, Pal.Shadow, new Vector2(0.2f, ButtonY - 0.09f), new Vector2(RecruitW, RecruitH), 48);
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink, new Vector2(0.2f, ButtonY), new Vector2(RecruitW + 0.16f, RecruitH + 0.16f), 49, "recruitRim");
-            _recruitBtn = Gfx.Sprite(_root, Art.Rounded, Pal.Hex("3A342C"), new Vector2(0.2f, ButtonY), new Vector2(RecruitW, RecruitH), 50, "recruit");
-            _recruitFill = Gfx.Sprite(_root, Art.Progress, Pal.Hex("C4894A"), new Vector2(0.2f, ButtonY), new Vector2(RecruitW, RecruitH), 51, "recruitFill");
+            Gfx.Sprite(_low, Art.Rounded, Pal.Shadow, new Vector2(0.2f, ButtonY - 0.09f), new Vector2(RecruitW, RecruitH), 48);
+            Gfx.Sprite(_low, Art.Rounded, Pal.Ink, new Vector2(0.2f, ButtonY), new Vector2(RecruitW + 0.16f, RecruitH + 0.16f), 49, "recruitRim");
+            _recruitBtn = Gfx.Sprite(_low, Art.Rounded, Pal.Hex("3A342C"), new Vector2(0.2f, ButtonY), new Vector2(RecruitW, RecruitH), 50, "recruit");
+            _recruitFill = Gfx.Sprite(_low, Art.Progress, Pal.Hex("C4894A"), new Vector2(0.2f, ButtonY), new Vector2(RecruitW, RecruitH), 51, "recruitFill");
             _recruitFill.enabled = false;
-            _recruitLabel = Gfx.Text(_root, "聚  义", Fonts.Brush, 0.5f, Pal.Paper, new Vector2(0.2f, ButtonY + 0.14f), 52);
-            _recruitCost = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(0.32f, ButtonY - 0.27f), 52);
-            Gfx.Sprite(_root, Art.Img("bun"), Color.white, new Vector2(-0.06f, ButtonY - 0.27f), Vector2.one * 0.26f, 52);
+            _recruitLabel = Gfx.Text(_low, "聚  义", Fonts.Brush, 0.5f, Pal.Paper, new Vector2(0.2f, ButtonY + 0.14f), 52);
+            _recruitCost = Gfx.Text(_low, "", Fonts.Kai, 0.26f, Pal.Paper, new Vector2(0.32f, ButtonY - 0.27f), 52);
+            Gfx.Sprite(_low, Art.Img("bun"), Color.white, new Vector2(-0.06f, ButtonY - 0.27f), Vector2.one * 0.26f, 52);
 
             _mengBtn = ItemButton(0, ItemSlot(0), "it_menghan", "蒙汗药", Pal.Hex("C9A6EE"), out _mengText);
             _baoziBtn = ItemButton(1, ItemSlot(1), "bun", "包子", Pal.Hex("A4D8F2"), out _baoziText);
@@ -377,15 +451,15 @@ namespace Rescue
             _titleText = Gfx.Text(_root, M.Chapter.Name, Fonts.Brush, 0.48f, Pal.Ink, new Vector2(0.15f, TopY + 0.10f), 52);
             _waveText = Gfx.Text(_root, "", Fonts.Kai, 0.27f, Pal.InkSoft, new Vector2(0.15f, TopY - 0.18f), 52);
 
-            Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, WallY), new Vector2(3.3f, 0.34f), 11);
-            Gfx.Sprite(_root, Art.Rounded, Pal.Paper, new Vector2(0, WallY), new Vector2(3.2f, 0.28f), 12);
+            _midInk = Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.85f), new Vector2(0, WallY), new Vector2(3.3f, 0.34f), 11);
+            _midPaper = Gfx.Sprite(_root, Art.Rounded, Pal.Paper, new Vector2(0, WallY), new Vector2(3.2f, 0.28f), 12);
             _midText = Gfx.Text(_root, "", Fonts.Kai, 0.26f, Pal.Ink, new Vector2(0, WallY), 13);
         }
 
         /// <summary>圆形道具钮：稀有度色圆底 + 图标 + 右上角红色数量角标 + 底部名字条，外圈金环。</summary>
         SpriteRenderer ItemButton(int index, Vector2 pos, string icon, string name, Color disc, out TextMesh text)
         {
-            var btn = Gfx.Sprite(_root, Art.Circle, disc, pos, Vector2.one, 50, "item");
+            var btn = Gfx.Sprite(_low, Art.Circle, disc, pos, Vector2.one, 50, "item");
             var t = btn.transform;
             Gfx.Sprite(t, Art.Circle, Pal.Shadow, new Vector2(0.03f, -0.07f), Vector2.one * 1.04f, 47);
             Gfx.Sprite(t, Art.Circle, Pal.Ink, Vector2.zero, Vector2.one * 1.04f, 48);
@@ -435,6 +509,7 @@ namespace Rescue
         void Update()
         {
             if (M == null) return;
+            CatchLayout();
             _frame++;
             if (_hitStop > 0f && !Paused)
             {
@@ -625,7 +700,7 @@ namespace Rescue
 
         SpriteRenderer PassiveButton(ShopItem it)
         {
-            var btn = Gfx.Sprite(_root, Art.Circle, it.DiscColor, new Vector2(0.2f, ItemY), Vector2.one, 50, "passive");
+            var btn = Gfx.Sprite(_low, Art.Circle, it.DiscColor, new Vector2(0.2f, ItemY), Vector2.one, 50, "passive");
             btn.gameObject.SetActive(false);
             var t = btn.transform;
             t.localScale = Vector3.one * 0.64f;
@@ -730,7 +805,7 @@ namespace Rescue
         {
             if (!_pieces.TryGetValue(p.Id, out var v))
             {
-                v = new PieceView(_root, p, side);
+                v = new PieceView(side == 0 ? _low : _root, p, side);
                 _pieces[p.Id] = v;
             }
             v.Seen = _frame;
@@ -746,7 +821,7 @@ namespace Rescue
                     if (e.Dead) continue;
                     if (!_enemies.TryGetValue(e.Id, out var v))
                     {
-                        v = new EnemyView(_root, e, s);
+                        v = new EnemyView(s == 0 ? _low : _root, e, s);
                         _enemies[e.Id] = v;
                     }
                     v.Seen = _frame;
@@ -1424,9 +1499,9 @@ namespace Rescue
             };
 
             float fieldY = MyBottom + Board.Rows * 0.5f;
-            _zone = Gfx.Sprite(_root, Art.White, Color.clear, new Vector2(0, fieldY), new Vector2(Board.Cols, Board.Rows), 15, "itemZone");
-            _zoneRim = Gfx.Sprite(_root, Art.Frame, Color.clear, new Vector2(0, fieldY), new Vector2(Board.Cols - 0.1f, Board.Rows - 0.1f), 16, "itemZoneRim");
-            _zoneText = Gfx.Text(_root, "", Fonts.Brush, 0.46f, Pal.Paper, new Vector2(0, fieldY), 17);
+            _zone = Gfx.Sprite(_low, Art.White, Color.clear, new Vector2(0, fieldY), new Vector2(Board.Cols, Board.Rows), 15, "itemZone");
+            _zoneRim = Gfx.Sprite(_low, Art.Frame, Color.clear, new Vector2(0, fieldY), new Vector2(Board.Cols - 0.1f, Board.Rows - 0.1f), 16, "itemZoneRim");
+            _zoneText = Gfx.Text(_low, "", Fonts.Brush, 0.46f, Pal.Paper, new Vector2(0, fieldY), 17);
             _zone.enabled = _zoneRim.enabled = false;
 
             _ghost = new GameObject("itemGhost").transform;
@@ -1737,7 +1812,7 @@ namespace Rescue
             if (_dragMoved && piece.Type == PieceType.Unit && hasHover && b.Placeable(hc, hr))
             {
                 var d = UnitDef.Get(piece.Kind);
-                float range = p.Items.Far && d.Range >= 2f ? d.Range * 2f : d.Range;
+                float range = d.RangeWith(p.Items.Far);
                 ShowRange(CellWorld(0, hc, hr), range, RangeStyle.Unit, true);
             }
             else if (_rangeFromDrag) HideRange();
@@ -1857,7 +1932,7 @@ namespace Rescue
                 var d = UnitDef.Get(piece.Kind);
                 title = d.Glyph + "兵";
                 level = $"Lv.{piece.Level}";
-                range = M.Player.Items.Far && d.Range >= 2f ? d.Range * 2f : d.Range;
+                range = d.RangeWith(M.Player.Items.Far);
                 body = $"类型：{d.TypeLabel}　射程：{range:0.#}格\n攻击力：{d.DamageAt(piece.Level):0.#}　攻速：{1f / d.CooldownAt(piece.Level):0.0}次/秒\n满级{UnitDef.MaxLevel}级 · {d.Role}";
             }
             else if (piece.Type == PieceType.Shovel)
@@ -2309,6 +2384,18 @@ namespace Rescue
                 _animT = 1f;
                 _animKind = kind;
                 _animDir = dir.sqrMagnitude > 0.001f ? dir : Vector2.up;
+                _lungeReach = 0f;
+            }
+
+            float _lungeReach;
+
+            /// <summary>好汉出手：名字里的字朝目标探出去，不换成兵器图。</summary>
+            public void Lunge(Vector2 dir)
+            {
+                _animT = 1f;
+                _animKind = UnitKind.Qi;
+                _animDir = dir.sqrMagnitude > 0.001f ? dir.normalized : Vector2.up;
+                _lungeReach = 0.34f;
             }
 
             public void SetDragging(bool on)
@@ -2346,7 +2433,7 @@ namespace Rescue
                 if (_animT > 0 && !dragging)
                 {
                     float lk = 1f - _animT;
-                    float reach = _animKind switch
+                    float reach = _lungeReach > 0f ? _lungeReach : _animKind switch
                     {
                         UnitKind.Dao => 0.16f,
                         UnitKind.Qiang => 0.22f,
@@ -2366,6 +2453,7 @@ namespace Rescue
                 if (_animT > 0 && _animKind == UnitKind.Qi)
                 {
                     _animT = Mathf.Max(0, _animT - dt / AnimDur);
+                    if (_animT <= 0f) _lungeReach = 0f;
                     float q = Mathf.Sin((1f - _animT) * Mathf.PI);
                     sx += q * 0.18f;
                     sy -= q * 0.12f;
@@ -2448,7 +2536,7 @@ namespace Rescue
             public FrameView(BattleView v, HeroInstance h, int side)
             {
                 _root = new GameObject("hero" + h.Id).transform;
-                _root.SetParent(v._root, false);
+                _root.SetParent(side == 0 ? v._low : v._root, false);
                 bool disha = h.Def.Disha;
                 _tint = disha ? Pal.Purple : Pal.Gold;
                 _tintBright = disha ? Pal.Hex("A57BD1") : Pal.GoldBright;
@@ -2508,9 +2596,9 @@ namespace Rescue
             {
                 Place(h);
                 float dt = Time.deltaTime;
-                _pulse = Mathf.Max(0, _pulse - dt * 4f);
+                _pulse = Mathf.Max(0, _pulse - dt * 3.2f);
                 _glowT = Mathf.Max(0, _glowT - dt);
-                float a = Mathf.Max(_pulse * 0.5f, Mathf.Min(1, _glowT) * 0.8f, 0.15f + 0.1f * Mathf.Sin(Time.time * 3f));
+                float a = Mathf.Max(_pulse * 0.95f, Mathf.Min(1, _glowT) * 0.8f, 0.15f + 0.1f * Mathf.Sin(Time.time * 3f));
                 _glow.color = _tintBright.A(a);
                 _frame.color = Color.Lerp(_tint, _tintBright, 0.5f + 0.5f * Mathf.Sin(Time.time * 3f));
                 float k = h.Level >= UnitDef.MaxLevel ? 1f : Mathf.Clamp01(h.Xp / HeroInstance.XpNeed(h.Level));
@@ -2641,7 +2729,7 @@ namespace Rescue
                 var b = s.Board;
                 var pos = CellWorld(side, b.Goal.c, b.Goal.r);
                 _root = new GameObject("goal" + side).transform;
-                _root.SetParent(v._root, false);
+                _root.SetParent(side == 0 ? v._low : v._root, false);
                 _root.localPosition = pos;
                 // 宋江直接站在路上：脚下一团墨影，头顶飘着心，不垫白底。
                 _feet = Gfx.Sprite(_root, Art.SoftDot, Pal.Ink.A(0.34f), new Vector2(0, -0.36f), new Vector2(0.86f, 0.26f), 24);

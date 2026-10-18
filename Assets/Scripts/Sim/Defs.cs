@@ -49,12 +49,16 @@ namespace Rescue.Sim
 
         public string TypeLabel => Pierce > 1 ? "穿透" : Splash > 0 ? "范围" : Knockback > 0 ? "击退" : "单体";
 
+        /// <summary>御敌千里只放大超过两格的远程。骑外沿正好两格，仍按近战，不翻倍。</summary>
+        public float RangeWith(bool far) => far && Range > 2f ? Range * 2f : Range;
+
         static readonly UnitDef[] All =
         {
-            new UnitDef { Kind = UnitKind.Dao, Glyph = '刀', Role = "近战劈砍，附带小范围溅射", Range = 1.25f, Cooldown = 0.85f, Damage = 3.15f, Splash = 0.5f },
+            // 圈从本格中心量。本格边在 0.5：刀再向外盖满一格，外沿 1.5；骑再向外一格半，外沿 2。
+            new UnitDef { Kind = UnitKind.Dao, Glyph = '刀', Role = "近战劈砍，附带小范围溅射", Range = 1.5f, Cooldown = 0.85f, Damage = 3.15f, Splash = 0.5f },
             new UnitDef { Kind = UnitKind.Qiang, Glyph = '枪', Role = "直线突刺，穿透三人", Range = 2.15f, Cooldown = 1.05f, Damage = 2.7f, Pierce = 3 },
             new UnitDef { Kind = UnitKind.Gong, Glyph = '弓', Role = "远程放箭", Range = 2.65f, Cooldown = 1.22f, Damage = 3.25f },
-            new UnitDef { Kind = UnitKind.Qi, Glyph = '骑', Role = "快速冲撞，击退敌人", Range = 1.5f, Cooldown = 0.42f, Damage = 1.12f, Knockback = 0.22f },
+            new UnitDef { Kind = UnitKind.Qi, Glyph = '骑', Role = "快速冲撞，击退敌人", Range = 2f, Cooldown = 0.42f, Damage = 1.12f, Knockback = 0.22f },
         };
 
         public static UnitDef Get(UnitKind k) => All[(int)k];

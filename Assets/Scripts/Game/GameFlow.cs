@@ -109,6 +109,7 @@ namespace Rescue
             _cam.rect = Ui.CameraViewport();
             BattleView.FitCamera(_cam);
             Ui.FitPhone();
+            if (_battle != null) _battle.View.CatchLayout();
         }
 
         IEnumerator FinishBoot(LoadingScreen loading)

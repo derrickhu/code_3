@@ -39,7 +39,7 @@ namespace Rescue
             for (int s = 0; s < 2; s++)
             {
                 var sc = new Scout { Root = new GameObject("scout" + s).transform };
-                sc.Root.SetParent(_root, false);
+                sc.Root.SetParent(s == 0 ? _low : _root, false);
                 Gfx.Sprite(sc.Root, Art.SoftDot, Pal.Shadow, new Vector2(0, -0.3f), new Vector2(0.6f, 0.18f), 29);
                 Gfx.Sprite(sc.Root, Art.Circle, Pal.RedDeep, Vector2.zero, Vector2.one * 0.66f, 30, "rim");
                 Gfx.Sprite(sc.Root, Art.Circle, Pal.Paper, Vector2.zero, Vector2.one * 0.58f, 31, "disc");
