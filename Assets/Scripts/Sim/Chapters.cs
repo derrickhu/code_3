@@ -50,15 +50,15 @@ namespace Rescue.Sim
         public static readonly Dictionary<string, string[]> Maps = new Dictionary<string, string[]>
         {
             ["qingfeng"] = new[] { "S######.", ".ooo..#.", ".######.", ".#ooo...", ".######G" },
-            ["jiangzhou"] = new[] { "S#..ooo.", ".#.####.", ".#.#oo#.", ".###..#.", "......#G" },
+            ["jiangzhou"] = new[] { "S.######", "#.Go.o.#", "#o..o..#", "#.o...o#", "########" },
             ["bailong"] = new[] { "~~~~~~~S", "########", "#.ooooo.", "########", ".......G" },
             ["snake"] = new[] { "S#######", ".oooo..#", "..######", "..#oooo.", "..#####G" },
             ["ring"] = new[] { "S#######", "...oo..#", ".o....o#", "...oo..#", "G#######" },
             ["jiuqu"] = new[] { "S.###.#G", "#o#.#.#.", "#.#o#o#.", "#o#.#.#o", "###.###." },
             ["marsh"] = new[] { "~~~~S###", "~ww..o.#", "########", "#~~o~~w.", "#######G" },
-            ["zigzag"] = new[] { "S#####..", ".oo..#o.", "..o..#..", ".o.o.###", ".......G" },
-            ["plain"] = new[] { "S.......", "#.oo.o..", "#..o....", "#.o..o..", "#######G" },
-            ["river"] = new[] { "S###....", "...#.ww.", ".o.#o~~.", ".o.####.", "..w..o#G" },
+            ["zigzag"] = new[] { "S####...", ".oo.#o..", "....####", "..o.o.o#", "G#######" },
+            ["plain"] = new[] { "S#######", ".o..o..#", "G.o..o.#", "#.o.o..#", "########" },
+            ["river"] = new[] { "S###.###", ".o.#o#o#", ".ww#o#~#", "~..###w#", "..~....G" },
         };
 
         static readonly string[] EndlessMaps = { "qingfeng", "jiangzhou", "bailong", "snake", "ring", "jiuqu", "marsh", "zigzag", "plain", "river" };

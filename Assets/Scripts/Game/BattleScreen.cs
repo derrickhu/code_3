@@ -65,7 +65,6 @@ namespace Rescue
             float skill = Mathf.Clamp01(ch.RivalSkill + Save.Major * 0.015f);
             _rival = new RivalAI(M.Rival, skill, seed + 99);
             if (Autoplay) _auto = new RivalAI(M.Player, 0.9f, seed + 7);
-            M.Player.ManualUlt = !Autoplay;
 
             View = gameObject.AddComponent<BattleView>();
             View.Build(M, cam);

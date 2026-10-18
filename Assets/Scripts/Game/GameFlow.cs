@@ -469,6 +469,11 @@ namespace Rescue
             _battle.ShotItem();
             yield return new WaitForSecondsRealtime(0.4f);
             yield return Shot("item");
+            _battle.View.PreviewItemDrag(4, new Vector2(0.6f, BattleView.MyBottom + 2.2f));
+            yield return Shot("item_drag");
+            _battle.View.PreviewItemBubble(0);
+            yield return new WaitForSecondsRealtime(0.3f);
+            yield return Shot("item_bubble");
             yield return new WaitForSecondsRealtime(1.2f);
             _battle.ShotPause();
             yield return new WaitForSecondsRealtime(0.6f);

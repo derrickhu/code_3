@@ -77,7 +77,7 @@ namespace Rescue.Sim
             _interval = Tuning.SpawnInterval(Wave);
 
             // 后期人数封顶、单兵变厚，总血量和收益不变，画面不至于糊成一片
-            int crowd = Math.Min(10 + 2 * (Wave - 1), 44);
+            int crowd = Math.Min(8 + 2 * (Wave - 1), 44);
             int n = Math.Min(crowd, Tuning.MaxWaveCount);
             _crowdScale = (float)crowd / n;
             for (int i = 0; i < n; i++)
@@ -88,10 +88,10 @@ namespace Rescue.Sim
                 _queue.Add(k);
             }
 
-            bool elite = Wave >= 4 && Wave % 3 == 1;
+            bool elite = Wave >= 6 && Wave % 3 == 0;
             if (elite)
             {
-                int bu = Wave / 4 + 1;
+                int bu = Wave / 6;
                 for (int i = 0; i < bu; i++) _queue.Insert(Math.Min(_queue.Count, (i + 1) * _queue.Count / (bu + 1)), EnemyKind.Bu);
             }
             bool boss = Wave % 8 == 0;

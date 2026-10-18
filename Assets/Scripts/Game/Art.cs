@@ -341,17 +341,23 @@ namespace Rescue
 
         static Sprite HeartTex()
         {
-            int n = 64;
+            // 4×4 超采样，边缘干净，尖角不会被淡掉。
+            const int n = 96, ss = 4;
             var t = NewTex(n, n);
             var px = new Color[n * n];
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
                 {
-                    float fx = (x + 0.5f) / n * 2.6f - 1.3f;
-                    float fy = (y + 0.5f) / n * 2.6f - 1.4f;
-                    float v = Mathf.Pow(fx * fx + fy * fy - 1, 3) - fx * fx * fy * fy * fy;
-                    float a = Mathf.Clamp01(-v * 18f);
-                    px[y * n + x] = new Color(1, 1, 1, a);
+                    int hit = 0;
+                    for (int sy = 0; sy < ss; sy++)
+                        for (int sx = 0; sx < ss; sx++)
+                        {
+                            float fx = (x + (sx + 0.5f) / ss) / n * 2.5f - 1.25f;
+                            float fy = (y + (sy + 0.5f) / ss) / n * 2.5f - 1.3f;
+                            float q = fx * fx + fy * fy - 1f;
+                            if (q * q * q - fx * fx * fy * fy * fy <= 0f) hit++;
+                        }
+                    px[y * n + x] = new Color(1, 1, 1, hit / (float)(ss * ss));
                 }
             t.SetPixels(px);
             return Make(t);

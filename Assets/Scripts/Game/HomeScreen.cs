@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 namespace Rescue
 {
-    /// <summary>神秘商人（孙二娘）的货：主动道具战斗里点着用，被动道具开局就生效。</summary>
+    /// <summary>神秘商人（孙二娘）的货：主动道具战斗里拖上战场放出，被动道具开局就生效。</summary>
     public sealed class ShopItem
     {
         public int Id;

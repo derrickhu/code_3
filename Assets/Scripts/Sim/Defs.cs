@@ -125,7 +125,7 @@ namespace Rescue.Sim
         public const float CdTrap = 8f;
 
         /// <summary>前两波之后留口气看局面，后面逐步收紧。</summary>
-        public static float WaveGap(int wave) => wave <= 2 ? 6f : wave <= 5 ? 4.5f : 3.5f;
+        public static float WaveGap(int wave) => wave <= 2 ? 8f : wave <= 5 ? 7f : 6f;
 
         /// <summary>同一波里两个官兵的间隔：头几波稀疏，越往后越密。</summary>
         public static float SpawnInterval(int wave) => Math.Max(0.28f, wave <= 2 ? 1.3f - 0.1f * wave : 0.95f - 0.03f * wave);
@@ -142,7 +142,7 @@ namespace Rescue.Sim
         public static float WaveHp(int wave)
         {
             if (wave < 1) wave = 1;
-            float grow = (float)Math.Pow(1.22, wave - 1);
+            float grow = (float)Math.Pow(1.17, wave - 1);
             float extra = 1f + 0.04f * Math.Max(0, wave - 2);
             return 7.6f * grow * extra;
         }
