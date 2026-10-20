@@ -569,7 +569,7 @@ namespace Rescue
             _bunsText.text = p.Buns.ToString();
             bool dismiss = _drag != null && _dragMoved;
             bool over = dismiss && OverRecruit(PointerWorld());
-            bool can = p.CanRecruit && !dismiss;
+            bool can = p.CanPay && !dismiss;
             float ratio = p.RecruitCost <= 0 ? 0f : Mathf.Clamp01(p.Buns / (float)p.RecruitCost);
             if (ratio < _recruitShown - 0.02f) _recruitShown = ratio;
             else _recruitShown = Mathf.MoveTowards(_recruitShown, ratio, Time.deltaTime * 2.4f);
@@ -596,7 +596,7 @@ namespace Rescue
                 float breathe = can ? 0.5f + 0.5f * Mathf.Sin(Time.time * 4.5f) : 0f;
                 _recruitFill.color = full ? Color.Lerp(ready, hot, Mathf.Max(_recruitFlash, breathe)) : body;
             }
-            _recruitLabel.text = dismiss ? "遣散" : p.EmptyCampSlots == 0 ? "寨满" : "聚  义";
+            _recruitLabel.text = dismiss ? "遣散" : "聚  义";
             _recruitCost.text = dismiss ? "+" + Side.DismissRefund(_drag.Piece) : p.RecruitCost.ToString();
 
             SyncItem(0, _mengBtn, _mengText, p.Items.MengHan, p.MengCd, Tuning.CdMeng);
@@ -1411,12 +1411,11 @@ namespace Rescue
                 _dragMoved = false;
                 if (In(w, _recruitBtn.transform.localPosition, new Vector2(2.8f, 1.1f)))
                 {
-                    if (p.Recruit()) { Sfx.Play(Snd.Tap); Tween.Punch(_recruitBtn.transform, 0.15f, 0.12f); }
+                    if (p.RefreshCamp()) { Sfx.Play(Snd.Tap); Tween.Punch(_recruitBtn.transform, 0.15f, 0.12f); }
                     else
                     {
-                        bool full = p.EmptyCampSlots == 0;
-                        Sfx.Play(full ? Snd.CampFull : Snd.Deny);
-                        Tip(_recruitBtn.transform.localPosition + Vector3.up * 1.1f, full ? "山寨满了，先把字拖上战场" : "炊饼不够，多杀几个官兵");
+                        Sfx.Play(Snd.Deny);
+                        Tip(_recruitBtn.transform.localPosition + Vector3.up * 1.1f, "炊饼不够，多杀几个官兵");
                     }
                     return;
                 }

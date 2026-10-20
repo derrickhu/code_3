@@ -99,13 +99,14 @@ namespace Rescue.Sim
         /// <summary>原作开局 20 包子、首次征兵 10：摆完第一轮手里还剩 10，第一波打完就能接上第二次。</summary>
         public const int StartBuns = 20;
         public const int StartCost = 10;
-        /// <summary>杀敌入账倍率：前五次征兵大约每 25 秒一次，后期棋盘满了再多包子也花不出去。</summary>
-        public const float KillGold = 0.75f;
-        public const int CostStep = 2;
-        /// <summary>掉一颗心补 10 个炊饼。平常漏一两只只够再征一次；带续命丹故意放第一波才会囤上一大笔。</summary>
-        public const int RainBuns = 10;
+        /// <summary>杀敌入账倍率：一局大约聚义六到八次，每次都要想清楚再按。</summary>
+        public const float KillGold = 0.8f;
+        public const int CostStep = 3;
+        /// <summary>掉一颗心补 6 个炊饼。只够喘口气，不够靠漏怪回本。</summary>
+        public const int RainBuns = 6;
         public const float HeroCharChance = 0.24f;
-        public const float ShovelChance = 0.12f;
+        /// <summary>聚义自带铲子很少，白地主要靠看广告开。看完一次固定给两把。</summary>
+        public const float ShovelChance = 0.05f;
         public const int AdShovels = 2;
         public const int GoldPity = 5;
         public const float PairBias = 0.4f;
@@ -142,13 +143,13 @@ namespace Rescue.Sim
             return cooldown / (float)Math.Pow(SpeedMul, level - 1);
         }
 
-        /// <summary>普通官兵的基础血。前两波只略厚，第三波起明显加快，合成上去之后小兵不再一戳就破。</summary>
+        /// <summary>普通官兵的基础血。前四波缓一缓，之后每波另加一截，第八波是开局的三倍半，一波比一波难。</summary>
         public static float WaveHp(int wave)
         {
             if (wave < 1) wave = 1;
-            float grow = (float)Math.Pow(1.17, wave - 1);
-            float extra = 1f + 0.04f * Math.Max(0, wave - 2);
-            return 7.6f * grow * extra;
+            float grow = (float)Math.Pow(1.15, wave - 1);
+            float extra = 1f + 0.075f * Math.Max(0, wave - 4);
+            return 8.4f * grow * extra;
         }
     }
 

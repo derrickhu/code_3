@@ -226,19 +226,34 @@ namespace Rescue.Sim
             get { int n = 0; foreach (var p in Camp) if (p == null) n++; return n; }
         }
 
-        public bool CanRecruit => !Dead && !M.Over && Buns >= RecruitCost && EmptyCampSlots > 0;
+        public bool CanPay => !Dead && !M.Over && Buns >= RecruitCost;
 
-        public bool Recruit()
+        /// <summary>对手补空位用。山寨里还有字时不能按，避免把没摆出去的棋子扔掉。</summary>
+        public bool CanRecruit => CanPay && EmptyCampSlots > 0;
+
+        /// <summary>对手：只填空位，已有的字留着。</summary>
+        public bool Recruit() => Recruit(false);
+
+        /// <summary>玩家点聚义：整排丢掉重抽。每一格单独随机，不沿用原来的字，也不按场上的兵配对。</summary>
+        public bool RefreshCamp() => Recruit(true);
+
+        bool Recruit(bool replaceAll)
         {
-            if (!CanRecruit) return false;
+            if (replaceAll ? !CanPay : !CanRecruit) return false;
             Buns -= RecruitCost;
-            FillShovels();
-            bool needShovel = EmptyCells() == 0 && !HasShovel() && Board.AnyDiggable();
+            if (replaceAll)
+            {
+                for (int i = 0; i < Camp.Length; i++)
+                {
+                    if (Camp[i] != null && Camp[i].Type == PieceType.Shovel) ShovelStock++;
+                    Camp[i] = null;
+                }
+            }
+            else FillShovels();
             for (int i = 0; i < Camp.Length; i++)
             {
-                if (Camp[i] != null) continue;
-                if (needShovel) { Camp[i] = Piece.Shovel(); needShovel = false; }
-                else Camp[i] = Roll();
+                if (!replaceAll && Camp[i] != null) continue;
+                Camp[i] = Roll(!replaceAll);
             }
             Recruits++;
             RecruitCost += Tuning.CostStep;
@@ -246,17 +261,18 @@ namespace Rescue.Sim
             return true;
         }
 
-        Piece Roll()
+        /// <param name="pair">为真时倾向刷出能和现有一级兵合成的兵种。整排重抽时为假，每格互不影响。</param>
+        Piece Roll(bool pair)
         {
             bool gold = _sinceGold >= Tuning.GoldPity;
-            if (!gold && Board.AnyDiggable() && _rng.Chance(Tuning.ShovelChance * (EmptyCells() == 0 ? 2.5f : 1f))) return Piece.Shovel();
+            if (!gold && Board.AnyDiggable() && _rng.Chance(Tuning.ShovelChance * (EmptyCells() == 0 ? 2f : 1f))) return Piece.Shovel();
             if (gold || _rng.Chance(Tuning.HeroCharChance))
             {
                 _sinceGold = 0;
                 return Piece.Hero(RollChar());
             }
             _sinceGold++;
-            if (_rng.Chance(Tuning.PairBias) && TryPickPairKind(out var kind)) return Piece.Unit(kind);
+            if (pair && _rng.Chance(Tuning.PairBias) && TryPickPairKind(out var kind)) return Piece.Unit(kind);
             return Piece.Unit((UnitKind)_rng.Range(0, 4));
         }
 
@@ -367,6 +383,7 @@ namespace Rescue.Sim
                 Board.Pieces[c, r] = p;
                 Camp[slot] = t;
             }
+            if (Camp[slot] == null) FillShovels();
             RecomputeHeroes();
             return true;
         }

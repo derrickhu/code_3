@@ -57,14 +57,18 @@ namespace Rescue.Sim
                 if (p.Type == PieceType.Unit && TryPlaceUnit(i, p)) return;
                 if (p.Type == PieceType.HeroChar && TryPlaceChar(i, p)) return;
             }
-            // 一次聚义填满所有空位且价格递增：高手等山寨快空了再按，新手见空就按
-            int empty = _s.EmptyCampSlots;
-            int wantEmpty = _skill > 0.5f ? 4 : 2;
-            if (_s.CanRecruit && empty >= wantEmpty) { _s.Recruit(); return; }
             if (_rng.Chance(0.3f + 0.7f * _skill) && TryMergeBoard()) return;
             if (_rng.Chance(_skill) && TryUpgradeSwap()) return;
             if (_rng.Chance(_skill) && TryClearOrphan()) return;
-            if (_s.CanRecruit && empty > 0 && (_s.Buns >= _s.RecruitCost * 2 || _rng.Chance(0.5f * (1f - _skill)))) { _s.Recruit(); return; }
+
+            // 一次聚义的价格递增：空位多时补空位；剩下的字都摆不出去时，高手整排重抽，新手干等或零敲碎打
+            int empty = _s.EmptyCampSlots;
+            if (_s.CanPay)
+            {
+                if (empty >= 3 || (empty > 0 && _s.Buns >= _s.RecruitCost * 2)) { _s.Recruit(); return; }
+                if (_rng.Chance(_skill * _skill)) { _s.RefreshCamp(); return; }
+                if (empty > 0 && _rng.Chance(0.5f * (1f - _skill))) { _s.Recruit(); return; }
+            }
             if (empty == 0 && _rng.Chance(0.2f + 0.8f * _skill)) TryDismiss();
         }
 

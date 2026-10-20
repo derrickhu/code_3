@@ -387,10 +387,10 @@ namespace Rescue.Sim
             {
                 list[i].Index = i;
                 float k = Math.Min(1f, i / 45f);
-                list[i].RivalSkill = 0.25f + 0.65f * k;
-                list[i].RivalIncome = 0.6f + 0.4f * k;
+                list[i].RivalSkill = 0.55f + 0.45f * Math.Min(1f, i / 12f);
+                list[i].RivalIncome = Math.Min(0.95f + 0.08f * k, 0.82f + 0.03f * i);
                 list[i].RivalFoeHp = 1f;
-                list[i].FoeHp = 1f + 0.35f * k;
+                list[i].FoeHp = 1f + 0.15f * k;
             }
             return list;
         }
@@ -448,9 +448,9 @@ namespace Rescue.Sim
                 Pool = pool.ToArray(),
                 Boss = new BossDef { Name = src.Name, Title = src.Title, Skill = skill, Nemesis = nemesis, SkillText = SkillText(skill, nemesis) },
                 RivalName = rivalPick.Nick + rivalPick.Name,
-                RivalSkill = 0.85f + 0.15f * k,
-                RivalIncome = 0.95f + 0.15f * k,
-                FoeHp = 1.25f + 0.3f * k,
+                RivalSkill = 1f,
+                RivalIncome = 1.15f + 0.15f * k,
+                FoeHp = 1.15f + 0.2f * k,
             };
         }
 

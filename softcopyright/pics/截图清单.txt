@@ -1,0 +1,58 @@
+营救宋江 软著截图清单
+==================
+
+把竖屏实机截图放到本目录：
+
+/Users/huyi/dk_proj/code_3/softcopyright/pics/
+
+文件名必须一致。png 或 jpg 都可以，优先 png。
+设计说明书里目前是空位。图片放好后，只重跑：
+
+python3 "/Users/huyi/dk_proj/code_3/softcopyright/generate_softcopyright_doc_pdf.py"
+
+1. songjiang_01_loading.png
+   加载页。要看到游戏名、加载进度、健康游戏忠告。
+
+2. songjiang_02_home.png
+   山寨主界面。要看到座次、铜钱、体力、出征、好汉谱、十字坡。
+
+3. songjiang_03_story.png
+   回目或剧情选择。要看到章节名和出征。
+
+4. songjiang_04_scout.png
+   备战。要看到官军探马横幅、双方棋盘和宋江。
+
+5. songjiang_05_battle.png
+   对局中。要看到棋盘、山寨五格、聚义、双方宋江和心。
+
+6. songjiang_06_range.png
+   拖动刀或骑时的攻击范围圈。圈要看得见。
+
+7. songjiang_07_hero.png
+   凑成好汉后的金框和名字。
+
+8. songjiang_08_attack.png
+   好汉普攻。兵器从名字挥向敌人的那一下。
+
+9. songjiang_09_item_drag.png
+   主动道具拖上战场、还没松手。
+
+10. songjiang_10_item_tip.png
+    道具说明气泡。气泡不要挡住下面那排道具。
+
+11. songjiang_11_shop.png
+    十字坡酒店。要看到当天三件货。
+
+12. songjiang_12_lottery.png
+    九宫格抽奖。
+
+13. songjiang_13_codex.png
+    好汉谱。要看得出一百单八将。
+
+14. songjiang_14_weapon.png
+    兵器页。要看到品级和装备。
+
+15. songjiang_15_result.png
+    结算。要看到胜负、波次、斩敌、及时雨次数。
+
+云同步没有单独画面，不用截。

@@ -26,7 +26,9 @@ namespace Rescue.EditorTools
                 object result = Invoke("WeChatWASM.WXConvertCore", "DoExport", new object[] { true });
                 bool ok = result != null && result.ToString() == "SUCCEED";
                 Debug.Log("[微信] 转换结果：" + (result ?? "没找到转换接口"));
-                code = ok && Directory.Exists(Path.Combine(ProjectRoot, "wechat-minigame", "minigame")) && CheckGameJs() ? 0 : 1;
+                bool exported = ok && Directory.Exists(Path.Combine(ProjectRoot, "wechat-minigame", "minigame"));
+                if (exported) ApplyLoadingCover();
+                code = exported && CheckGameJs() ? 0 : 1;
             }
             catch (Exception e)
             {
@@ -55,6 +57,30 @@ namespace Rescue.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>微信默认封面是橙色进度页，进游戏后又单独放健康忠告。导出后改成和游戏内同一张水墨页。</summary>
+        static void ApplyLoadingCover()
+        {
+            string script = Path.Combine(ProjectRoot, "tools", "wechat_loading_cover.py");
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "python3",
+                Arguments = "\"" + script + "\"",
+                WorkingDirectory = ProjectRoot,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using (var p = System.Diagnostics.Process.Start(psi))
+            {
+                string stdout = p.StandardOutput.ReadToEnd();
+                string stderr = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                if (!string.IsNullOrEmpty(stdout)) Debug.Log("[微信] " + stdout.Trim());
+                if (p.ExitCode != 0)
+                    Debug.LogError("[微信] 启动封面没换成健康忠告同页：" + stderr);
+            }
         }
 
         /// <summary>包体超 30MB 时转换器会悄悄改回 CDN 加载，而我们没有 CDN，必须拦下来。</summary>

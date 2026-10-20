@@ -61,7 +61,7 @@ namespace Rescue
             uint seed = (uint)(DateTime.Now.Ticks & 0x7fffffff);
             M = new Match(ch, seed, items);
             M.Hold = true;
-            M.Rival.IncomeMul = Mathf.Min(1.12f, ch.RivalIncome + Save.Major * 0.012f);
+            M.Rival.IncomeMul = ch.RivalIncome + Mathf.Min(0.1f, Save.Major * 0.012f);
             float skill = Mathf.Clamp01(ch.RivalSkill + Save.Major * 0.015f);
             _rival = new RivalAI(M.Rival, skill, seed + 99);
             if (Autoplay) _auto = new RivalAI(M.Player, 0.9f, seed + 7);
@@ -464,10 +464,10 @@ namespace Rescue
                 ShowHint("宋江危险！点山寨右边的「救」，\n看段广告把官兵推回路口。", 4f);
                 return;
             }
-            if (!Save.Tut((int)Tut.Dismiss) && Save.Tut((int)Tut.Place) && p.EmptyCampSlots == 0 && !p.CanRecruit && p.Buns >= p.RecruitCost)
+            if (!Save.Tut((int)Tut.Dismiss) && Save.Tut((int)Tut.Place) && p.EmptyCampSlots == 0 && p.Buns >= p.RecruitCost)
             {
                 Save.SetTut((int)Tut.Dismiss);
-                ShowHint("山寨满了招不了人？把没用的字\n拖到「聚义」按钮上遣散，还能退炊饼。", 5f);
+                ShowHint("再点聚义，底下这一排全部换新。\n不想花炊饼，就把字拖到按钮上遣散。", 5f);
                 return;
             }
             if (!_tutorialRun) return;

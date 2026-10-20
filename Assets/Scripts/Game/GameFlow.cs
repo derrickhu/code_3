@@ -187,7 +187,7 @@ namespace Rescue
             Tween.Pop(title.transform, 0.35f);
             float mine = Save.D.battles <= 0 ? 0f : (float)Save.D.wins / Save.D.battles;
             float rivalRate = Mathf.Clamp01(0.36f + ch.RivalSkill * 0.42f);
-            int rivalTier = RankRules.Clamp(Save.D.tier + (ch.RivalSkill >= 0.55f ? 1 : 0) - (ch.RivalSkill < 0.35f ? 1 : 0));
+            int rivalTier = RankRules.Clamp(Save.D.tier + (ch.RivalSkill >= 0.95f ? 1 : 0) - (ch.RivalSkill < 0.7f ? 1 : 0));
             int rivalStars = Mathf.RoundToInt(ch.RivalSkill * RankRules.StarsAt(rivalTier));
             var me = Banner(layer, new Vector2(0, 250), "我", Save.D.tier, Save.D.stars, mine, Ui.BtnBlue, null);
             var rival = Banner(layer, new Vector2(0, -250), ch.RivalName, rivalTier, rivalStars, rivalRate,

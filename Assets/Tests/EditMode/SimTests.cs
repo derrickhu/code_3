@@ -224,7 +224,29 @@ namespace Rescue.Tests
             Assert.AreEqual(0, s.EmptyCampSlots);
             Assert.AreEqual(buns - cost, s.Buns);
             Assert.AreEqual(cost + Tuning.CostStep, s.RecruitCost);
-            Assert.IsFalse(s.Recruit(), "山寨满了不能聚义");
+            Assert.IsFalse(s.Recruit(), "对手只补空位，山寨满了不再聚义");
+        }
+
+        [Test]
+        public void RefreshCampReplacesEveryPiece()
+        {
+            var s = NewMatch().Player;
+            s.Buns = 1000;
+            var old = new int[s.Camp.Length];
+            for (int i = 0; i < s.Camp.Length; i++)
+            {
+                s.Camp[i] = i == 0 ? Piece.Shovel() : Piece.Hero((char)('甲' + i));
+                old[i] = s.Camp[i].Id;
+            }
+            int stock = s.ShovelStock;
+            int cost = s.RecruitCost;
+            Assert.IsTrue(s.RefreshCamp());
+            Assert.AreEqual(1000 - cost, s.Buns);
+            Assert.AreEqual(cost + Tuning.CostStep, s.RecruitCost);
+            Assert.AreEqual(stock + 1, s.ShovelStock, "整排换掉时，铲子退回库存，不和字一起丢掉");
+            Assert.AreEqual(0, s.EmptyCampSlots);
+            for (int i = 0; i < s.Camp.Length; i++)
+                Assert.IsFalse(System.Array.IndexOf(old, s.Camp[i].Id) >= 0, "原来的字必须全部换掉");
         }
 
         [Test]
@@ -276,10 +298,10 @@ namespace Rescue.Tests
             for (int i = 1; i < s.Camp.Length; i++) s.Camp[i] = Piece.Unit(UnitKind.Dao);
             s.GrantShovels(Tuning.AdShovels);
             Assert.AreEqual(PieceType.Shovel, s.Camp[0].Type);
-            Assert.AreEqual(1, s.ShovelStock);
+            Assert.AreEqual(Tuning.AdShovels - 1, s.ShovelStock);
             s.DismissCamp(1);
             Assert.AreEqual(PieceType.Shovel, s.Camp[1].Type, "空出来的位置自动补铲子");
-            Assert.AreEqual(0, s.ShovelStock);
+            Assert.AreEqual(Tuning.AdShovels - 2, s.ShovelStock);
         }
 
         [Test]
@@ -426,26 +448,62 @@ namespace Rescue.Tests
             Assert.Less(m.Time, 12 * 60f, "对局太长");
         }
 
-        [Test]
-        public void FirstChapterRivalIsBeatable()
+        /// <summary>代打玩家打一局。ads 为真时：白地剩两格就看铲子广告，官兵压到家门口就看公孙胜作法。</summary>
+        static bool PlayerWins(int chapter, float skill, bool ads, uint seed)
+        {
+            var ch = ChapterDef.All[chapter];
+            var m = new Match(ch, seed);
+            var player = new RivalAI(m.Player, skill, seed * 3);
+            var rival = new RivalAI(m.Rival, ch.RivalSkill, seed * 5);
+            bool shovelAd = false;
+            const float dt = 1f / 20f;
+            while (!m.Over && m.Time < 15 * 60)
+            {
+                player.Tick(dt);
+                rival.Tick(dt);
+                var p = m.Player;
+                if (ads)
+                {
+                    bool hasShovel = p.ShovelStock > 0;
+                    foreach (var q in p.Camp) if (q != null && q.Type == PieceType.Shovel) hasShovel = true;
+                    if (!shovelAd && !hasShovel && p.Board.AnyDiggable() && p.EmptyCells() <= 2) { shovelAd = true; p.GrantShovels(Tuning.AdShovels); }
+                    if (p.AtTheGate && !p.RescueUsed) p.Rescue();
+                }
+                m.Step(dt);
+                m.Events.Clear();
+            }
+            return m.Winner == 0;
+        }
+
+        static int WinsOf(int chapter, float skill, bool ads, int runs)
         {
             int wins = 0;
-            for (uint seed = 1; seed <= 8; seed++)
-            {
-                var m = new Match(ChapterDef.All[0], seed);
-                var player = new RivalAI(m.Player, 0.6f, seed * 3);
-                var rival = new RivalAI(m.Rival, ChapterDef.All[0].RivalSkill, seed * 5);
-                while (!m.Over && m.Time < 20 * 60)
-                {
-                    player.Tick(1f / 30f);
-                    rival.Tick(1f / 30f);
-                    m.Step(1f / 30f);
-                    m.Events.Clear();
-                }
-                if (m.Winner == 0) wins++;
-            }
-            UnityEngine.Debug.Log($"[平衡] 第一回 中等玩家胜率 {wins}/8");
-            Assert.GreaterOrEqual(wins, 5, "双方官兵一样厚，第一回大约八局赢五局");
+            for (uint s = 1001; s < 1001 + runs; s++) if (PlayerWins(chapter, skill, ads, s)) wins++;
+            return wins;
+        }
+
+        [Test]
+        public void FirstChapterIsFriendly()
+        {
+            const int runs = 24;
+            int plain = WinsOf(0, 0.5f, false, runs), ads = WinsOf(0, 0.5f, true, runs);
+            UnityEngine.Debug.Log($"[平衡] 第一回 普通玩家 不看广告 {plain}/{runs}，看广告 {ads}/{runs}");
+            Assert.GreaterOrEqual(plain, runs * 4 / 10, "第一回不看广告也该赢一半上下");
+            Assert.GreaterOrEqual(ads, runs * 6 / 10, "第一回看广告要明显好打");
+        }
+
+        [Test]
+        public void MidChaptersNeedSkillOrAds([Values(12, 30)] int chapter)
+        {
+            const int runs = 32;
+            int casual = WinsOf(chapter, 0.5f, false, runs);
+            int expert = WinsOf(chapter, 1f, false, runs);
+            int helped = WinsOf(chapter, 0.5f, true, runs);
+            UnityEngine.Debug.Log($"[平衡] {ChapterDef.All[chapter].Name} 普通不看 {casual}/{runs}，高手不看 {expert}/{runs}，普通看广告 {helped}/{runs}");
+            Assert.LessOrEqual(casual, runs / 2, "普通玩家不看广告不该轻松赢");
+            Assert.Greater(expert, casual, "打得好要比打得差赢得多");
+            Assert.GreaterOrEqual(helped, runs * 6 / 10, "看了铲子广告要相对轻松");
+            Assert.GreaterOrEqual(helped - casual, runs / 5, "广告要明显拉开胜率");
         }
 
         [Test]
@@ -635,7 +693,8 @@ namespace Rescue.Tests
             CollectionAssert.AreEquivalent(team, a.Pool);
             Assert.Contains(a.Boss.Nemesis, a.Pool);
             Assert.IsFalse(HeroDef.Get(a.Boss.Nemesis).NoAttack);
-            Assert.Greater(b.RivalSkill, a.RivalSkill);
+            Assert.Greater(b.RivalIncome, a.RivalIncome);
+            Assert.Greater(b.FoeHp, a.FoeHp);
             var m = new Match(a, 9);
             Assert.Greater(new Board(a.Map).Path.Count, 10);
             Assert.AreEqual(5, m.Player.Pool.Count);

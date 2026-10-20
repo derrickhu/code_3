@@ -76,8 +76,8 @@ namespace Rescue.Sim
             _spawnT = 0;
             _interval = Tuning.SpawnInterval(Wave);
 
-            // 后期人数封顶、单兵变厚，总血量和收益不变，画面不至于糊成一片
-            int crowd = Math.Min(8 + 2 * (Wave - 1), 44);
+            // 每波人少一点、单兵厚一点；后期人数封顶、单兵再变厚，总血量和收益不变，画面不至于糊成一片
+            int crowd = Math.Min(6 + 3 * (Wave - 1) / 2, 33);
             int n = Math.Min(crowd, Tuning.MaxWaveCount);
             _crowdScale = (float)crowd / n;
             for (int i = 0; i < n; i++)
