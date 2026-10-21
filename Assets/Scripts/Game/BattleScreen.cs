@@ -15,6 +15,8 @@ namespace Rescue
         public bool Win;
         public bool Quit;
         public int Wave, Kills, Rains;
+        /// <summary>GM 跳过时一定缴获兵器，方便看结算掉落。</summary>
+        public bool GmDrop;
         public List<HeroId> Formed = new List<HeroId>();
         public List<HeroId> NewHeroes = new List<HeroId>();
     }
@@ -83,6 +85,63 @@ namespace Rescue
             _tutorialRun = ch.Index == 0 && !Save.Tut((int)Tut.Hero) && !Autoplay;
             if (Autoplay) Begin();
             else ShowIntro(ch, items);
+            BuildBattleGm();
+        }
+
+        bool _gmDrop;
+
+        /// <summary>右上角 GM。开场盖住棋盘时也在最上层，点了就能结束这一局。</summary>
+        void BuildBattleGm()
+        {
+            if (!Gm.Allowed) return;
+            var btn = Ui.CartoonBtn(_overlay, "GM", new Vector2(112, 60), Vector2.zero, Ui.BtnRed, ShowBattleGm, 34);
+            Ui.Anchor(btn, 1f, 1f);
+            btn.anchoredPosition = new Vector2(-80, -50);
+            btn.SetAsLastSibling();
+        }
+
+        public void ShowBattleGm()
+        {
+            if (M.Over || _ending) return;
+            View.Paused = true;
+            var layer = Ui.Fill(_overlay, new Color(0, 0, 0, 0.72f), true, "gm");
+            var card = Ui.WoodPanel(layer, new Vector2(820, 760), new Vector2(0, 40));
+            Ui.Title(card, "GM", new Vector2(0, 360));
+            Ui.CloseX(card, new Vector2(-404, 366), () =>
+            {
+                View.Paused = false;
+                Destroy(layer.gameObject);
+            });
+            Ui.Label(card, "直接结束这一局，走真正的结算。\n胜利按撑过四波算，并一定缴获一件兵器。", 32, Pal.InkSoft,
+                new Vector2(0, 180), new Vector2(720, 110));
+            Ui.CartoonBtn(card, "胜利结算", new Vector2(560, 120), new Vector2(0, -10), Ui.BtnRed, () =>
+            {
+                Destroy(layer.gameObject);
+                GmFinish(true);
+            }, 48);
+            Ui.CartoonBtn(card, "失败结算", new Vector2(560, 120), new Vector2(0, -170), Ui.BtnDark, () =>
+            {
+                Destroy(layer.gameObject);
+                GmFinish(false);
+            }, 48);
+            layer.SetAsLastSibling();
+            Tween.Pop(card, 0.25f);
+        }
+
+        public void GmFinish(bool win)
+        {
+            if (M.Over || _ending) return;
+            if (_intro) Destroy(_intro.gameObject);
+            View.Paused = false;
+            if (win)
+            {
+                if (M.Wave < 4) M.Wave = 4;
+                _gmDrop = true;
+            }
+            else if (M.Wave < 1) M.Wave = 1;
+            M.Over = true;
+            M.Winner = win ? 0 : 1;
+            OnEnd(win);
         }
 
         void OnDestroy()
@@ -251,10 +310,17 @@ namespace Rescue
                     Banner(ev.Text + "！", sub, ev.Flag == 3 ? Pal.Gold : Pal.Willow, 0.9f);
                     break;
                 }
-                case Ev.Ult when ev.Flag == 1:
+                case Ev.Ult when ev.Flag == 1 && mine:
+                {
                     if (Time.unscaledTime < _bossSay) break;
-                    _bossSay = Time.unscaledTime + 7f;
-                    Banner(ev.Text, M.Chapter.Boss.SkillText, Pal.RedDeep, 0.95f);
+                    _bossSay = Time.unscaledTime + 3f;
+                    var skill = (BossSkill)ev.B;
+                    Banner(M.Chapter.Boss.Name + "·" + BossDef.SkillName(skill), BossDef.SkillDesc(skill, M.Chapter.Boss.Nemesis), Pal.RedDeep, 0.8f);
+                    break;
+                }
+                case Ev.BossRage when mine:
+                    _bossSay = Time.unscaledTime + 2f;
+                    Banner(ev.Text + " 狂暴了！", "血量过半：脚步更快，绝技放得更勤", Pal.Red, 0.9f);
                     break;
                 case Ev.Shovels when mine && ev.Val == 1:
                     Banner("方便铲！", "鲁智深送来一把铲子，拖到草地上开荒", Pal.Willow, 0.8f);
@@ -578,6 +644,7 @@ namespace Rescue
             var r = new BattleResult
             {
                 Chapter = M.Chapter.Index, Round = M.Chapter.Round, Pool = M.Chapter.Pool, Win = win, Quit = quit, Wave = M.Wave, Kills = M.Player.Kills, Rains = M.Player.Rains,
+                GmDrop = _gmDrop,
             };
             foreach (var id in M.Player.FormedEver)
             {

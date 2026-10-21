@@ -17,6 +17,8 @@ namespace Rescue.Sim
         public UnitKind Kind;
         public char Char;
         public int Level = 1;
+        /// <summary>被头目定身，剩余秒数。期间不出手，仍可拖动。</summary>
+        public float StunT;
 
         public Piece() { Id = _nextId++; }
 
@@ -54,10 +56,10 @@ namespace Rescue.Sim
 
         static readonly UnitDef[] All =
         {
-            // 圈从本格中心量。本格边在 0.5：刀再向外盖满一格，外沿 1.5；骑再向外一格半，外沿 2。
+            // 圈从本格中心量。本格边在 0.5：刀再向外盖满一格，外沿 1.5；骑再向外一格半，外沿 2；弓够到三格外的格心。
             new UnitDef { Kind = UnitKind.Dao, Glyph = '刀', Role = "近战劈砍，附带小范围溅射", Range = 1.5f, Cooldown = 0.85f, Damage = 3.15f, Splash = 0.5f },
             new UnitDef { Kind = UnitKind.Qiang, Glyph = '枪', Role = "直线突刺，穿透三人", Range = 2.15f, Cooldown = 1.05f, Damage = 2.7f, Pierce = 3 },
-            new UnitDef { Kind = UnitKind.Gong, Glyph = '弓', Role = "远程放箭", Range = 2.65f, Cooldown = 1.22f, Damage = 3.25f },
+            new UnitDef { Kind = UnitKind.Gong, Glyph = '弓', Role = "远程放箭，射程三格", Range = 3.2f, Cooldown = 1.22f, Damage = 2.7f },
             new UnitDef { Kind = UnitKind.Qi, Glyph = '骑', Role = "快速冲撞，击退敌人", Range = 2f, Cooldown = 0.42f, Damage = 1.12f, Knockback = 0.22f },
         };
 
@@ -79,7 +81,7 @@ namespace Rescue.Sim
             new EnemyDef { Kind = EnemyKind.Chai, Glyph = "差", HpMul = 0.6f, Speed = 1.55f, LeakDamage = 1, Reward = 1 },
             new EnemyDef { Kind = EnemyKind.Jia, Glyph = "甲", HpMul = 2.3f, Speed = 0.74f, Armor = 0.35f, LeakDamage = 1, Reward = 2 },
             new EnemyDef { Kind = EnemyKind.Bu, Glyph = "捕", HpMul = 9f, Speed = 0.85f, LeakDamage = 2, Reward = 5 },
-            new EnemyDef { Kind = EnemyKind.Boss, Glyph = "", HpMul = 14f, Speed = 0.45f, LeakDamage = 2, Reward = 20 },
+            new EnemyDef { Kind = EnemyKind.Boss, Glyph = "", HpMul = 9.5f, Speed = 0.45f, LeakDamage = 2, Reward = 20 },
         };
 
         public static EnemyDef Get(EnemyKind k) => All[(int)k];

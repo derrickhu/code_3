@@ -533,6 +533,7 @@ namespace Rescue
             if (InputEnabled && !Paused) HandleInput();
             else if (_press != null) CancelPress();
             SyncAll(false);
+            TickBossHex(Paused ? 0f : Time.deltaTime);
             if (!Paused) TickLater(Time.deltaTime);
             UpdateFx(Time.deltaTime);
             TickMap(Time.deltaTime);
@@ -766,6 +767,7 @@ namespace Rescue
                     var v = GetPiece(piece, s);
                     var hero = side.HeroAt(c, r);
                     v.Hero = hero;
+                    v.SetStun(piece.StunT > 0);
                     if (v != _drag) v.Target = CellWorld(s, c, r);
                     if (snap) v.Root.localPosition = v.Target;
                 }
@@ -792,6 +794,7 @@ namespace Rescue
                 bool fresh = !_pieces.ContainsKey(piece.Id);
                 var v = GetPiece(piece, 0);
                 v.Hero = null;
+                v.SetStun(piece.StunT > 0);
                 if (v != _drag) v.Target = CampWorld(i);
                 if (fresh) v.Root.localPosition = v.Target;
                 if (_rowRefresh && v != _drag) v.PopStagger(i * 0.075f);
@@ -950,34 +953,27 @@ namespace Rescue
                     break;
                 case Ev.Ult:
                 {
+                    if (ev.Flag == 1) { BossCastFx(ev); break; }
                     var pos = World(ev.Side, ev.P);
-                    bool boss = ev.Flag == 1;
+                    var ud = HeroDef.Get((HeroId)ev.B);
                     float r = Mathf.Min(ev.Val, 6f);
-                    bool custom = !boss && HeroUltFx(ev);
-                    if (r > 0.1f)
+                    bool custom = HeroUltFx(ev);
+                    if (!custom && r > 0.1f)
                     {
-                        Ring(pos, r * 2f, boss ? Pal.Red : Pal.Ink, 0.5f, 44);
-                        if (!boss && !custom) InkSwirl(pos, Mathf.Clamp(r * 2f, 1.6f, 7f), Pal.Ink.A(0.8f), 0.8f);
+                        Ring(pos, r * 2f, Pal.Ink, 0.5f, 44);
+                        InkSwirl(pos, Mathf.Clamp(r * 2f, 1.6f, 7f), Pal.Ink.A(0.8f), 0.8f);
                     }
                     string word = ev.Text ?? "";
                     int colon = word.IndexOf('：');
-                    if (colon > 0 && !boss) word = word.Substring(0, colon) + "！";
-                    if (!string.IsNullOrEmpty(word)) FloatText(pos + new Vector2(0, 0.7f), word, boss ? Pal.Red : Pal.RedDeep, boss ? 0.58f : (mine ? 0.46f : 0.3f), boss ? 1.6f : 1.2f);
-                    if (boss)
+                    if (colon > 0) word = word.Substring(0, colon);
+                    if (mine)
                     {
-                        Sfx.Play(Snd.Warn, 0.9f);
-                        _shake = Mathf.Max(_shake, 1.35f);
-                        InkSwirl(pos, 3.2f, Pal.Red.A(0.8f), 0.7f);
-                        Ring(pos, 4.2f, Pal.RedDeep, 0.55f, 46);
-                        if (_enemies.TryGetValue(ev.A, out var bossView)) bossView.Flash();
-                    }
-                    if (mine && !boss)
-                    {
+                        if (!string.IsNullOrEmpty(word)) UltCutIn(ud, word);
                         Sfx.Play(Snd.Ult, 0.45f);
-                        var ud = HeroDef.Get((HeroId)ev.B);
                         Sfx.Play(UltSound(ud), 0.85f, ud.Look == Look.Poison ? 0.8f : 1f);
                         _shake = Mathf.Max(_shake, 0.9f);
                     }
+                    else if (!string.IsNullOrEmpty(word)) FloatText(HeroWorld(ev) + new Vector2(0, -0.7f), word + "！", Pal.RedDeep, 0.34f, 1.1f);
                     if (_frames.TryGetValue(ev.A, out var fv)) fv.Glow();
                     break;
                 }
@@ -1056,6 +1052,12 @@ namespace Rescue
                 case Ev.BossSpawn:
                     Sfx.Play(Snd.Warn);
                     _shake = Mathf.Max(_shake, 1.2f);
+                    break;
+                case Ev.BossHex:
+                    BossHexFx(ev);
+                    break;
+                case Ev.BossRage:
+                    BossRageFx(ev);
                     break;
                 case Ev.EliteWarn:
                     Sfx.Play(Snd.Warn, 0.6f);
@@ -1802,6 +1804,11 @@ namespace Rescue
                             mark = nm;
                         }
                     }
+                    else if (b.Open(c, r) && b.Blocked(c, r))
+                    {
+                        col = Pal.Red.A(0.22f);
+                        mark = b.Seal[c, r] > 0 ? "封" : "云";
+                    }
                     if (hasHover && c == hc && r == hr && col.a > 0) col = col.A(Mathf.Min(1, col.a + 0.35f));
                     _hl[c, r].color = col;
                     _hlMark[c, r].text = mark;
@@ -2366,6 +2373,30 @@ namespace Rescue
 
             public void Punch(float amount) => _punch = Mathf.Max(_punch, amount);
 
+            SpriteRenderer _chainA, _chainB, _stunBg;
+            TextMesh _stunMark;
+            bool _stunned;
+
+            /// <summary>被头目定身：两道铁链交叉锁住，角上一枚红「定」字，字发灰。</summary>
+            public void SetStun(bool on)
+            {
+                if (on == _stunned) return;
+                _stunned = on;
+                if (on && _chainA == null)
+                {
+                    _chainA = Gfx.Sprite(Root, Art.Stroke, Pal.Ink.A(0.9f), Vector2.zero, new Vector2(1.05f, 0.14f), 25);
+                    _chainA.transform.localRotation = Quaternion.Euler(0, 0, 40f);
+                    _chainB = Gfx.Sprite(Root, Art.Stroke, Pal.Ink.A(0.9f), Vector2.zero, new Vector2(1.05f, 0.14f), 25);
+                    _chainB.transform.localRotation = Quaternion.Euler(0, 0, -40f);
+                    _stunBg = Gfx.Sprite(Root, Art.Rounded, Pal.Red, new Vector2(-0.3f, 0.3f), new Vector2(0.34f, 0.34f), 26);
+                    _stunMark = Gfx.Text(Root, "定", Fonts.Brush, 0.26f, Pal.Paper, new Vector2(-0.3f, 0.3f), 27);
+                }
+                if (_chainA == null) return;
+                _chainA.enabled = _chainB.enabled = _stunBg.enabled = on;
+                _stunMark.gameObject.SetActive(on);
+                if (on) _punch = Mathf.Max(_punch, 0.35f);
+            }
+
             bool _pickedPiece;
             public void SetPicked(bool on)
             {
@@ -2408,6 +2439,12 @@ namespace Rescue
                 if (_icon != null) _icon.sortingOrder = o + 2;
                 _level.GetComponent<MeshRenderer>().sortingOrder = o + 3;
                 if (_weapon != null) _weapon.sortingOrder = o + 4;
+                if (_chainA != null)
+                {
+                    _chainA.sortingOrder = _chainB.sortingOrder = o + 5;
+                    _stunBg.sortingOrder = o + 6;
+                    _stunMark.GetComponent<MeshRenderer>().sortingOrder = o + 7;
+                }
                 Root.localScale = Vector3.one * (on ? 1.12f : 1f);
                 _shadow.transform.localPosition = on ? new Vector2(0.1f, -0.18f) : new Vector2(0.04f, -0.07f);
             }
@@ -2507,6 +2544,13 @@ namespace Rescue
                 _glyphT.localPosition = new Vector2(0, -0.02f);
                 _glyphT.localScale = new Vector3(sx * g, sy * g, 1);
                 _glyph.color = _glyphColor.A(1f - morph * 0.9f);
+                if (_stunned)
+                {
+                    _glyph.color = Color.Lerp(_glyphColor, Pal.InkSoft, 0.65f);
+                    _glyphT.localPosition = new Vector2(Mathf.Sin(Time.time * 47f) * 0.025f, -0.02f);
+                    float a = 0.75f + 0.25f * Mathf.Sin(Time.time * 6f);
+                    _chainA.color = _chainB.color = Pal.Ink.A(0.9f * a);
+                }
                 if (_pickedPiece)
                 {
                     _edge.color = Pal.GoldBright;
@@ -2653,6 +2697,10 @@ namespace Rescue
 
             public void Flash() => _flash = 1f;
 
+            float _swell;
+            /// <summary>头目吞兵、放绝技时鼓一下。</summary>
+            public void Swell(float amount = 0.4f) => _swell = Mathf.Max(_swell, amount);
+
             public string GlyphText => _glyph.text;
             public float GlyphHeight { get; }
             public Color GlyphColor => _baseColor;
@@ -2696,9 +2744,19 @@ namespace Rescue
                     : haste ? Color.Lerp(_baseColor, Pal.Red, 0.62f) : _baseColor;
                 _cc.text = e.StunT > 0 ? "眩" : haste ? "速" : "";
                 _cc.color = e.StunT > 0 ? Pal.Hex("5B7FA6") : Pal.Red;
+                bool rage = e.Boss != null && e.Enraged;
+                if (rage) c = Color.Lerp(c, Pal.Red, 0.5f + 0.3f * Mathf.Sin(Time.time * 10f));
                 _glyph.color = Color.Lerp(c, Pal.Red, _flash * 0.8f);
                 float squash = _flash * 0.22f;
-                _glyph.transform.localScale = new Vector3(1f + squash, 1f - squash * 0.6f, 1f) * (haste ? 1.14f : 1f);
+                _swell = Mathf.Max(0f, _swell - dt * 1.6f);
+                float grow = (haste ? 1.14f : 1f) * (rage ? 1.15f : 1f) * (1f + Mathf.Sin(_swell * 9f) * _swell * 0.6f + _swell * 0.3f);
+                _glyph.transform.localScale = new Vector3(1f + squash, 1f - squash * 0.6f, 1f) * grow;
+                if (_aura != null && e.Boss != null)
+                {
+                    float pulse = rage ? 1f + 0.18f * Mathf.Sin(Time.time * 9f) : 1f;
+                    _aura.transform.localScale = Vector3.one * (rage ? 2.3f : 1.6f) * pulse * (1f + _swell * 0.5f);
+                    _aura.color = Pal.Red.A(rage ? 0.55f : 0.35f);
+                }
                 _glyph.transform.localRotation = Quaternion.Euler(0, 0, -_kick.x * 40f);
             }
         }

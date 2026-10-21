@@ -67,6 +67,35 @@ namespace Rescue.Tests
         }
 
         [Test]
+        public void MapsHaveNoDeadCells()
+        {
+            var gong = UnitDef.Get(UnitKind.Gong).Range;
+            foreach (var key in ChapterDef.Maps.Keys)
+            {
+                var b = new Board(ChapterDef.Maps[key]);
+                bool pair = false;
+                for (int c = 0; c < Board.Cols; c++)
+                    for (int r = 0; r < Board.Rows; r++)
+                    {
+                        var cell = b.Cells[c, r];
+                        if (cell == Cell.Path || cell == Cell.Rock) continue;
+                        var at = new CellPos(c, r).Center;
+                        int melee = 0, bow = 0;
+                        for (int i = 1; i < b.Path.Count; i++)
+                        {
+                            float d = V2.Dist(at, b.Path[i].Center);
+                            if (d <= 1.5f) melee++;
+                            if (d <= gong) bow++;
+                        }
+                        Assert.Greater(melee, 0, $"{key} ({c},{r}) 放刀打不到路");
+                        Assert.GreaterOrEqual(bow, 3, $"{key} ({c},{r}) 放弓也只够得着一两格路");
+                        if (b.Open(c, r) && (b.Open(c + 1, r) || b.Open(c, r - 1))) pair = true;
+                    }
+                Assert.IsTrue(pair, key + " 开局白地至少要能并排摆下两字好汉");
+            }
+        }
+
+        [Test]
         public void SameKindSameLevelMerges_OtherwiseSwaps()
         {
             var s = NewMatch().Player;
@@ -495,7 +524,7 @@ namespace Rescue.Tests
         [Test]
         public void MidChaptersNeedSkillOrAds([Values(12, 30)] int chapter)
         {
-            const int runs = 32;
+            const int runs = 48;
             int casual = WinsOf(chapter, 0.5f, false, runs);
             int expert = WinsOf(chapter, 1f, false, runs);
             int helped = WinsOf(chapter, 0.5f, true, runs);
@@ -831,6 +860,81 @@ namespace Rescue.Tests
             Assert.IsTrue(found, "李逵应打到黄文炳");
             float full = HeroDef.Get(HeroId.LiKui).DamageAt(1);
             Assert.AreEqual(hp - full * 0.5f, boss.Hp, 0.05f);
+        }
+
+        static Enemy CastFirst(BossSkill skill, out Match m)
+        {
+            ChapterDef ch = null;
+            foreach (var c in ChapterDef.All) if (c.Boss.Skills[0] == skill) { ch = c; break; }
+            Assert.IsNotNull(ch, "没有以此绝技开场的头目：" + skill);
+            m = new Match(ch, 42);
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            m.SpawnOn(s, EnemyKind.Boss, 2f);
+            var boss = s.Enemies[0];
+            boss.SkillT = 0f;
+            m.Events.Clear();
+            return boss;
+        }
+
+        [Test]
+        public void DazeBossFreezesStrongestPieces()
+        {
+            var boss = CastFirst(BossSkill.Daze, out var m);
+            var s = m.Player;
+            var weak = Piece.Unit(UnitKind.Gong);
+            var strong = Piece.Unit(UnitKind.Gong);
+            strong.Level = 3;
+            s.Board.Pieces[1, 1] = weak;
+            s.Board.Pieces[2, 1] = strong;
+            m.Step(0.05f);
+            Assert.Greater(strong.StunT, 0f, "定身要先定最高阶的字");
+            bool hex = false;
+            foreach (var ev in m.Events) if (ev.Type == Ev.BossHex && ev.B == (int)BossSkill.Daze) hex = true;
+            Assert.IsTrue(hex, "定身要发出表现事件");
+            for (int i = 0; i < 80; i++) m.Step(0.05f);
+            Assert.LessOrEqual(strong.StunT, 0f, "定身几秒后要解开");
+        }
+
+        [Test]
+        public void SealAndFogBlockPlacement([Values(BossSkill.Seal, BossSkill.Fog)] BossSkill skill)
+        {
+            var boss = CastFirst(skill, out var m);
+            var b = m.Player.Board;
+            int before = m.Player.EmptyCells();
+            m.Step(0.05f);
+            boss.SkillT = 999f;
+            int blocked = 0, covered = 0;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    if (b.Open(c, r) && !b.Placeable(c, r)) blocked++;
+                    if (b.Seal[c, r] > 0 || b.Fog[c, r] > 0) covered++;
+                }
+            Assert.AreEqual(skill == BossSkill.Seal ? 3 : 6, covered, "封条封三格、乌云罩六格");
+            Assert.GreaterOrEqual(blocked, 3, "罩住的格子不能再摆");
+            Assert.AreEqual(before - blocked, m.Player.EmptyCells());
+            for (int i = 0; i < 160; i++) m.Step(0.05f);
+            int still = 0;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (b.Seal[c, r] > 0 || b.Fog[c, r] > 0) still++;
+            Assert.AreEqual(0, still, "旧的封条乌云要随时间散去");
+        }
+
+        [Test]
+        public void BossEnragesAtHalfHp()
+        {
+            var boss = CastFirst(BossSkill.Summon, out var m);
+            boss.SkillT = 5f;
+            boss.Hp = boss.MaxHp * 0.45f;
+            m.Step(0.05f);
+            Assert.IsTrue(boss.Enraged);
+            bool rage = false;
+            foreach (var ev in m.Events) if (ev.Type == Ev.BossRage) rage = true;
+            Assert.IsTrue(rage, "狂暴要通知表现层");
+            Assert.LessOrEqual(boss.SkillT, 0.4f, "狂暴马上补放一门绝技");
         }
 
         [Test]

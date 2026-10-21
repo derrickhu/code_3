@@ -67,7 +67,11 @@ namespace Rescue
             FitCamera();
 
             Ui.Init(transform);
-            if (_shots != null) StartCoroutine(Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : AutoShots());
+            if (_shots != null)
+            {
+                if (Arg("-gm") != null) Gm.Force = true;
+                StartCoroutine(Arg("-gm") != null ? GmShots() : Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : Arg("-maps") != null ? MapShots() : Arg("-drop") != null ? DropShots() : AutoShots());
+            }
             else if (Application.isBatchMode)
             {
                 Analytics.Begin();
@@ -356,6 +360,27 @@ namespace Rescue
             Application.Quit();
         }
 
+        /// <summary>每张地图各开一局让电脑摆一会儿再截：-shots DIR -maps 1。</summary>
+        IEnumerator MapShots()
+        {
+            foreach (var kv in ChapterDef.Maps)
+            {
+                int chapter = -1;
+                for (int i = 0; i < ChapterDef.StoryCount && chapter < 0; i++)
+                    if (ChapterDef.All[i].Map == kv.Value) chapter = i;
+                if (chapter < 0) continue;
+                if (_battle) Destroy(_battle.gameObject);
+                _battle = null;
+                StartBattle(chapter, true);
+                yield return new WaitForSecondsRealtime(1.5f);
+                yield return Shot("map_" + kv.Key + "_open");
+                _battle.View.Speed = 3f;
+                yield return new WaitForSecondsRealtime(9f);
+                yield return Shot("map_" + kv.Key);
+            }
+            Application.Quit();
+        }
+
         /// <summary>逐个放出兵种、好汉普攻和大招特效截图：-shots DIR -fx 1。</summary>
         IEnumerator FxShots()
         {
@@ -383,14 +408,85 @@ namespace Rescue
             yield return new WaitForSecondsRealtime(0.12f);
             yield return Shot("atk_YanQingCrit");
             yield return new WaitForSecondsRealtime(0.6f);
+            for (int i = 0; i < 7; i++) _battle.M.SpawnOn(_battle.M.Player, i == 3 ? EnemyKind.Jia : EnemyKind.Zu, 2f + i * 1.3f);
             foreach (HeroId id in Enum.GetValues(typeof(HeroId)))
             {
                 if (HeroDef.Get(id).Hidden) continue;
                 view.ShowcaseUlt(id);
                 yield return new WaitForSecondsRealtime(0.3f);
                 yield return Shot("ult_" + id);
-                yield return new WaitForSecondsRealtime(1.2f);
+                yield return new WaitForSecondsRealtime(0.5f);
+                yield return Shot("ult_" + id + "_b");
+                yield return new WaitForSecondsRealtime(0.8f);
             }
+            var board = _battle.M.Player.Board;
+            int placed = 0;
+            for (int c = 0; c < Board.Cols && placed < 6; c++)
+                for (int r = 0; r < Board.Rows && placed < 6; r++)
+                    if (board.Placeable(c, r) && board.Pieces[c, r] == null) { board.Pieces[c, r] = Piece.Unit((UnitKind)(placed % 3), 2 + placed % 2); placed++; }
+            foreach (BossSkill sk in Enum.GetValues(typeof(BossSkill)))
+            {
+                view.ShowcaseBoss(sk);
+                yield return new WaitForSecondsRealtime(0.45f);
+                yield return Shot("boss_" + sk);
+                yield return new WaitForSecondsRealtime(0.6f);
+                yield return Shot("boss_" + sk + "_hold");
+                yield return new WaitForSecondsRealtime(0.8f);
+            }
+            view.ShowcaseBoss(BossSkill.Summon, true);
+            yield return new WaitForSecondsRealtime(0.35f);
+            yield return Shot("boss_rage");
+            Application.Quit();
+        }
+
+        /// <summary>结算缴获演出：-shots DIR -drop 1。兵器正在落下，以及落地之后各一张。</summary>
+        IEnumerator DropShots()
+        {
+            Save.D.stars = 2;
+            var win = new BattleResult { Chapter = 1, Win = true, Wave = 12, Kills = 230, Rains = 2 };
+            win.Formed.Add(HeroId.WuSong);
+            ResultPanel.Show(win, null, HeroId.WuSong);
+            yield return new WaitForSecondsRealtime(0.9f);
+            yield return Shot("drop_result");
+            if (Ui.Root.Find("result")) Destroy(Ui.Root.Find("result").gameObject);
+            ResultPanel.ShowLoot(HeroDef.Get(HeroId.ZhuTong), null);
+            yield return new WaitForSecondsRealtime(1.25f);
+            yield return Shot("drop_common");
+            if (Ui.Root.Find("loot")) Destroy(Ui.Root.Find("loot").gameObject);
+            ResultPanel.ShowLoot(HeroDef.Get(HeroId.WuSong), null);
+            yield return new WaitForSecondsRealtime(0.55f);
+            yield return Shot("drop_fall");
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return Shot("drop_relic");
+            Application.Quit();
+        }
+
+        /// <summary>GM 入口：-shots DIR -gm 1。主界面按钮，以及跳过一回之后的面板。</summary>
+        IEnumerator GmShots()
+        {
+            Save.D.unlocked = 0;
+            Save.D.joined.Clear();
+            ShowHome();
+            yield return new WaitForSecondsRealtime(0.7f);
+            yield return Shot("gm_home");
+            _home.ShowGm();
+            yield return new WaitForSecondsRealtime(0.45f);
+            yield return Shot("gm_panel");
+            _home.GmSkip(1);
+            yield return new WaitForSecondsRealtime(0.35f);
+            yield return Shot("gm_skipped");
+
+            if (_home) Destroy(_home.gameObject);
+            _home = null;
+            OpenBattle(0, false);
+            yield return new WaitForSecondsRealtime(0.6f);
+            yield return Shot("gm_battle");
+            _battle.ShowBattleGm();
+            yield return new WaitForSecondsRealtime(0.4f);
+            yield return Shot("gm_battle_panel");
+            _battle.GmFinish(true);
+            yield return new WaitForSecondsRealtime(2.6f);
+            yield return Shot("gm_result");
             Application.Quit();
         }
 

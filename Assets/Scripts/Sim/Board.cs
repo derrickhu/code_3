@@ -20,6 +20,9 @@ namespace Rescue.Sim
 
         public readonly Cell[,] Cells = new Cell[Cols, Rows];
         public readonly Piece[,] Pieces = new Piece[Cols, Rows];
+        /// <summary>头目压下的乌云、贴上的封条，剩余秒数。盖住期间不能往里摆字。</summary>
+        public readonly float[,] Fog = new float[Cols, Rows];
+        public readonly float[,] Seal = new float[Cols, Rows];
         public readonly List<CellPos> Path = new List<CellPos>();
         public CellPos Spawn, Goal;
         public V2[] Waypoints;
@@ -96,7 +99,12 @@ namespace Rescue.Sim
 
         public static bool InBounds(int c, int r) => c >= 0 && c < Cols && r >= 0 && r < Rows;
 
-        public bool Placeable(int c, int r) => InBounds(c, r) && (Cells[c, r] == Cell.Tile || Cells[c, r] == Cell.Water);
+        public bool Placeable(int c, int r) => Open(c, r) && Fog[c, r] <= 0 && Seal[c, r] <= 0;
+
+        /// <summary>开好的地，不管头目有没有盖住。</summary>
+        public bool Open(int c, int r) => InBounds(c, r) && (Cells[c, r] == Cell.Tile || Cells[c, r] == Cell.Water);
+
+        public bool Blocked(int c, int r) => InBounds(c, r) && (Fog[c, r] > 0 || Seal[c, r] > 0);
 
         /// <summary>草地、苇荡要先用方便铲开出来才能摆字。</summary>
         public bool Diggable(int c, int r) => InBounds(c, r) && (Cells[c, r] == Cell.Grass || Cells[c, r] == Cell.Marsh);
@@ -123,7 +131,7 @@ namespace Rescue.Sim
                 int n = 0;
                 for (int c = 0; c < Cols; c++)
                     for (int r = 0; r < Rows; r++)
-                        if (Placeable(c, r)) n++;
+                        if (Open(c, r)) n++;
                 return n;
             }
         }

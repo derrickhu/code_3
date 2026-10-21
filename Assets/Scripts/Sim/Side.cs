@@ -13,6 +13,10 @@ namespace Rescue.Sim
         public float Progress;
         public V2 Pos;
         public float StunT, HasteT, SkillT;
+        /// <summary>头目：轮到第几门绝技、是否已狂暴、冲阵剩余秒数。</summary>
+        public int SkillIx;
+        public bool Enraged;
+        public float DashT;
         public float RewardMul = 1f;
         public int LeakDamage;
         public bool Dead;
@@ -72,6 +76,9 @@ namespace Rescue.Sim
         public float IncomeMul = 1f;
         float _incomeAcc;
         public float EnemySlowT;
+        /// <summary>头目妖雨：全场出手变慢。</summary>
+        public float RainT;
+        readonly List<float> _graves = new List<float>();
         public float HasteAllT;
         public float ItemHasteT;
         /// <summary>主动道具各自的冷却，转完才能再放一次。</summary>
@@ -640,6 +647,16 @@ namespace Rescue.Sim
             RallyT = Math.Max(0, RallyT - dt);
             _steleCd = Math.Max(0, _steleCd - dt);
             ShieldT = Math.Max(0, ShieldT - dt);
+            RainT = Math.Max(0, RainT - dt);
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    Board.Fog[c, r] = Math.Max(0, Board.Fog[c, r] - dt);
+                    Board.Seal[c, r] = Math.Max(0, Board.Seal[c, r] - dt);
+                    var p = Board.Pieces[c, r];
+                    if (p != null && p.StunT > 0) p.StunT = Math.Max(0, p.StunT - dt);
+                }
+            foreach (var p in Camp) if (p != null && p.StunT > 0) p.StunT = Math.Max(0, p.StunT - dt);
 
             MoveEnemies(dt);
             if (Dead) return;
@@ -658,7 +675,8 @@ namespace Rescue.Sim
                 if (e.Dead) continue;
                 e.HasteT = Math.Max(0, e.HasteT - dt);
                 if (e.StunT > 0) { e.StunT -= dt; continue; }
-                float spd = e.Def.Speed * globalMul * (e.HasteT > 0 ? 1.65f : 1f);
+                float spd = e.Def.Speed * globalMul * (e.HasteT > 0 ? 1.65f : 1f) * (e.Enraged ? 1.3f : 1f);
+                if (e.DashT > 0) { e.DashT -= dt; spd = Math.Max(spd, 2.8f); }
                 e.Progress += spd * dt;
                 if (e.Progress >= Board.PathLength)
                 {
@@ -696,29 +714,213 @@ namespace Rescue.Sim
             for (int i = 0; i < Enemies.Count; i++)
             {
                 var e = Enemies[i];
-                if (e.Boss == null || e.Dead) continue;
+                if (e.Boss == null || e.Dead || e.InBrush) continue;
+                if (!e.Enraged && e.Hp <= e.MaxHp * 0.5f)
+                {
+                    e.Enraged = true;
+                    e.SkillT = Math.Min(e.SkillT, 0.4f);
+                    Emit(new SimEvent { Type = Ev.BossRage, A = e.Id, P = e.Pos, Text = e.Boss.Name });
+                }
+                if (e.StunT > 0) continue;
                 e.SkillT -= dt;
                 if (e.SkillT > 0) continue;
-                switch (e.Boss.Skill)
-                {
-                    case BossSkill.Summon:
-                        e.SkillT = 5.5f;
-                        for (int k = 0; k < 3; k++)
-                            M.SpawnOn(this, EnemyKind.Zu, Math.Max(0, e.Progress - 0.4f * (k + 1)));
-                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 1.8f, Text = e.Boss.Name + "：来人！", Flag = 1 });
-                        break;
-                    case BossSkill.Haste:
-                        e.SkillT = 4.5f;
-                        foreach (var o in Enemies)
-                            if (!o.Dead && V2.Dist(o.Pos, e.Pos) < 3.4f) o.HasteT = 3.2f;
-                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 3.4f, Text = e.Boss.Name + "：快！快！", Flag = 1 });
-                        break;
-                    default:
-                        e.SkillT = 5.5f;
-                        Emit(new SimEvent { Type = Ev.Ult, A = e.Id, P = e.Pos, Val = 2.6f, Text = e.Boss.Name + "：铁布衫", Flag = 1 });
-                        break;
-                }
+                var skills = e.Boss.Skills;
+                var skill = skills[e.SkillIx % skills.Length];
+                e.SkillIx++;
+                e.SkillT = CastBoss(e, skill) * (e.Enraged ? 0.75f : 1f);
             }
+        }
+
+        /// <summary>放一门绝技，返回下一次要等几秒。</summary>
+        float CastBoss(Enemy e, BossSkill skill)
+        {
+            string shout = e.Boss.Name + "：";
+            float cd, radius = 2.4f;
+            switch (skill)
+            {
+                case BossSkill.Summon:
+                    cd = 5.5f;
+                    shout += "来人！";
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var s = M.SpawnOn(this, EnemyKind.Zu, Math.Max(0, e.Progress - 0.4f * (k + 1)));
+                        if (s != null) Hex(e, skill, s.Pos, 0f);
+                    }
+                    break;
+                case BossSkill.Haste:
+                    cd = 4.5f;
+                    shout += "快！快！";
+                    radius = 3.4f;
+                    foreach (var o in Enemies)
+                        if (!o.Dead && V2.Dist(o.Pos, e.Pos) < 3.4f) o.HasteT = 3.2f;
+                    break;
+                case BossSkill.Daze:
+                {
+                    cd = 7f;
+                    shout += "定！";
+                    var list = new List<KeyValuePair<CellPos, Piece>>();
+                    for (int c = 0; c < Board.Cols; c++)
+                        for (int r = 0; r < Board.Rows; r++)
+                        {
+                            var p = Board.Pieces[c, r];
+                            if (p != null && p.Type != PieceType.Shovel && p.StunT <= 0) list.Add(new KeyValuePair<CellPos, Piece>(new CellPos(c, r), p));
+                        }
+                    list.Sort((a, b) => b.Value.Level != a.Value.Level ? b.Value.Level.CompareTo(a.Value.Level) : a.Value.Id.CompareTo(b.Value.Id));
+                    for (int k = 0; k < list.Count && k < 3; k++)
+                    {
+                        list[k].Value.StunT = 3f;
+                        Hex(e, skill, list[k].Key.Center, 3f, list[k].Value.Id);
+                    }
+                    break;
+                }
+                case BossSkill.Fog:
+                {
+                    cd = 9f;
+                    shout += "天昏地暗！";
+                    int bc = 0, br = 0, best = -1;
+                    for (int c = 0; c <= Board.Cols - 3; c++)
+                        for (int r = 0; r <= Board.Rows - 2; r++)
+                        {
+                            int n = 0;
+                            for (int dc = 0; dc < 3; dc++)
+                                for (int dr = 0; dr < 2; dr++)
+                                    if (Board.Open(c + dc, r + dr)) n += Board.Pieces[c + dc, r + dr] != null ? 3 : 1;
+                            n = n * 8 + _rng.Range(0, 8);
+                            if (n > best) { best = n; bc = c; br = r; }
+                        }
+                    for (int dc = 0; dc < 3; dc++)
+                        for (int dr = 0; dr < 2; dr++)
+                            Board.Fog[bc + dc, br + dr] = Math.Max(Board.Fog[bc + dc, br + dr], 5.5f);
+                    Hex(e, skill, new V2(bc + 1.5f, br + 1f), 5.5f);
+                    break;
+                }
+                case BossSkill.Seal:
+                {
+                    cd = 8f;
+                    shout += "此处封了！";
+                    var empty = new List<CellPos>();
+                    var full = new List<CellPos>();
+                    for (int c = 0; c < Board.Cols; c++)
+                        for (int r = 0; r < Board.Rows; r++)
+                        {
+                            if (!Board.Open(c, r) || Board.Seal[c, r] > 0) continue;
+                            (Board.Pieces[c, r] == null ? empty : full).Add(new CellPos(c, r));
+                        }
+                    for (int k = 0; k < 3; k++)
+                    {
+                        var from = empty.Count > 0 && (k < 2 || full.Count == 0) ? empty : full;
+                        if (from.Count == 0) break;
+                        int ix = _rng.Range(0, from.Count);
+                        var cp = from[ix];
+                        from.RemoveAt(ix);
+                        Board.Seal[cp.c, cp.r] = 7f;
+                        Hex(e, skill, cp.Center, 7f);
+                    }
+                    break;
+                }
+                case BossSkill.Rain:
+                    cd = 8f;
+                    shout += "风来！雨来！";
+                    RainT = Math.Max(RainT, 4f);
+                    radius = 99f;
+                    Hex(e, skill, new V2(Board.Cols * 0.5f, Board.Rows * 0.5f), 4f);
+                    break;
+                case BossSkill.Charge:
+                    cd = 6.5f;
+                    shout += "冲啊！";
+                    e.DashT = 0.5f;
+                    foreach (var o in Enemies)
+                        if (!o.Dead && !ReferenceEquals(o, e) && V2.Dist(o.Pos, e.Pos) < 1.6f) o.HasteT = Math.Max(o.HasteT, 1.5f);
+                    break;
+                case BossSkill.Crush:
+                {
+                    cd = 9f;
+                    shout += "砸！";
+                    Piece best = null;
+                    var at = new CellPos();
+                    for (int c = 0; c < Board.Cols; c++)
+                        for (int r = 0; r < Board.Rows; r++)
+                        {
+                            var p = Board.Pieces[c, r];
+                            if (p == null || p.Type != PieceType.Unit || p.Level < 2) continue;
+                            if (best == null || p.Level > best.Level) { best = p; at = new CellPos(c, r); }
+                        }
+                    if (best != null)
+                    {
+                        best.Level--;
+                        best.StunT = Math.Max(best.StunT, 1.5f);
+                        Hex(e, skill, at.Center, best.Level, best.Id);
+                    }
+                    break;
+                }
+                case BossSkill.Steal:
+                {
+                    cd = 7f;
+                    shout += "钱拿来！";
+                    int n = Math.Min(Buns, 3 + Buns / 5);
+                    Buns -= n;
+                    Hex(e, skill, e.Pos, n);
+                    break;
+                }
+                case BossSkill.Devour:
+                {
+                    cd = 6f;
+                    shout += "吃了你！";
+                    int eaten = 0;
+                    foreach (var o in Enemies)
+                    {
+                        if (eaten >= 3) break;
+                        if (o.Dead || o.IsBig || o.InBrush || V2.Dist(o.Pos, e.Pos) > 1.8f) continue;
+                        o.Dead = true;
+                        eaten++;
+                        Hex(e, skill, o.Pos, 0f, o.Id);
+                    }
+                    float heal = e.MaxHp * (0.03f + 0.07f * eaten);
+                    e.Hp = Math.Min(e.MaxHp, e.Hp + heal);
+                    Hex(e, skill, e.Pos, heal, e.Id);
+                    break;
+                }
+                case BossSkill.Revive:
+                {
+                    cd = 8f;
+                    shout += "起来！";
+                    int n = 0;
+                    for (int k = _graves.Count - 1; k >= 0 && n < 4; k--, n++)
+                    {
+                        var s = M.SpawnOn(this, EnemyKind.Zu, _graves[k]);
+                        if (s == null) break;
+                        s.Hp = s.MaxHp *= 0.6f;
+                        Hex(e, skill, s.Pos, 0f, s.Id);
+                    }
+                    _graves.Clear();
+                    for (; n < 2; n++)
+                    {
+                        var s = M.SpawnOn(this, EnemyKind.Zu, Math.Max(0, e.Progress - 0.5f * (n + 1)));
+                        if (s != null) Hex(e, skill, s.Pos, 0f, s.Id);
+                    }
+                    break;
+                }
+                default:
+                    cd = 6f;
+                    shout += "铁布衫！";
+                    radius = 1.6f;
+                    break;
+            }
+            Emit(new SimEvent { Type = Ev.Ult, A = e.Id, B = (int)skill, P = e.Pos, Val = radius, Text = shout, Flag = 1 });
+            return cd;
+        }
+
+        void Hex(Enemy boss, BossSkill skill, V2 at, float val, int target = 0) =>
+            Emit(new SimEvent { Type = Ev.BossHex, A = boss.Id, B = (int)skill, P = at, Q = boss.Pos, Val = val, Flag = target });
+
+        /// <summary>被定身，或者站在封条上：这一刻不出手。</summary>
+        bool Disabled(Piece p, int c, int r) => p.StunT > 0 || Board.Seal[c, r] > 0;
+
+        bool Disabled(HeroInstance h)
+        {
+            for (int i = 0; i < h.Cells.Length; i++)
+                if (Disabled(h.Pieces[i], h.Cells[i].c, h.Cells[i].r)) return true;
+            return false;
         }
 
         float CdMul(int c, int r)
@@ -729,6 +931,8 @@ namespace Rescue.Sim
             if (HasteAllT > 0) m *= 0.5f;
             if (RallyT > 0) m *= 0.75f;
             if (ItemHasteT > 0) m *= 0.71f;
+            if (RainT > 0) m *= 1.5f;
+            if (Board.Fog[c, r] > 0) m *= 1.8f;
             return m;
         }
 
@@ -739,7 +943,7 @@ namespace Rescue.Sim
                 for (int r = 0; r < Board.Rows; r++)
                 {
                     var p = Board.Pieces[c, r];
-                    if (p == null || p.Type != PieceType.Unit) continue;
+                    if (p == null || p.Type != PieceType.Unit || Disabled(p, c, r)) continue;
                     _unitCd.TryGetValue(p.Id, out var cd);
                     cd -= dt;
                     if (cd > 0) { _unitCd[p.Id] = cd; continue; }
@@ -796,7 +1000,7 @@ namespace Rescue.Sim
         {
             if (Dead || M.Over) return false;
             var h = LeadHero;
-            if (h == null || h.UltCd > 0) return false;
+            if (h == null || h.UltCd > 0 || Disabled(h)) return false;
             _curHero = h;
             var aff = AffixOf(h.Def);
             bool ok = TryUlt(h, h.Pos, aff);
@@ -816,6 +1020,7 @@ namespace Rescue.Sim
                 var pos = h.Pos;
                 _curHero = h;
                 var aff = AffixOf(def);
+                if (Disabled(h)) continue;
 
                 if (h != lead && h.UltCd <= 0 && TryUlt(h, pos, aff)) h.UltCd = def.UltCooldown * aff.UltCd;
 
@@ -915,8 +1120,8 @@ namespace Rescue.Sim
                     if (best == null) return false;
                     Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = best.Pos, Flag = 2 });
                     Hit(best, dmg * def.UltMul, def, true);
-                    pos = best.Pos;
-                    radius = 0.8f;
+                    foreach (var e in InRange(pos, 99f)) if (e != best) Hit(e, dmg * 2f, def);
+                    radius = 99f;
                     break;
                 }
                 case UltKind.Throw:
@@ -1140,7 +1345,7 @@ namespace Rescue.Sim
             if (e.Boss != null)
             {
                 if (src != null && src.Id == e.Boss.Nemesis) { dmg *= Tuning.BossNemesisMul; flag = 2; }
-                else if (e.Boss.Skill == BossSkill.Resist)
+                else if (e.Boss.Has(BossSkill.Resist))
                 {
                     dmg *= 0.5f;
                     if (flag == 0) flag = 3;
@@ -1152,6 +1357,11 @@ namespace Rescue.Sim
             if (e.Hp > 0) return;
 
             e.Dead = true;
+            if (!e.IsBig)
+            {
+                _graves.Add(e.Progress);
+                if (_graves.Count > 8) _graves.RemoveAt(0);
+            }
             float raw = e.Def.Reward * e.RewardMul;
             foreach (var bh in _bunsHeroes)
                 if (V2.Dist(bh.Pos, e.Pos) <= bh.Def.KillBuns) { raw += 1; break; }

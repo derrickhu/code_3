@@ -197,7 +197,7 @@ namespace Rescue.Sim
                     case Look.Fist: Range = 1.35f; Cooldown = 0.4f; Damage = 4.2f; break;
                     case Look.Spear: Range = 2.4f; Cooldown = 0.85f; Damage = 5.5f; Pierce = 4; break;
                     case Look.Axe: Range = 1.65f; Cooldown = 0.75f; Damage = 5f; Splash = 1.1f; break;
-                    case Look.Bow: Range = 2.9f; Cooldown = 0.9f; Damage = 6.5f; break;
+                    case Look.Bow: Range = 3.5f; Cooldown = 0.9f; Damage = 5.8f; break;
                     case Look.Fire: Range = 2.2f; Cooldown = 1.05f; Damage = 5.5f; Splash = 1.1f; break;
                     case Look.Water: Range = 2.2f; Cooldown = 0.7f; Damage = 5f; WaterBonus = 2.5f; break;
                     case Look.WaterFire: Range = 2.25f; Cooldown = 0.9f; Damage = 6f; Splash = 0.8f; WaterBonus = 2f; break;
@@ -272,7 +272,7 @@ namespace Rescue.Sim
                     if (UltKnock > 0) s += "，并被撞回去";
                     return s;
                 }
-                case UltKind.Snipe: return "一击重创全场血最厚的敌人";
+                case UltKind.Snipe: return "万箭齐发扫过全场，再一箭重创血最厚的敌人";
                 case UltKind.Throw: return "把附近最壮的敌人摔回两格";
                 case UltKind.Blast: return "在敌人最密处炸开";
                 case UltKind.Pin: return $"重创并定住一人{UltStun:0.#}秒";

@@ -102,9 +102,9 @@ namespace Rescue.Sim
             if (boss) Events.Add(new SimEvent { Type = Ev.BossSpawn, A = Wave, Side = -1, Text = Chapter.Boss.Name });
         }
 
-        public void SpawnOn(Side s, EnemyKind kind, float progress)
+        public Enemy SpawnOn(Side s, EnemyKind kind, float progress)
         {
-            if (s.Dead) return;
+            if (s.Dead) return null;
             var def = EnemyDef.Get(kind);
             float hp = Tuning.WaveHp(Math.Max(1, Wave)) * def.HpMul;
             bool grunt = kind == EnemyKind.Zu || kind == EnemyKind.Chai || kind == EnemyKind.Jia;
@@ -130,6 +130,7 @@ namespace Rescue.Sim
                 e.Glyph = Chapter.Boss.Name;
             }
             s.AddEnemy(e);
+            return e;
         }
     }
 }

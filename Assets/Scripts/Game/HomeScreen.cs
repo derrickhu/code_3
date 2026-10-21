@@ -122,6 +122,7 @@ namespace Rescue
             SideSign(tl, "ui_notice", "公告", new Vector2(80, -350), ShowNotice);
             SideSign(tl, "ui_notice", "好汉谱", new Vector2(80, -476), ShowCodex);
             SideSign(tl, "ui_notice", "回目", new Vector2(80, -602), ShowChapters);
+            BuildGm(tl);
 
             var tr = Corner(1f, 1f, "topRight");
             var shopFace = Ui.Icon(tr, "merchant_bust", 150, new Vector2(-92, -238));

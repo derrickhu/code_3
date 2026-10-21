@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace Rescue
 {
-    /// <summary>结算：胜利是红旗+光芒+卷轴星+众人起舞+掉落+双倍金币；失败是乌云+掉星+被围的宋江，可看广告保星。</summary>
+    /// <summary>结算：胜利是红旗+光芒+卷轴星+众人起舞+双倍金币；失败是乌云+掉星+被围的宋江，可看广告保星。缴获的兵器不铺在这一页上，领完再单独呈上。</summary>
     public static class ResultPanel
     {
         static readonly Color Edge = Ui.Edge;
@@ -15,7 +15,8 @@ namespace Rescue
         public static int WinCoins(int chapter, int round) =>
             round > 0 ? 40 + 5 * Mathf.Min(round, 30) : 30 + 4 * Mathf.Min(chapter, 45);
 
-        public static void Show(BattleResult r, System.Action onClose)
+        /// <summary>preview 有值时，结算一定演出这件兵器落下。截图用，正式对局不传。</summary>
+        public static void Show(BattleResult r, System.Action onClose, HeroId? preview = null)
         {
             int coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : 8 + r.Wave);
             var rank = r.Quit
@@ -36,7 +37,14 @@ namespace Rescue
             if (seatNow) Save.D.seated = true;
             foreach (var id in r.Formed) if (!Save.D.heroes.Contains((int)id)) Save.D.heroes.Add((int)id);
             Save.D.coins += coins;
-            string loot = Save.RollWeapon(r);
+            var loot = Save.RollWeapon(r);
+            bool showWeapon = loot.IsWeapon;
+            HeroId dropped = loot.Hero;
+            if (preview is HeroId forced)
+            {
+                showWeapon = true;
+                dropped = forced;
+            }
             Save.Write();
 
             var layer = Ui.Fill(Ui.Root, r.Win ? Pal.Hex("F3EAD6") : Pal.Hex("C9D6DC"), true, "result");
@@ -47,8 +55,13 @@ namespace Rescue
                 if (claimed) return;
                 claimed = true;
                 Object.Destroy(layer.gameObject);
-                if (joined.Count > 0) JoinPanel.Show(joined, r.Chapter, seatNow, onClose);
-                else onClose?.Invoke();
+                void Next()
+                {
+                    if (joined.Count > 0) JoinPanel.Show(joined, r.Chapter, seatNow, onClose);
+                    else onClose?.Invoke();
+                }
+                if (showWeapon) ShowLoot(HeroDef.Get(dropped), Next);
+                else Next();
             }
 
             if (r.Win) Victory(c, rank);
@@ -58,7 +71,8 @@ namespace Rescue
             var stage = BuildStage(c, r.Win);
 
             var tags = new List<(string, Color)>();
-            if (!string.IsNullOrEmpty(loot)) tags.Add((loot, Pal.Hex("8A54C0")));
+            if (showWeapon) tags.Add(("缴获 " + HeroDef.Get(dropped).Weapon, Ui.GradeColor(HeroDef.Get(dropped).WGrade)));
+            else if (!string.IsNullOrEmpty(loot.Text)) tags.Add((loot.Text, Pal.Hex("8A54C0")));
             if (joined.Count > 0) tags.Add(($"{joined.Count} 位好汉入伙", Pal.Hex("C0392B")));
             foreach (var id in r.NewHeroes) tags.Add(("初次聚义 " + HeroDef.Get(id).Name, Pal.Hex("C8962E")));
             float tx = -(tags.Count - 1) * 170f;
@@ -121,10 +135,111 @@ namespace Rescue
                 y -= 160;
             }
             Ui.CartoonBtn(c, r.Win ? "领取" : (coins > 0 ? "领取" : "关闭"), new Vector2(380, 112), new Vector2(0, y), Ui.BtnDark, Close, 52);
-            Ui.Label(c, joined.Count > 0 ? "领完铜钱，新入伙的好汉来拜山" : "领完铜钱，孙二娘的摊子就摆开", 28, Pal.InkSoft.A(0.8f), new Vector2(0, y - 100), new Vector2(800, 44));
+            string next = showWeapon && joined.Count > 0 ? "领完铜钱，再看缴获的兵器，好汉来拜山"
+                : showWeapon ? "领完铜钱，再看缴获的兵器"
+                : joined.Count > 0 ? "领完铜钱，新入伙的好汉来拜山"
+                : "领完铜钱，孙二娘的摊子就摆开";
+            Ui.Label(c, next, 28, Pal.InkSoft.A(0.8f), new Vector2(0, y - 100), new Vector2(800, 44));
 
             Tween.Pop(banner, 0.4f, 0.15f);
             Tween.Pop(stage, 0.4f, 0.3f);
+        }
+
+        /// <summary>缴获单独一页。兵器本身是主体，背后只留胜利同款的光，不再套方框圆框。</summary>
+        public static void ShowLoot(HeroDef d, System.Action done)
+        {
+            int grade = Mathf.Clamp(d.WGrade, 0, 3);
+            var g = Ui.GradeColor(grade);
+            bool relic = grade >= 3;
+            var layer = Ui.Fill(Ui.Root, Pal.Hex("F3EAD6"), true, "loot");
+            var page = Ui.Rect(Ui.Fit(layer, 1860), "page");
+            const float land = 130f;
+            float iconSize = relic ? 860f : 780f;
+
+            // 没有描边的光。ui_rays 外圈是黑线，整圆露出来就像劣质徽章。
+            var wash = Ui.Box(page, Vector2.one * (relic ? 1680f : 1500f), new Vector2(0, land + 30f), Pal.Hex("F6C531").A(relic ? 0.5f : 0.34f), Art.SoftDot, "wash");
+            wash.type = Image.Type.Simple;
+            var core = Ui.Box(page, Vector2.one * (relic ? 980f : 860f), new Vector2(0, land + 10f), Pal.Hex("FFF8E4").A(relic ? 0.85f : 0.62f), Art.SoftDot, "core");
+            core.type = Image.Type.Simple;
+
+            var flag = Ui.Icon(page, "ui_flag", 440, new Vector2(6, 820), "flag");
+            var ft = Ui.Label(flag.transform, "缴获", 78, Pal.Paper, new Vector2(6, 12), new Vector2(320, 110), TextAnchor.MiddleCenter, Fonts.Brush);
+            Ui.Stroke(ft, Pal.Hex("7A1F12"), 4f);
+            Wave(flag.transform);
+            Tween.Pop(flag.transform, 0.4f);
+
+            var shadow = Ui.Box(page, new Vector2(520, 520), new Vector2(0, land - 340f), new Color(0.25f, 0.16f, 0.08f, 0f), Art.SoftDot, "shadow");
+            shadow.type = Image.Type.Simple;
+            shadow.rectTransform.localScale = new Vector3(0.3f, 0.12f, 1f);
+
+            var icon = Ui.Icon(page, Weapons.Icon(d.WKind), iconSize, new Vector2(0, land + 240f), "weapon");
+            int nameSize = d.Weapon.Length > 5 ? 76 : 112;
+            var name = Ui.Label(page, d.Weapon, nameSize, Pal.Ink, new Vector2(0, -400), new Vector2(980, 150), TextAnchor.MiddleCenter, Fonts.Brush);
+            Ui.Stroke(name, relic ? Pal.Hex("F2C14E") : Pal.Hex("FFF6E2"), relic ? 4f : 3f);
+            name.transform.localScale = Vector3.zero;
+            string who = string.IsNullOrEmpty(d.Nick) ? d.Name : d.Nick + " · " + d.Name;
+            string hex = ColorUtility.ToHtmlStringRGB(g);
+            var owner = Ui.Label(page, who + "　<color=#" + hex + ">" + Weapons.Grades[grade] + "</color>", 40, Pal.InkSoft, new Vector2(0, -510), new Vector2(900, 56), TextAnchor.MiddleCenter, Fonts.Brush);
+            owner.supportRichText = true;
+            owner.transform.localScale = Vector3.zero;
+            var affix = Ui.Label(page, Weapons.AffixText(d.WKind), 36, Pal.Ink, new Vector2(0, -590), new Vector2(860, 90));
+            affix.transform.localScale = Vector3.zero;
+
+            Ui.CartoonBtn(page, "收入囊中", new Vector2(460, 128), new Vector2(0, -760), relic ? Ui.BtnOrange : Ui.BtnRed, () =>
+            {
+                Object.Destroy(layer.gameObject);
+                done?.Invoke();
+            }, 52);
+
+            Tween.Run(icon, 0.48f, k =>
+            {
+                if (!icon) return;
+                float e = k * k;
+                float y = Mathf.Lerp(land + 240f, land, e);
+                float sway = Mathf.Sin(k * Mathf.PI * 2f) * 16f * (1f - k);
+                icon.rectTransform.anchoredPosition = new Vector2(sway, y);
+                icon.rectTransform.localRotation = Quaternion.Euler(0, 0, sway * 0.45f);
+                icon.rectTransform.localScale = Vector3.one * Mathf.Lerp(0.72f, 1f, e);
+                if (shadow)
+                {
+                    shadow.rectTransform.localScale = new Vector3(Mathf.Lerp(0.35f, 1.15f, e), 0.12f, 1f);
+                    shadow.color = new Color(0.25f, 0.16f, 0.08f, Mathf.Lerp(0f, 0.45f, e));
+                }
+            }, () =>
+            {
+                if (!icon) return;
+                icon.rectTransform.anchoredPosition = new Vector2(0, land);
+                icon.rectTransform.localRotation = Quaternion.identity;
+                Tween.Run(icon, 0.22f, k =>
+                {
+                    if (!icon) return;
+                    float hop = Mathf.Sin(k * Mathf.PI);
+                    icon.rectTransform.anchoredPosition = new Vector2(0, land + hop * 22f);
+                    icon.rectTransform.localScale = new Vector3(1f + hop * 0.06f, 1f - hop * 0.1f, 1);
+                }, () =>
+                {
+                    if (!icon) return;
+                    icon.rectTransform.localScale = Vector3.one;
+                    icon.rectTransform.anchoredPosition = new Vector2(0, land);
+                });
+                Tween.Pop(name.transform, 0.32f, 0.02f);
+                Tween.Pop(owner.transform, 0.28f, 0.08f);
+                Tween.Pop(affix.transform, 0.28f, 0.14f);
+                Sfx.Play(relic ? Snd.RankUp : Snd.Hero, 0.9f);
+                int n = relic ? 12 : 8;
+                for (int i = 0; i < n; i++)
+                {
+                    float ang = i / (float)n * Mathf.PI * 2f;
+                    var sp = Ui.Icon(page, "ui_sparkle", relic ? 80 : 60, new Vector2(0, land), "sp");
+                    var dir = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * (relic ? 260f : 200f);
+                    Tween.Run(sp, 0.45f, k =>
+                    {
+                        if (!sp) return;
+                        sp.rectTransform.anchoredPosition = new Vector2(0, land) + dir * Tween.OutCubic(k);
+                        sp.color = Color.white.A(1f - k);
+                    }, () => { if (sp) Object.Destroy(sp.gameObject); });
+                }
+            }, 0.2f);
         }
 
         static void Breathe(RectTransform t)

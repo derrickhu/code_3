@@ -487,15 +487,15 @@ namespace Rescue
         {
             if ((d.WKind == WeaponKind.Relic || d.WKind == WeaponKind.None) && d.Look == Look.Poison)
             {
-                HurlWeapon("fx_dust", from, to, 0.8f);
+                HurlWeapon("fx_dust", from, to, 0.55f);
                 return;
             }
             string img = HeroWeaponSprite(d);
             switch (SwingOf(d))
             {
-                case HeroSwing.Thrust: ThrustWeapon(img, from, to, n, 1.9f); break;
+                case HeroSwing.Thrust: ThrustWeapon(img, from, to, n, 1.2f); break;
                 case HeroSwing.Loose: LooseWeapon(img, from, to, n, d.WKind == WeaponKind.Cannon || d.Look == Look.Fire); break;
-                case HeroSwing.Hurl: HurlWeapon(img, from, to, 0.85f); break;
+                case HeroSwing.Hurl: HurlWeapon(img, from, to, 0.6f); break;
                 case HeroSwing.Whip: WhipWeapon(img, from, to, n); break;
                 case HeroSwing.Fist: FistWeapon(img, from, to, n); break;
                 default: ArcWeapon(img, from, to, n); break;
@@ -508,16 +508,16 @@ namespace Rescue
         {
             float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg;
             var start = from + n * 0.15f;
-            var end = Vector2.Lerp(from, to, 0.78f);
-            const float size = 1.75f;
-            NewSpriteFx(Art.Img(img), Color.white, start, Vector2.one * size, WeaponOrder, 0.38f, (f, k) =>
+            var end = Vector2.Lerp(from, to, 0.7f);
+            const float size = 1.05f;
+            NewSpriteFx(Art.Img(img), Color.white, start, Vector2.one * size, WeaponOrder, 0.3f, (f, k) =>
             {
                 float e = Tween.OutCubic(k);
                 f.Go.transform.localPosition = Vector2.Lerp(start, end, e);
-                f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang - 45f + Mathf.Lerp(80f, -110f, e));
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang - 45f + Mathf.Lerp(70f, -90f, e));
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.28f)));
             });
-            Streak(start, end, 0.15f, 0.22f, Pal.GoldBright.A(0.9f), Color.white, 0.26f, WeaponOrder - 1);
+            Streak(start, end, 0.1f, 0.1f, Pal.GoldBright.A(0.7f), Color.white, 0.2f, WeaponOrder - 1, 0f);
         }
 
         void ThrustWeapon(string img, Vector2 from, Vector2 to, Vector2 n, float size)
@@ -525,29 +525,29 @@ namespace Rescue
             float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
             var start = from + n * 0.1f;
             var end = to - n * Mathf.Min(0.35f, (to - from).magnitude * 0.25f);
-            NewSpriteFx(Art.Img(img), Color.white, start, Vector2.one * size, WeaponOrder, 0.32f, (f, k) =>
+            NewSpriteFx(Art.Img(img), Color.white, start, Vector2.one * size, WeaponOrder, 0.26f, (f, k) =>
             {
                 float e = Mathf.Sin(Mathf.Clamp01(k) * Mathf.PI);
                 f.Go.transform.localPosition = Vector2.Lerp(start, end, e);
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang);
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.22f)));
             });
-            Streak(start, end, 0.2f, 0.16f, Pal.GoldBright.A(0.75f), Color.white, 0.22f, WeaponOrder - 1, 0f);
+            Streak(start, end, 0.1f, 0.08f, Pal.GoldBright.A(0.6f), Color.white, 0.18f, WeaponOrder - 1, 0f);
         }
 
         void LooseWeapon(string img, Vector2 from, Vector2 to, Vector2 n, bool cannon)
         {
             float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
-            var at = from + n * 0.35f;
-            const float size = 1.3f;
-            NewSpriteFx(Art.Img(img), Color.white, at, Vector2.one * size, WeaponOrder, 0.34f, (f, k) =>
+            var at = from + n * 0.3f;
+            const float size = 0.9f;
+            NewSpriteFx(Art.Img(img), Color.white, at, Vector2.one * size, WeaponOrder, 0.3f, (f, k) =>
             {
                 float draw = 1f - 0.22f * Mathf.Sin(Mathf.Min(1f, k * 1.8f) * Mathf.PI);
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang);
                 f.Go.transform.localScale = new Vector3(size * draw, size, 1);
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.25f)));
             });
-            if (cannon) HurlWeapon("fx_fire", from + n * 0.5f, to, 0.7f);
+            if (cannon) HurlWeapon("fx_fire", from + n * 0.5f, to, 0.5f);
         }
 
         void HurlWeapon(string img, Vector2 from, Vector2 to, float size)
@@ -567,20 +567,20 @@ namespace Rescue
         void WhipWeapon(string img, Vector2 from, Vector2 to, Vector2 n)
         {
             float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
-            NewSpriteFx(Art.Img(img), Color.white, from + n * 0.25f, Vector2.one * 1.25f, WeaponOrder, 0.28f, (f, k) =>
+            NewSpriteFx(Art.Img(img), Color.white, from + n * 0.25f, Vector2.one * 0.85f, WeaponOrder, 0.26f, (f, k) =>
             {
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang + Mathf.Sin(k * Mathf.PI) * 35f);
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.25f)));
             });
-            Streak(from + n * 0.3f, to, 0.1f, 0.18f, Pal.Ink, Pal.GoldBright, 0.22f, WeaponOrder - 1);
+            Streak(from + n * 0.3f, to, 0.05f, 0.1f, Pal.Ink, Pal.GoldBright, 0.2f, WeaponOrder - 1);
         }
 
         void FistWeapon(string img, Vector2 from, Vector2 to, Vector2 n)
         {
             for (int i = 0; i < 2; i++)
             {
-                var off = new Vector2(i == 0 ? -0.12f : 0.12f, 0f);
-                After(i * 0.08f, () => HurlWeapon(img, from + n * 0.15f + off, to + off, 0.8f));
+                var off = new Vector2(i == 0 ? -0.1f : 0.1f, 0f);
+                After(i * 0.08f, () => HurlWeapon(img, from + n * 0.15f + off, to + off, 0.55f));
             }
         }
 
@@ -590,8 +590,11 @@ namespace Rescue
                 if (v.Hero != null && v.Hero.Id == heroId) v.Lunge(dir);
         }
 
+        /// <summary>好汉普攻：兵器小小地挥一下，留给大招去出彩。</summary>
         void HeroAttackFx(SimEvent ev)
         {
+            if (ev.Flag == 2) { SnipeShotFx(ev); return; }
+            if (ev.Flag == 3) { VolleyShotFx(ev); return; }
             var from = World(ev.Side, ev.P);
             var to = World(ev.Side, ev.Q);
             var id = (HeroId)ev.B;
@@ -604,565 +607,118 @@ namespace Rescue
             ShowHeroWeapon(hd, from, to, n);
             LungeHero(ev.A, n);
 
-            if (ev.Flag == 2)
-            {
-                InkArrow(from, to, Pal.Red, Pal.GoldBright, 1.1f, 0.24f, () =>
-                {
-                    StuckArrow(to, n, Pal.Red, 1.0f);
-                    Impact(to, 1.3f, Pal.RedDeep.A(0.85f), Pal.GoldBright, 6);
-                    Ink("fx_crack", Pal.RedDeep.A(0.7f), to, 1.4f, 0.7f, Rnd(0, 360), 31, 0.5f, 0f, 0.5f);
-                    Ring(to, 2.2f, Pal.Red, 0.45f, 46);
-                    Kick(to, n, 0.35f);
-                    if (mine) { _shake = Mathf.Max(_shake, 0.8f); HitStop(0.08f); Sfx.Play(Snd.Crit, 0.6f); }
-                });
-                if (mine) Sfx.Play(Snd.Bow, 0.6f, 0.85f);
-                if (_frames.TryGetValue(ev.A, out var uf)) uf.Pulse();
-                return;
-            }
-
             switch (hd.Look)
             {
                 case Look.Fist:
-                {
-                    if (mine) Sfx.Play(Snd.Fist, 0.45f);
-                    for (int i = 0; i < 2; i++)
-                    {
-                        var off = new Vector2(Rnd(-0.18f, 0.18f), Rnd(-0.18f, 0.18f));
-                        After(i * 0.08f, () =>
-                        {
-                            Streak(to - n * 0.8f + off, to + off, 0.1f, 0.18f, Pal.Ink, glow, 0.15f);
-                            Impact(to + off, 0.68f, Pal.Ink.A(0.8f), gold, 2);
-                            Kick(to, n, 0.1f);
-                        });
-                    }
+                    if (mine) Sfx.Play(Snd.Fist, 0.4f);
+                    After(0.08f, () => { Impact(to, 0.45f, Pal.Ink.A(0.75f), gold, 1); Kick(to, n, 0.08f); });
                     break;
-                }
                 case Look.Dart:
-                {
-                    bool crit = ev.Flag == 1;
-                    if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.4f);
-                    Streak(to - n * 0.7f, to, 0.1f, crit ? 0.2f : 0.13f, Pal.Ink, glow, 0.15f);
-                    if (crit)
-                    {
-                        Impact(to, 1.05f, Pal.RedDeep.A(0.85f), gold, 4);
-                        FloatText(to + new Vector2(0, 0.7f), "暴击！", Pal.Red, 0.4f, 0.7f);
-                        Kick(to, n, 0.3f);
-                        if (mine) { _shake = Mathf.Max(_shake, 0.4f); HitStop(0.06f); Sfx.Play(Snd.Crit, 0.5f); }
-                    }
-                    else
-                    {
-                        Impact(to, 0.5f, Pal.Ink.A(0.75f), glow, 1);
-                        Kick(to, n, 0.1f);
-                    }
+                    if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.35f);
+                    Streak(to - n * 0.5f, to, 0.05f, 0.08f, Pal.Ink, glow, 0.13f);
+                    Impact(to, 0.4f, Pal.Ink.A(0.7f), glow, 1);
+                    Kick(to, n, 0.08f);
                     break;
-                }
                 case Look.Spear:
                 {
-                    if (mine) Sfx.Play(Snd.Spear, 0.5f, 0.85f);
-                    var tip = to + n * 1.4f;
-                    Streak(from + n * 0.75f, to, 1.4f, 0.1f, glow.A(0.85f), glow, 0.2f, 43, 0f);
+                    if (mine) Sfx.Play(Snd.Spear, 0.42f, 0.9f);
+                    Streak(from + n * 0.6f, to, 0.5f, 0.06f, glow.A(0.8f), glow, 0.16f, 43, 0f);
                     After(0.05f, () =>
                     {
-                        foreach (var v in _enemies.Values)
-                        {
-                            var p = (Vector2)v.Root.localPosition;
-                            var rel = p - from;
-                            float along = Vector2.Dot(rel, n);
-                            if (along < 0f || along > (tip - from).magnitude) continue;
-                            if ((rel - n * along).sqrMagnitude > 0.25f) continue;
-                            v.Kick(n, 0.18f);
-                            Ink("fx_lines", gold, p, 0.75f, 0.2f, Ang(n), 46, 0.5f);
-                        }
+                        Ink("fx_lines", gold, to, 0.5f, 0.16f, Ang(n), 46, 0.5f);
+                        Kick(to, n, 0.12f);
                     });
                     break;
                 }
                 case Look.Axe:
-                {
-                    if (mine) Sfx.Play(Snd.Axe, 0.45f);
-                    Crescent(to + new Vector2(-0.15f, 0), n, 1.15f, Pal.Ink, glow, false, 0.24f);
-                    After(0.07f, () => Crescent(to + new Vector2(0.15f, 0), n, 1.15f, Pal.Ink, glow, true, 0.24f));
-                    After(0.08f, () =>
-                    {
-                        Ink("fx_cross", Pal.Ink.A(0.8f), to, 0.95f, 0.3f, Rnd(-15, 15), 44, 0.4f);
-                        InkDrops(to, 4);
-                        foreach (var v in _enemies.Values)
-                        {
-                            var p = (Vector2)v.Root.localPosition;
-                            if ((p - to).sqrMagnitude < 1.44f) v.Kick((p - to).sqrMagnitude > 1e-3f ? (p - to).normalized : n, 0.14f);
-                        }
-                        if (mine) { _shake = Mathf.Max(_shake, 0.3f); HitStop(0.03f); }
-                    });
+                    if (mine) Sfx.Play(Snd.Axe, 0.4f);
+                    Crescent(to, n, 0.75f, Pal.Ink, glow, false, 0.2f);
+                    After(0.06f, () => { Impact(to, 0.45f, Pal.Ink.A(0.75f), gold, 2); Kick(to, n, 0.1f); });
                     break;
-                }
                 case Look.Bow:
-                    if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Bow, 0.45f);
-                    InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.8f, 0.18f, () =>
+                    if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Bow, 0.4f);
+                    InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.6f, 0.17f, () =>
                     {
-                        if (mine) Sfx.Play(Snd.ArrowHit, 0.4f);
-                        StuckArrow(to, n, Pal.Hex("8A1C1C"), 0.75f);
-                        Impact(to, 0.7f, Pal.RedDeep.A(0.8f), gold, 3);
-                        Kick(to, n, 0.18f);
+                        if (mine) Sfx.Play(Snd.ArrowHit, 0.35f);
+                        StuckArrow(to, n, Pal.Hex("8A1C1C"), 0.55f);
+                        Impact(to, 0.45f, Pal.RedDeep.A(0.75f), gold, 1);
+                        Kick(to, n, 0.1f);
                     });
                     break;
                 case Look.Fire:
-                {
-                    if (mine) Sfx.Play(Snd.FireHit, 0.45f);
-                    Streak(to + new Vector2(0, 1.6f), to, 0.05f, 0.22f, Pal.Ink, Fire, 0.16f);
-                    After(0.06f, () =>
-                    {
-                        GroundSmash(to, 1.5f, Pal.Ink, mine);
-                        FireBurst(to, 0.9f);
-                    });
+                    if (mine) Sfx.Play(Snd.FireHit, 0.4f);
+                    After(0.12f, () => { FireBurst(to, 0.55f); Kick(to, n, 0.1f); });
                     break;
-                }
                 case Look.Water:
-                    if (mine) Sfx.Play(Snd.Water, 0.4f);
-                    WaveTo(from, to, 1.45f, () =>
-                    {
-                        Splash(to, 0.95f);
-                        Kick(to, n, 0.15f);
-                    });
-                    break;
                 case Look.WaterFire:
-                    if (mine) Sfx.Play(Snd.Water, 0.4f, 0.9f);
-                    WaveTo(from, to, 1.55f, () =>
+                    if (mine) Sfx.Play(Snd.Water, 0.35f, hd.Look == Look.WaterFire ? 0.9f : 1f);
+                    WaveTo(from, to, 0.85f, () =>
                     {
-                        Splash(to, 1.1f);
-                        FireBurst(to, 0.6f);
-                        Kick(to, n, 0.15f);
+                        Splash(to, 0.55f);
+                        if (hd.Look == Look.WaterFire) FireBurst(to, 0.4f);
+                        Kick(to, n, 0.1f);
                     });
                     break;
                 case Look.Fork:
-                    if (mine) Sfx.Play(Snd.Water, 0.35f, 1.15f);
-                    Streak(from + n * 0.3f, to, 0.4f, 0.17f, WaterDeep, Ice, 0.2f);
-                    After(0.05f, () =>
-                    {
-                        Splash(to, 0.75f);
-                        Kick(to, n, 0.12f);
-                    });
+                    if (mine) Sfx.Play(Snd.Water, 0.3f, 1.15f);
+                    Streak(from + n * 0.3f, to, 0.2f, 0.08f, WaterDeep, Ice, 0.16f);
+                    After(0.05f, () => { Splash(to, 0.45f); Kick(to, n, 0.08f); });
                     break;
                 case Look.Poison:
-                    if (mine) Sfx.Play(Snd.Poison, 0.4f);
-                    Crescent(to, n, 1.0f, Pal.Hex("5A1A12"), Pal.Hex("F2C6B8"), UnityEngine.Random.value < 0.5f);
-                    After(0.05f, () =>
+                    if (mine) Sfx.Play(Snd.Poison, 0.35f);
+                    After(0.1f, () =>
                     {
-                        Impact(to, 0.6f, Pal.RedDeep.A(0.75f), Pal.Hex("F2C6B8"), 2);
-                        Ink("fx_dust", Pal.Purple.A(0.35f), to, 0.8f, 0.6f, Rnd(0, 360), 30, 0.4f);
-                        Kick(to, n, 0.12f);
+                        Impact(to, 0.4f, Pal.RedDeep.A(0.7f), Pal.Hex("F2C6B8"), 1);
+                        Ink("fx_dust", Pal.Purple.A(0.3f), to, 0.55f, 0.5f, Rnd(0, 360), 30, 0.4f);
                     });
                     break;
                 case Look.Lasso:
-                    if (mine) Sfx.Play(Snd.Lasso, 0.4f);
+                    if (mine) Sfx.Play(Snd.Lasso, 0.35f);
                     Lasso(from, to, Pal.Red);
-                    After(0.15f, () => Kick(to, -n, 0.12f));
+                    After(0.15f, () => Kick(to, -n, 0.08f));
                     break;
                 case Look.Staff:
-                {
-                    if (mine) Sfx.Play(Snd.Smash, 0.5f);
-                    Crescent(to, n, 1.6f, Pal.Ink, glow, false, 0.3f);
+                case Look.Hammer:
+                case Look.Whip:
+                    if (mine) Sfx.Play(hd.Look == Look.Hammer ? Snd.Hammer : hd.Look == Look.Whip ? Snd.Whip : Snd.Smash, 0.4f);
                     After(0.08f, () =>
                     {
-                        GroundSmash(to, 1.6f, Pal.Ink, mine);
-                        Impact(to, 0.85f, Pal.Ink.A(0.8f), gold, 3);
-                        foreach (var v in _enemies.Values)
-                        {
-                            var p = (Vector2)v.Root.localPosition;
-                            if ((p - to).sqrMagnitude < 1.1f) v.Kick((p - to).sqrMagnitude > 1e-3f ? (p - to).normalized : n, 0.22f);
-                        }
+                        Impact(to, 0.55f, Pal.Ink.A(0.8f), Steel, 2);
+                        Ring(to, 0.9f, Dust.A(0.6f), 0.25f, 44);
+                        Kick(to, n, 0.14f);
                     });
                     break;
-                }
                 case Look.Sword:
                 {
-                    if (mine) Sfx.Play(Snd.Sword, 0.42f);
+                    if (mine) Sfx.Play(Snd.Sword, 0.38f);
                     bool m = UnityEngine.Random.value < 0.5f;
-                    Crescent(to, n, 0.9f, Pal.Hex("2B3A55"), Color.white, m, 0.18f);
-                    After(0.06f, () => Crescent(to, n, 0.8f, Pal.Hex("2B3A55"), glow, !m, 0.18f));
-                    After(0.08f, () => { Ink("fx_lines", Color.white, to, 0.8f, 0.16f, Ang(n), 45, 0.5f); Kick(to, n, 0.1f); });
-                    break;
-                }
-                case Look.Whip:
-                {
-                    if (mine) Sfx.Play(Snd.Whip, 0.45f);
-                    Streak(to + new Vector2(-n.y, n.x) * 0.9f + Vector2.up * 0.6f, to, 0.1f, 0.2f, Pal.Ink, Steel, 0.16f);
-                    After(0.06f, () =>
-                    {
-                        Impact(to, 0.7f, Pal.Ink.A(0.8f), Steel, 2);
-                        Ink("fx_crack", Pal.Ink.A(0.55f), to, 0.8f, 0.4f, Rnd(0, 360), 31, 0.5f, 0f, 0.4f);
-                        Kick(to, n, 0.12f);
-                    });
-                    break;
-                }
-                case Look.Hammer:
-                {
-                    if (mine) Sfx.Play(Snd.Hammer, 0.5f);
-                    Streak(to + new Vector2(0, 1.4f), to, 0.05f, 0.3f, Pal.Ink, Steel, 0.14f);
-                    After(0.06f, () =>
-                    {
-                        GroundSmash(to, 1.4f, Pal.Ink, mine);
-                        Impact(to, 0.8f, Pal.Ink.A(0.85f), gold, 3);
-                        Kick(to, n, 0.25f);
-                    });
+                    Crescent(to, n, 0.65f, Pal.Hex("2B3A55"), Color.white, m, 0.16f);
+                    After(0.06f, () => { Ink("fx_lines", Color.white, to, 0.55f, 0.14f, Ang(n), 45, 0.5f); Kick(to, n, 0.08f); });
                     break;
                 }
                 case Look.Magic:
-                {
-                    if (mine) Sfx.Play(Snd.UltMagic, 0.25f, 1.3f);
-                    Ink("fx_enso", Pal.Purple.A(0.8f), to, 1.1f, 0.45f, Rnd(0, 360), 43, 0.3f, 240f, 0.4f);
+                    if (mine) Sfx.Play(Snd.UltMagic, 0.2f, 1.3f);
                     After(0.05f, () =>
                     {
-                        Streak(to + new Vector2(Rnd(-0.3f, 0.3f), 2.2f), to, 0f, 0.14f, Pal.Hex("C9B6FF"), Color.white, 0.14f, 46);
-                        Impact(to, 0.65f, Pal.Purple.A(0.7f), Pal.Hex("E6DAFF"), 2);
+                        Streak(to + new Vector2(Rnd(-0.2f, 0.2f), 1.4f), to, 0f, 0.08f, Pal.Hex("C9B6FF"), Color.white, 0.12f, 46);
+                        Impact(to, 0.45f, Pal.Purple.A(0.65f), Pal.Hex("E6DAFF"), 1);
                     });
                     break;
-                }
                 default:
-                    if (mine) Sfx.Play(Snd.Dao, 0.4f, 0.9f);
-                    Crescent(to, n, 1.05f, ev.Flag == 1 ? Pal.Red : Pal.Ink, glow, false);
-                    After(0.05f, () => Impact(to, 0.6f, Pal.Ink.A(0.8f), gold, 2));
+                    if (mine) Sfx.Play(Snd.Dao, 0.36f, 0.9f);
+                    Crescent(to, n, 0.72f, ev.Flag == 1 ? Pal.Red : Pal.Ink, glow, false, 0.2f);
+                    After(0.05f, () => Impact(to, 0.42f, Pal.Ink.A(0.75f), gold, 1));
                     break;
             }
-            if (ev.Flag == 1 && hd.Look != Look.Dart)
+            if (ev.Flag == 1)
             {
-                After(0.06f, () => Impact(to, 1.0f, Pal.RedDeep.A(0.85f), gold, 4));
-                FloatText(to + new Vector2(0, 0.7f), "暴击！", Pal.Red, 0.4f, 0.7f);
-                if (mine) { HitStop(0.05f); Sfx.Play(Snd.Crit, 0.45f); }
+                After(0.06f, () => Impact(to, 0.8f, Pal.RedDeep.A(0.85f), gold, 3));
+                FloatText(to + new Vector2(0, 0.6f), "暴击！", Pal.Red, 0.32f, 0.6f);
+                if (mine) { HitStop(0.03f); Sfx.Play(Snd.Crit, 0.4f); }
             }
             if (mine && M.Player.Armed(hd) && hd.WeaponTag.Length > 0 && UnityEngine.Random.value < 0.3f)
-                FloatText(from + new Vector2(0, 0.95f), "用" + hd.WeaponTag, Ui.GradeColor(hd.WGrade), 0.34f, 0.7f);
+                FloatText(from + new Vector2(0, 0.95f), "用" + hd.WeaponTag, Ui.GradeColor(hd.WGrade), 0.3f, 0.7f);
             if (_frames.TryGetValue(ev.A, out var fv)) fv.Pulse();
-        }
-
-        // ─────────────────────────── 好汉大招 ───────────────────────────
-
-        static Snd UltSound(HeroDef d)
-        {
-            bool water = d.Look == Look.Water || d.Look == Look.WaterFire || d.Look == Look.Fork;
-            switch (d.UltKind)
-            {
-                case UltKind.Combo:
-                    return d.Look == Look.Fist ? Snd.Fist : d.Look == Look.Spear ? Snd.Spear : d.Look == Look.Sword ? Snd.Sword : Snd.Dao;
-                case UltKind.Area:
-                    if (water) return Snd.UltWater;
-                    switch (d.Look)
-                    {
-                        case Look.Fire: return Snd.UltFire;
-                        case Look.Spear: return Snd.UltWind;
-                        case Look.Poison: return Snd.UltMagic;
-                        case Look.Magic: return Snd.UltThunder;
-                        case Look.Hammer: case Look.Whip: case Look.Staff: return Snd.UltSmash;
-                        default: return Snd.UltWhirl;
-                    }
-                case UltKind.Snipe: return Snd.Bow;
-                case UltKind.Blast: return d.WKind == WeaponKind.Cannon ? Snd.UltCannon : Snd.UltFire;
-                case UltKind.Pin: return water ? Snd.UltWater : Snd.Spear;
-                case UltKind.Lasso: return Snd.Lasso;
-                case UltKind.SlowAll: return Snd.UltWind;
-                case UltKind.HasteAll: case UltKind.Upgrade: return Snd.UltMagic;
-                case UltKind.Buns: return Snd.Merge;
-                case UltKind.Volley: return d.WKind == WeaponKind.Stone ? Snd.Stone : d.Look == Look.Dart ? Snd.Dart : Snd.Bow;
-                case UltKind.Storm: return Snd.UltThunder;
-                case UltKind.Heal: return Snd.UltHeal;
-                case UltKind.Rally: case UltKind.Shield: return Snd.UltDrum;
-                case UltKind.Steal: return Snd.Dart;
-                default: return Snd.UltSmash;
-            }
-        }
-
-        static readonly Color Thunder = Pal.Hex("D9CCFF");
-
-        /// <summary>大招按绝招类型和出手样子定制；返回 false 时走通用墨旋风。</summary>
-        bool HeroUltFx(SimEvent ev)
-        {
-            var d = HeroDef.Get((HeroId)ev.B);
-            var pos = World(ev.Side, ev.P);
-            float r = Mathf.Clamp(ev.Val, 1f, 6f);
-            bool mine = ev.Side == 0;
-            var targets = new List<Vector2>(EnemiesWithin(ev.Side, ev.P, r, 12));
-            bool water = d.Look == Look.Water || d.Look == Look.WaterFire || d.Look == Look.Fork;
-            switch (d.UltKind)
-            {
-                case UltKind.Combo:
-                {
-                    Enemy front = null;
-                    foreach (var e in M.Sides[ev.Side].Enemies)
-                        if (!e.Dead && (front == null || e.Progress > front.Progress)) front = e;
-                    var at = front != null ? World(ev.Side, front.Pos) : pos;
-                    int hits = Mathf.Clamp(d.UltN, 4, 12);
-                    var hitSnd = d.Look == Look.Fist ? Snd.Fist : d.Look == Look.Sword ? Snd.Sword : Snd.Dao;
-                    for (int i = 0; i < hits; i++)
-                    {
-                        int idx = i;
-                        bool last = i == hits - 1;
-                        After(i * 0.06f, () =>
-                        {
-                            var off = new Vector2(Rnd(-0.3f, 0.3f), Rnd(-0.3f, 0.3f));
-                            if (d.Look != Look.Fist && !last) Crescent(at + off, new Vector2(Rnd(-1f, 1f), Rnd(-1f, 1f)).normalized, 0.8f, Pal.Ink, Steel, idx % 2 == 0, 0.16f);
-                            Impact(at + off, last ? 1.8f : 0.7f, Pal.Ink.A(0.85f), Pal.GoldBright, last ? 10 : 1);
-                            if (mine && idx % 2 == 0 && !last) Sfx.Play(hitSnd, 0.35f, 1.1f + idx * 0.02f);
-                            if (mine && last) { Sfx.Play(Snd.Crit, 0.7f, 0.9f); _shake = Mathf.Max(_shake, 0.9f); HitStop(0.08f); }
-                        });
-                    }
-                    return true;
-                }
-                case UltKind.Area:
-                    if (water) { TideFx(pos, r, targets, mine); return true; }
-                    switch (d.Look)
-                    {
-                        case Look.Spear when d.UltStun > 0: IceFx(pos, r, targets); return true;
-                        case Look.Poison: SleepFx(pos, r, targets); return true;
-                        case Look.Fire: MeteorFx(pos, r, targets, mine); return true;
-                        case Look.Magic: StormFx(targets, mine, pos, r); return true;
-                        case Look.Hammer: case Look.Whip: case Look.Staff:
-                            QuakeFx(pos, r, targets, mine); return true;
-                        default:
-                            WhirlFx(pos, r, targets, mine, Weapons.Icon(d.WKind)); return true;
-                    }
-                case UltKind.Blast:
-                    MeteorFx(pos, Mathf.Max(r, 1.6f), targets, mine);
-                    return true;
-                case UltKind.Pin:
-                {
-                    var t = targets.Count > 0 ? targets[0] : pos;
-                    if (water)
-                    {
-                        Streak(pos, t, 0.6f, 0.45f, WaterDeep, Ice, 0.3f, 46);
-                        After(0.08f, () =>
-                        {
-                            Splash(t, 1.5f);
-                            Ink("fx_lasso", WaterDeep.A(0.8f), t, 1.0f, 1.0f, 0, 45, 0.8f, 180f, 0.6f);
-                            if (mine) HitStop(0.06f);
-                        });
-                    }
-                    else
-                    {
-                        Streak(pos, t, 0.8f, 0.4f, Pal.Ink, Pal.GoldBright, 0.28f, 46);
-                        After(0.08f, () =>
-                        {
-                            Impact(t, 1.5f, Pal.RedDeep.A(0.85f), Pal.GoldBright, 6);
-                            Ink("fx_crack", Pal.Ink.A(0.8f), t, 1.2f, 1.0f, Rnd(0, 360), 31, 0.5f, 0f, 0.6f);
-                            if (mine) { HitStop(0.07f); _shake = Mathf.Max(_shake, 0.7f); }
-                        });
-                    }
-                    return true;
-                }
-                case UltKind.Lasso:
-                {
-                    var c = d.Look == Look.Lasso ? Pal.Red : d.Look == Look.Water || d.Look == Look.Fork ? WaterDeep : Pal.Hex("6B4A2B");
-                    for (int i = 0; i < Mathf.Min(Mathf.Max(1, d.UltN), targets.Count); i++) Lasso(pos, targets[i], c, i * 0.07f);
-                    return true;
-                }
-                case UltKind.Throw:
-                {
-                    var t = targets.Count > 0 ? targets[0] : pos;
-                    Impact(t, 1.8f, Pal.Ink.A(0.85f), Pal.GoldBright, 8);
-                    GroundSmash(t, 1.6f, Pal.Ink, mine);
-                    return true;
-                }
-                case UltKind.SlowAll:
-                {
-                    float baseY = mine ? MyBottom : OppBottom;
-                    for (int i = 0; i < 14; i++)
-                    {
-                        var start = new Vector2(Left - 1f - Rnd(0f, 3f), baseY + Rnd(0.3f, Board.Rows - 0.3f));
-                        var fx = NewSpriteFx(Art.Img("fx_thrust"), Ice.A(0.8f), start, new Vector2(Rnd(1.2f, 2f), 0.45f), 46, Rnd(0.6f, 0.9f), (f, k) =>
-                        {
-                            f.Go.transform.localPosition = f.A + Vector2.right * k * 12f;
-                            f.Sr.color = f.C.A(0.8f * Mathf.Sin(k * Mathf.PI));
-                        });
-                        fx.A = start;
-                    }
-                    return true;
-                }
-                case UltKind.HasteAll:
-                case UltKind.Upgrade:
-                {
-                    float rr = d.UltKind == UltKind.Upgrade ? 1.2f : 2.4f;
-                    Ink("fx_enso", Pal.GoldBright.A(0.85f), pos, rr * 1.6f, 1.0f, 0, 44, 0.3f, 360f, 0.6f);
-                    Ring(pos, rr * 2f, Pal.GoldBright, 0.7f, 45);
-                    if (d.UltKind == UltKind.Upgrade) Ink("ui_sparkle", Color.white, pos, 1.3f, 0.7f, 0, 47, 0.3f, 120f, 0.4f);
-                    return true;
-                }
-                case UltKind.Volley:
-                    Ring(pos, 1.6f, Pal.GoldBright, 0.4f, 45);
-                    return true;
-                case UltKind.Storm:
-                {
-                    var all = new List<Vector2>(EnemiesWithin(ev.Side, ev.P, 99f, 14));
-                    StormFx(all, mine, pos, 3f);
-                    return true;
-                }
-                case UltKind.Heal:
-                {
-                    Ink("fx_enso", Pal.Willow.A(0.8f), pos, 1.8f, 0.9f, 0, 44, 0.3f, 200f, 0.5f);
-                    for (int i = 0; i < 8; i++)
-                    {
-                        var p = pos + new Vector2(Rnd(-0.6f, 0.6f), Rnd(-0.3f, 0.2f));
-                        var fx = NewSpriteFx(Art.Circle, Pal.Hex("9FE07A"), p, Vector2.one * Rnd(0.1f, 0.18f), 47, Rnd(0.7f, 1.1f), (f, k) =>
-                        {
-                            f.Go.transform.localPosition = f.A + Vector2.up * k * 1.2f;
-                            f.Sr.color = f.C.A(1f - k);
-                        });
-                        fx.A = p;
-                    }
-                    return true;
-                }
-                case UltKind.Rally:
-                case UltKind.Shield:
-                {
-                    var goal = M.Sides[ev.Side].Board.Goal;
-                    var gp = CellWorld(ev.Side, goal.c, goal.r);
-                    for (int i = 0; i < 3; i++)
-                    {
-                        int idx = i;
-                        After(i * 0.18f, () => Ring(gp, 1.6f + idx * 0.9f, Pal.Red, 0.5f, 46));
-                    }
-                    Ink("fx_enso", Pal.GoldBright.A(0.9f), gp, 2.2f, 1.1f, 0, 44, 0.3f, -300f, 0.6f);
-                    if (d.UltKind == UltKind.Rally) Ink("fx_enso", Pal.Red.A(0.6f), pos, 2.6f, 1.0f, 0, 43, 0.3f, 300f, 0.6f);
-                    if (mine) _shake = Mathf.Max(_shake, 0.6f);
-                    return true;
-                }
-                case UltKind.Steal:
-                    Ink("fx_dust", Pal.InkSoft.A(0.6f), pos, 1.2f, 0.6f, Rnd(0, 360), 40, 0.3f, 90f, 0.4f);
-                    return true;
-            }
-            return false;
-        }
-
-        void IceFx(Vector2 pos, float r, List<Vector2> targets)
-        {
-            Ink("fx_enso", Ice, pos, r * 2f, 0.9f, Rnd(0, 360), 44, 0.3f, -300f, 0.5f);
-            for (int i = 0; i < 26; i++)
-            {
-                var start = pos + new Vector2(Rnd(-r, r), Rnd(0.5f, r + 1f));
-                var end = start + new Vector2(Rnd(-0.3f, 0.3f), -Rnd(1.2f, 2.4f));
-                var fx = NewSpriteFx(Art.Circle, Color.white, start, Vector2.one * Rnd(0.08f, 0.16f), 47, Rnd(0.8f, 1.3f), (f, k) =>
-                {
-                    f.Go.transform.localPosition = Vector2.Lerp(f.A, f.B, k) + new Vector2(Mathf.Sin(k * 9f + f.F) * 0.1f, 0);
-                    f.Sr.color = Color.white.A(k < 0.8f ? 0.95f : (1f - k) * 4.75f);
-                });
-                fx.A = start;
-                fx.B = end;
-                fx.F = Rnd(0, 6);
-            }
-            foreach (var t in targets) Ink("fx_crack", Ice.A(0.9f), t, 0.8f, 1.2f, Rnd(0, 360), 36, 0.4f, 0f, 0.7f);
-        }
-
-        /// <summary>兵器旋风：本人的兵器图标绕身飞转一圈砍过去。</summary>
-        void WhirlFx(Vector2 pos, float r, List<Vector2> targets, bool mine, string icon)
-        {
-            Ink("fx_enso", Pal.Ink.A(0.75f), pos, r * 2f, 0.9f, Rnd(0, 360), 43, 0.3f, -720f, 0.6f);
-            var sprite = Art.Img(icon);
-            for (int i = 0; i < 6; i++)
-            {
-                float a0 = i * 60f;
-                NewSpriteFx(sprite, Color.white, pos, Vector2.one * 0.9f, 47, 0.9f, (f, k) =>
-                {
-                    float rad = r * 0.75f * Mathf.Min(1f, k * 3f);
-                    float a = (a0 - k * 720f) * Mathf.Deg2Rad;
-                    f.Go.transform.localPosition = pos + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * rad;
-                    f.Go.transform.localRotation = Quaternion.Euler(0, 0, -k * 1800f);
-                    f.Sr.color = Color.white.A(k < 0.8f ? 1f : (1f - k) * 5f);
-                });
-            }
-            for (int i = 0; i < targets.Count; i++)
-            {
-                var t = targets[i];
-                After(0.1f + i * 0.05f, () => { Impact(t, 0.7f, Pal.Ink.A(0.8f), Steel, 2); Kick(t, (t - pos).normalized, 0.2f); });
-            }
-            if (mine) _shake = Mathf.Max(_shake, 0.7f);
-        }
-
-        void MeteorFx(Vector2 pos, float r, List<Vector2> targets, bool mine)
-        {
-            int count = Mathf.Max(3, Mathf.Min(6, targets.Count));
-            for (int i = 0; i < count; i++)
-            {
-                var t = i < targets.Count ? targets[i] : pos + UnityEngine.Random.insideUnitCircle * r * 0.6f;
-                int idx = i;
-                After(i * 0.09f, () =>
-                {
-                    Streak(t + new Vector2(Rnd(-0.4f, 0.4f), 2.5f), t, 0f, 0.3f, FireCore, Color.white, 0.18f, 46);
-                    FireBurst(t, 1.2f);
-                    Ink("fx_crack", Pal.Ink.A(0.8f), t, 1.3f, 0.8f, Rnd(0, 360), 31, 0.5f, 0f, 0.6f);
-                    if (mine && idx == 0) HitStop(0.07f);
-                });
-            }
-            if (mine) _shake = Mathf.Max(_shake, 1.1f);
-        }
-
-        void TideFx(Vector2 pos, float r, List<Vector2> targets, bool mine)
-        {
-            for (int i = 0; i < 5; i++)
-            {
-                float a = i / 5f * Mathf.PI * 2f;
-                var p = pos + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r * 0.6f;
-                bool flip = Mathf.Cos(a) < 0;
-                After(i * 0.05f, () =>
-                {
-                    NewSpriteFx(Art.Img("fx_wave"), WaterDeep.A(0.9f), p, Vector2.one, 45, 0.7f, (f, k) =>
-                    {
-                        float s = 1.7f * Mathf.Sin(Mathf.Min(1f, k * 1.4f) * Mathf.PI * 0.5f);
-                        f.Go.transform.localScale = new Vector3(flip ? -1.7f : 1.7f, Mathf.Max(0.01f, s), 1);
-                        f.Sr.color = f.C.A(k < 0.6f ? 0.9f : (1f - k) / 0.4f * 0.9f);
-                    });
-                    Splash(p, 0.8f);
-                });
-            }
-            foreach (var t in targets) Kick(t, (t - pos).sqrMagnitude > 1e-3f ? (t - pos).normalized : Vector2.up, 0.3f);
-            if (mine) _shake = Mathf.Max(_shake, 0.8f);
-        }
-
-        void SleepFx(Vector2 pos, float r, List<Vector2> targets)
-        {
-            for (int i = 0; i < 9; i++)
-            {
-                var p = pos + UnityEngine.Random.insideUnitCircle * r * 0.8f;
-                After(i * 0.04f, () => Ink("fx_dust", Pal.Purple.A(0.4f), p, Rnd(1.0f, 1.6f), 1.3f, Rnd(0, 360), 37, 0.3f, Rnd(-60, 60), 0.5f));
-            }
-            foreach (var t in targets)
-            {
-                var at = t;
-                After(0.3f, () => FloatText(at + new Vector2(0.25f, 0.45f), "Zz", Pal.Purple, 0.3f, 1.4f));
-            }
-        }
-
-        /// <summary>重兵器震地：中心大裂，四周一圈尘浪向外推。</summary>
-        void QuakeFx(Vector2 pos, float r, List<Vector2> targets, bool mine)
-        {
-            GroundSmash(pos, r * 1.1f, Pal.Ink, mine);
-            for (int i = 0; i < 3; i++)
-            {
-                int idx = i;
-                After(i * 0.1f, () => Ring(pos, r * (0.8f + idx * 0.6f), Dust.A(0.8f), 0.4f, 44));
-            }
-            foreach (var t in targets)
-            {
-                var at = t;
-                After(0.12f, () => { Impact(at, 0.7f, Pal.Ink.A(0.8f), Steel, 2); Kick(at, (at - pos).sqrMagnitude > 1e-3f ? (at - pos).normalized : Vector2.up, 0.28f); });
-            }
-            if (mine) { _shake = Mathf.Max(_shake, 1.0f); HitStop(0.06f); }
-        }
-
-        /// <summary>五雷天罡：紫电一道道劈到敌人头上。</summary>
-        void StormFx(List<Vector2> targets, bool mine, Vector2 pos, float r)
-        {
-            Ink("fx_enso", Pal.Purple.A(0.6f), pos, r * 1.6f, 1.0f, 0, 42, 0.3f, 360f, 0.6f);
-            int count = Mathf.Max(4, targets.Count);
-            for (int i = 0; i < count; i++)
-            {
-                var t = i < targets.Count ? targets[i] : pos + UnityEngine.Random.insideUnitCircle * r;
-                int idx = i;
-                After(i * 0.06f, () =>
-                {
-                    var top = t + new Vector2(Rnd(-0.5f, 0.5f), 3.2f);
-                    var mid = Vector2.Lerp(top, t, 0.5f) + new Vector2(Rnd(-0.35f, 0.35f), 0);
-                    Streak(top, mid, 0f, 0.16f, Thunder, Color.white, 0.16f, 47, 1.6f);
-                    Streak(mid, t, 0f, 0.16f, Thunder, Color.white, 0.16f, 47, 1.6f);
-                    Impact(t, 0.9f, Pal.Purple.A(0.75f), Thunder, 2);
-                    if (mine && idx == 0) { HitStop(0.06f); _shake = Mathf.Max(_shake, 0.9f); }
-                });
-            }
         }
 
         // ─────────────────────────── 截图验收 ───────────────────────────

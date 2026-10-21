@@ -301,6 +301,18 @@ namespace Rescue
             return fresh;
         }
 
+        /// <summary>从当前这一回起，连续按通关结算若干回。不落盘，调用方自己 Write。</summary>
+        public static int SkipStory(int count)
+        {
+            int n = 0;
+            for (int i = 0; i < count && D.unlocked < ChapterDef.StoryCount; i++)
+            {
+                WinStory(D.unlocked);
+                n++;
+            }
+            return n;
+        }
+
         /// <summary>聚义厅阵容：存档里的五人，不足就从已入伙里随机补。</summary>
         public static List<HeroId> Team()
         {
@@ -348,13 +360,22 @@ namespace Rescue
 
         public const int MaxWeapons = 60;
 
-        /// <summary>撑到第四波掉一件兵器：只掉已经入伙的，凑出来的优先，品级越高越难掉。过关入伙发生在这一步之前。</summary>
-        public static string RollWeapon(BattleResult r)
+        /// <summary>这一局缴获的兵器。没掉到时 Text 为空；囊满时 Text 是换成铜钱，IsWeapon 为假。</summary>
+        public readonly struct WeaponFind
         {
-            if (r.Quit || r.Wave < 4) return "";
+            public readonly string Text;
+            public readonly HeroId Hero;
+            public readonly bool IsWeapon;
+            public WeaponFind(string text, HeroId hero, bool weapon) { Text = text; Hero = hero; IsWeapon = weapon; }
+        }
+
+        /// <summary>撑到第四波掉一件兵器：只掉已经入伙的，凑出来的优先，品级越高越难掉。过关入伙发生在这一步之前。</summary>
+        public static WeaponFind RollWeapon(BattleResult r)
+        {
+            if (r.Quit || (!r.GmDrop && r.Wave < 4)) return default;
             var cands = new List<HeroId>();
             Weapons.CollectDropCandidates(r.Formed, r.Pool, Joined, cands);
-            if (cands.Count == 0 || UnityEngine.Random.value > 0.72f) return "";
+            if (cands.Count == 0 || (!r.GmDrop && UnityEngine.Random.value > 0.72f)) return default;
             int total = 0;
             foreach (var id in cands) total += Weapons.DropWeight(HeroDef.Get(id).WGrade);
             int x = UnityEngine.Random.Range(0, total);
@@ -367,11 +388,11 @@ namespace Rescue
             if (D.weapons.Count >= MaxWeapons)
             {
                 D.coins += RecycleCoins;
-                return "兵器囊已满，换成铜钱 " + RecycleCoins;
+                return new WeaponFind("兵器囊已满，换成铜钱 " + RecycleCoins, pick, false);
             }
             D.weapons.Add((int)pick);
             var d = HeroDef.Get(pick);
-            return d.Name + "的" + d.Weapon;
+            return new WeaponFind(d.Name + "的" + d.Weapon, pick, true);
         }
     }
 
