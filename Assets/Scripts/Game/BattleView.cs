@@ -1009,6 +1009,7 @@ namespace Rescue
                 }
                 case Ev.Buns:
                     if (mine) BunFly(World(ev.Side, ev.P), (int)ev.Val);
+                    if (mine && ev.Flag == 2 && _pieces.TryGetValue(ev.A, out var stove)) stove.Punch(0.14f);
                     break;
                 case Ev.Heal:
                 {
@@ -1481,6 +1482,8 @@ namespace Rescue
             public Func<int> Count;
             public string Name, Desc, Icon;
             public Color Disc;
+            /// <summary>要落在某一格上才生效（天书）；不设就是整片战场。</summary>
+            public Func<int, int, bool> CanAt, UseAt;
         }
 
         const float LongPress = 0.32f;
@@ -1492,6 +1495,9 @@ namespace Rescue
         Transform _ghost;
         SpriteRenderer _ghostDisc, _ghostIcon, _zone, _zoneRim;
         TextMesh _zoneText;
+        SpriteRenderer _zonePill;
+        readonly SpriteRenderer[,] _aimRim = new SpriteRenderer[Board.Cols, Board.Rows], _aimTag = new SpriteRenderer[Board.Cols, Board.Rows];
+        readonly TextMesh[,] _aimText = new TextMesh[Board.Cols, Board.Rows];
 
         void BuildActives()
         {
@@ -1500,7 +1506,7 @@ namespace Rescue
             {
                 new ActiveItem { Btn = _mengBtn, Use = p.UseMengHan, Cd = () => p.MengCd, Max = Tuning.CdMeng, Count = () => p.Items.MengHan, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Icon = "it_menghan", Disc = Pal.Hex("C9A6EE") },
                 new ActiveItem { Btn = _baoziBtn, Use = p.UseBaozi, Cd = () => p.BaoziCd, Max = Tuning.CdBaozi, Count = () => p.Items.Baozi, Name = "包子", Desc = "五成半回一颗心，否则掉一颗", Icon = "bun", Disc = Pal.Hex("A4D8F2") },
-                new ActiveItem { Btn = _shuBtn, Use = p.UseTianShu, Cd = () => p.ShuCd, Max = Tuning.CdShu, Count = () => p.Items.TianShu, Name = "天书", Desc = "场上最低级的兵升一级", Icon = "it_tianshu", Disc = Pal.Hex("F6C46B") },
+                new ActiveItem { Btn = _shuBtn, UseAt = p.UseTianShu, CanAt = p.ShuTarget, Cd = () => p.ShuCd, Max = Tuning.CdShu, Count = () => p.Items.TianShu, Name = "天书", Desc = "拖到哪个兵身上，哪个升一级；灶也能升", Icon = "it_tianshu", Disc = Pal.Hex("F6C46B") },
                 new ActiveItem { Btn = _fuBtn, Use = p.UseFu, Cd = () => p.FuCd, Max = Tuning.CdFu, Count = () => p.Items.Fu, Name = "攻速符", Desc = "全军攻速 +40%，持续十二秒", Icon = "it_fu", Disc = Pal.Hex("C9A6EE") },
                 new ActiveItem { Btn = _trapBtn, Use = p.UseTrap, Cd = () => p.TrapCd, Max = Tuning.CdTrap, Count = () => p.Items.Trap, Name = "陷阱", Desc = "官兵跌回去，一时爬不上来", Icon = "it_trap", Disc = Pal.Hex("C5E08A") },
             };
@@ -1508,8 +1514,20 @@ namespace Rescue
             float fieldY = MyBottom + Board.Rows * 0.5f;
             _zone = Gfx.Sprite(_low, Art.White, Color.clear, new Vector2(0, fieldY), new Vector2(Board.Cols, Board.Rows), 15, "itemZone");
             _zoneRim = Gfx.Sprite(_low, Art.Frame, Color.clear, new Vector2(0, fieldY), new Vector2(Board.Cols - 0.1f, Board.Rows - 0.1f), 16, "itemZoneRim");
-            _zoneText = Gfx.Text(_low, "", Fonts.Brush, 0.46f, Pal.Paper, new Vector2(0, fieldY), 17);
+            _zoneText = Gfx.Text(_root, "", Fonts.Brush, 0.46f, Pal.Paper, new Vector2(0, fieldY), 48);
             _zone.enabled = _zoneRim.enabled = false;
+            _zonePill = Gfx.Sprite(_root, Art.Rounded, Pal.Ink.A(0.72f), new Vector2(0, fieldY), new Vector2(3.2f, 0.66f), 47, "zonePill");
+            _zonePill.enabled = false;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var at = CellWorld(0, c, r);
+                    _aimRim[c, r] = Gfx.Sprite(_root, Art.Frame, Color.clear, at, new Vector2(1.02f, 1.02f), 44, "aim");
+                    _aimTag[c, r] = Gfx.Sprite(_root, Art.Circle, Pal.Gold, at + new Vector2(-0.3f, 0.3f), Vector2.one * 0.36f, 45, "aimTag");
+                    _aimText[c, r] = Gfx.Text(_root, "升", Fonts.Brush, 0.26f, Pal.Paper, at + new Vector2(-0.3f, 0.29f), 46);
+                    _aimRim[c, r].enabled = _aimTag[c, r].enabled = false;
+                    _aimText[c, r].gameObject.SetActive(false);
+                }
 
             _ghost = new GameObject("itemGhost").transform;
             _ghost.SetParent(_root, false);
@@ -1580,6 +1598,11 @@ namespace Rescue
             _ghost.localPosition = w + new Vector2(0, 0.55f);
             _ghost.localScale = Vector3.one * (field ? 0.92f : 0.78f);
             float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 7f);
+            if (a.CanAt != null)
+            {
+                DrawTargets(a, w, field, cooling, pulse);
+                return;
+            }
             _zone.enabled = _zoneRim.enabled = field;
             _zoneText.text = field ? (cooling ? $"还要 {Mathf.CeilToInt(a.Cd())} 秒" : "松手放出" + a.Name) : "";
             var tint = cooling ? Pal.InkSoft : a.Disc;
@@ -1587,8 +1610,75 @@ namespace Rescue
             _zoneRim.color = (cooling ? Pal.Ink : Pal.GoldBright).A(0.55f + 0.35f * pulse);
         }
 
+        /// <summary>点名的道具：能落的格子描金标「升」，指到的那格更亮；字写在指到的格子上方。</summary>
+        void DrawTargets(ActiveItem a, Vector2 w, bool field, bool cooling, float pulse)
+        {
+            _zone.enabled = false;
+            _zoneRim.enabled = false;
+            bool hover = TryMyCell(w + new Vector2(0, 0.55f), out var hc, out var hr);
+            bool hit = false;
+            int any = 0;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    bool ok = !cooling && a.CanAt(c, r);
+                    if (ok) any++;
+                    bool on = ok && hover && c == hc && r == hr;
+                    hit |= on;
+                    _aimRim[c, r].enabled = _aimTag[c, r].enabled = ok;
+                    _aimText[c, r].gameObject.SetActive(ok);
+                    if (!ok) continue;
+                    _aimRim[c, r].color = on ? Pal.GoldBright : Pal.GoldBright.A(0.55f + 0.4f * pulse);
+                    _aimRim[c, r].transform.localScale = Vector3.one * (on ? 1.08f : 1f);
+                    _aimTag[c, r].color = on ? Pal.RedDeep : Pal.Gold;
+                }
+            _zonePill.enabled = field;
+            if (!field) { _zoneText.text = ""; return; }
+            _zoneText.text = cooling ? $"还要 {Mathf.CeilToInt(a.Cd())} 秒"
+                : hit ? "松手升一级"
+                : any == 0 ? "场上没有能升级的" : "拖到发光的兵或灶上";
+            var at = hit ? CellWorld(0, hc, hr) + new Vector2(0, 1.25f) : new Vector2(0, MyBottom + Board.Rows * 0.5f);
+            at.x = Mathf.Clamp(at.x, Left + 1.7f, -Left - 1.7f);
+            _zoneText.transform.localPosition = at;
+            _zonePill.transform.localPosition = at;
+        }
+
         /// <summary>验收截图用：摆出拖着第 i 颗主动道具悬在战场上的样子。</summary>
         public void PreviewItemDrag(int i, Vector2 w) => DrawDrag(_actives[i], w);
+
+        /// <summary>验收截图用：摆两个兵和一张灶，返回拖天书悬在第一个兵上的手指位置。</summary>
+        public bool ShotShuTarget(out Vector2 w)
+        {
+            HideBubble();
+            var p = M.Player;
+            p.Items.TianShu = Math.Max(1, p.Items.TianShu);
+            p.ShuCd = 0f;
+            int placed = 0;
+            w = default;
+            for (int r = Board.Rows - 1; r >= 0 && placed < 2; r--)
+                for (int c = 0; c < Board.Cols && placed < 2; c++)
+                {
+                    if (!p.Board.Placeable(c, r) || p.Board.Pieces[c, r] != null) continue;
+                    p.Board.Pieces[c, r] = Piece.Unit(placed == 0 ? UnitKind.Dao : UnitKind.Gong, placed + 1);
+                    if (placed == 0) w = CellWorld(0, c, r) - new Vector2(0, 0.55f);
+                    placed++;
+                }
+            if (!p.FindStove(out _, out _))
+                for (int r = 0; r < Board.Rows; r++)
+                    for (int c = Board.Cols - 1; c >= 0; c--)
+                        if (p.Board.Placeable(c, r) && p.Board.Pieces[c, r] == null && !p.FindStove(out _, out _))
+                            p.Board.Pieces[c, r] = Piece.Stove();
+            p.RecomputeHeroes();
+            return placed > 0;
+        }
+
+        /// <summary>验收截图用：点开场上那张灶的说明。</summary>
+        public void ShotStoveInfo()
+        {
+            CancelPress();
+            var p = M.Player;
+            if (p.FindStove(out int c, out int r) && _pieces.TryGetValue(p.Board.Pieces[c, r].Id, out var v)) ShowInfo(v);
+        }
 
         /// <summary>验收截图用：长按第 i 颗主动道具弹出的说明。</summary>
         public void PreviewItemBubble(int i)
@@ -1603,6 +1693,14 @@ namespace Rescue
             _ghost.gameObject.SetActive(false);
             _zone.enabled = _zoneRim.enabled = false;
             _zoneText.text = "";
+            _zoneText.transform.localPosition = new Vector2(0, MyBottom + Board.Rows * 0.5f);
+            _zonePill.enabled = false;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    _aimRim[c, r].enabled = _aimTag[c, r].enabled = false;
+                    _aimText[c, r].gameObject.SetActive(false);
+                }
             if (_bubbleKey != null && _bubbleKey.StartsWith("hold:")) HideBubble();
         }
 
@@ -1615,13 +1713,32 @@ namespace Rescue
                 Tip(at, $"{a.Name}还要 {Mathf.CeilToInt(a.Cd())} 秒");
                 return;
             }
+            if (a.UseAt != null)
+            {
+                if (!TryMyCell(w + new Vector2(0, 0.55f), out var c, out var r) || !a.UseAt(c, r))
+                {
+                    Sfx.Play(Snd.Deny);
+                    Tip(at, AnyTarget(a) ? "拖到兵或灶上才算数，这本没用掉" : "场上没有能升级的");
+                    return;
+                }
+                Ring(CellWorld(0, c, r), 0.9f, a.Disc, 0.4f, 46);
+                return;
+            }
             if (!a.Use())
             {
                 Sfx.Play(Snd.Deny);
-                Tip(at, a.Name == "天书" ? "场上没有能升级的兵" : "现在用不了");
+                Tip(at, "现在用不了");
                 return;
             }
             Ring(w, 2.2f, a.Disc, 0.45f, 46);
+        }
+
+        static bool AnyTarget(ActiveItem a)
+        {
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (a.CanAt(c, r)) return true;
+            return false;
         }
 
         // ─────────────────────────── 说明气泡 ───────────────────────────
@@ -1766,6 +1883,13 @@ namespace Rescue
             }
             int slot = CampAt(drop);
             if (slot < 0) slot = CampAt(w);
+            if (v.Piece.Type == PieceType.Stove && (slot >= 0 || OverRecruit(w)))
+            {
+                Sfx.Play(Snd.Deny);
+                v.Punch(0.1f);
+                Tip(new Vector2(0, CampY + 1.1f), "灶搬不回山寨，只能在场上挪");
+                return;
+            }
             if (slot >= 0)
             {
                 ok = _dragCamp >= 0 ? p.CampToCamp(_dragCamp, slot) : p.CellToCamp(_dragCell.c, _dragCell.r, slot);
@@ -1947,6 +2071,18 @@ namespace Rescue
                 range = d.RangeWith(M.Player.Items.Far);
                 body = $"类型：{d.TypeLabel}　射程：{range:0.#}格\n攻击力：{d.DamageAt(piece.Level):0.#}　攻速：{1f / d.CooldownAt(piece.Level):0.0}次/秒\n满级{UnitDef.MaxLevel}级 · {d.Role}";
             }
+            else if (piece.Type == PieceType.Stove)
+            {
+                int lv = Mathf.Clamp(piece.Level, 1, Tuning.StoveMaxLevel);
+                int cap = Side.StoveCapAt(lv);
+                int made = M.Player.StoveMade;
+                title = "十字坡灶";
+                level = $"Lv.{lv}";
+                seal = Pal.Hex("F6D3A8");
+                string state = made >= cap ? "这一局的面用完了" : $"这一局已出 {made}/{cap} 个";
+                string up = lv >= Tuning.StoveMaxLevel ? "火已经最旺了" : $"天书升 {lv + 1} 级：{Tuning.StoveGap[lv]:0.#} 秒出 {Tuning.StoveYield[lv]} 个，最多 {Side.StoveCapAt(lv + 1)} 个";
+                body = FitLines(26, 5, $"每 {Tuning.StoveGap[lv - 1]:0.#} 秒出 {Tuning.StoveYield[lv - 1]} 个炊饼　{state}", up, "能在场上挪，不能收回山寨");
+            }
             else if (piece.Type == PieceType.Shovel)
             {
                 title = "方便铲";
@@ -1984,7 +2120,9 @@ namespace Rescue
                 if (bonds.Length > 0) bonds = $"羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
                 string star = d.Rank > 0 ? d.Star : "隐藏好汉";
                 string affix = gearDef == null ? "" : Weapons.AffixText(gearDef.WKind);
-                body = FitLines(26, 7, $"{star}·{d.Nick}　类型：{d.TypeLabel}", atk, xp, gear, affix, d.Skill, bonds);
+                var move = Weapons.MoveOf(gearDef);
+                string moveLine = move == WeaponMove.None ? "" : $"招式「{Weapons.MoveName(move)}」{Weapons.MoveText(move)}";
+                body = FitLines(26, 8, $"{star}·{d.Nick}　类型：{d.TypeLabel}", atk, xp, gear, affix, moveLine, d.Skill, bonds);
                 range = M.Player.ShownRange(d);
                 style = d.Disha ? RangeStyle.Disha : RangeStyle.Hero;
             }
@@ -2000,7 +2138,7 @@ namespace Rescue
             }
 
             _cardKey = "piece";
-            PlaceCard(title, level, body, piece.Glyph.ToString(), seal, null);
+            PlaceCard(title, level, body, piece.Glyph.ToString(), seal, piece.Type == PieceType.Stove ? Art.Img("it_stove") : null);
 
             SetPicked(v);
             if (range > 0f && piece.Type != PieceType.Shovel) ShowRange(center, range, style, false);
@@ -2016,7 +2154,7 @@ namespace Rescue
             int lines = 1;
             foreach (var ch in body) if (ch == '\n') lines++;
             if (string.IsNullOrEmpty(body)) lines = 0;
-            float h = Mathf.Clamp(0.72f + lines * pitch, 1.28f, 2.55f);
+            float h = Mathf.Clamp(0.72f + lines * pitch, 1.28f, 2.81f);
 
             _card.gameObject.SetActive(true);
             _card.localPosition = new Vector2(0f, CampY - 0.66f);
@@ -2330,11 +2468,14 @@ namespace Rescue
                 _shadow = Gfx.Sprite(Root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.07f), new Vector2(0.92f, 0.92f), 20);
                 _tile = Gfx.Sprite(Root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.92f, 0.92f), 21);
                 _edge = Gfx.Sprite(Root, Art.Frame, Pal.Ink.A(0.22f), Vector2.zero, new Vector2(0.92f, 0.92f), 21);
-                _glyph = Gfx.Text(Root, p.Type == PieceType.Shovel ? "" : p.Glyph.ToString(), Fonts.Brush, 0.74f, Pal.Ink, new Vector2(0, -0.03f), 22);
+                bool iconOnly = p.Type == PieceType.Shovel || p.Type == PieceType.Stove;
+                _glyph = Gfx.Text(Root, iconOnly ? "" : p.Glyph.ToString(), Fonts.Brush, 0.74f, Pal.Ink, new Vector2(0, -0.03f), 22);
                 _glyphT = _glyph.transform;
                 _level = Gfx.Text(Root, "", Fonts.Kai, 0.25f, Pal.InkSoft, new Vector2(0.31f, 0.31f), 23);
                 if (p.Type == PieceType.Shovel)
                     _icon = Gfx.Sprite(Root, Art.Img("shovel"), Color.white, Vector2.zero, Vector2.one * 0.72f, 22);
+                if (p.Type == PieceType.Stove)
+                    _icon = Gfx.Sprite(Root, Art.Img("it_stove"), Color.white, new Vector2(0, -0.02f), Vector2.one * 0.8f, 22);
                 if (p.Type == PieceType.Unit)
                 {
                     _weapon = Gfx.Sprite(Root, Art.Img(WeaponImg(p.Kind)), Color.white, Vector2.zero, Vector2.one * WeaponSize, 24);
@@ -2360,6 +2501,15 @@ namespace Rescue
                     _tile.color = Color.Lerp(Pal.Tile, Pal.Raft, 0.35f);
                     _edge.color = Pal.Willow.A(0.6f);
                     _level.text = "";
+                    return;
+                }
+                if (Piece.Type == PieceType.Stove)
+                {
+                    var warm = Piece.Level >= Tuning.StoveMaxLevel ? Pal.Hex("E8823A") : Pal.Hex("F2B06A");
+                    _tile.color = Color.Lerp(Pal.Tile, warm, 0.25f + 0.12f * (Piece.Level - 1));
+                    _edge.color = Pal.Hex("C2552B").A(0.45f + 0.2f * (Piece.Level - 1));
+                    _level.text = Piece.Level.ToString();
+                    _level.color = Pal.RedDeep;
                     return;
                 }
                 _level.text = Piece.Level.ToString();

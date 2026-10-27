@@ -152,6 +152,26 @@ namespace Rescue
             done(status, reply, ok ? null : Describe(status, reply));
         }
 
+        /// <summary>和 Call 一样登录、401 重试，但把原文交回去，由调用方自己解析 data。</summary>
+        public static IEnumerator CallText(string path, string json, Action<long, string, string> done)
+        {
+            string err = null;
+            yield return EnsureToken(e => err = e);
+            if (err != null) { done(0, null, err); yield break; }
+
+            long status = 0;
+            string text = null;
+            yield return PostText(path, json, _tok.token, (s, t) => { status = s; text = t; });
+            if (status == 401)
+            {
+                ClearToken();
+                yield return EnsureToken(e => err = e);
+                if (err != null) { done(401, text, err); yield break; }
+                yield return PostText(path, json, _tok.token, (s, t) => { status = s; text = t; });
+            }
+            done(status, text, status == 200 ? null : "HTTP " + status);
+        }
+
         public static void ClearToken()
         {
             _tok = null;
@@ -183,6 +203,20 @@ namespace Rescue
 
         static IEnumerator Post(string path, string json, string token, Action<long, CloudReply> done)
         {
+            yield return PostText(path, json, token, (status, text) =>
+            {
+                CloudReply reply = null;
+                if (!string.IsNullOrEmpty(text))
+                {
+                    try { reply = JsonUtility.FromJson<CloudReply>(text); }
+                    catch (Exception) { reply = null; }
+                }
+                done(status, reply);
+            });
+        }
+
+        static IEnumerator PostText(string path, string json, string token, Action<long, string> done)
+        {
             using (var req = new UnityWebRequest(CloudConfig.BaseUrl + path, "POST"))
             {
                 req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json ?? "{}"));
@@ -191,15 +225,7 @@ namespace Rescue
                 if (!string.IsNullOrEmpty(token)) req.SetRequestHeader("Authorization", "Bearer " + token);
                 req.timeout = CloudConfig.RequestTimeoutSec;
                 yield return req.SendWebRequest();
-
-                CloudReply reply = null;
-                string text = req.downloadHandler != null ? req.downloadHandler.text : null;
-                if (!string.IsNullOrEmpty(text))
-                {
-                    try { reply = JsonUtility.FromJson<CloudReply>(text); }
-                    catch (Exception) { reply = null; }
-                }
-                done(req.responseCode, reply);
+                done(req.responseCode, req.downloadHandler != null ? req.downloadHandler.text : null);
             }
         }
 

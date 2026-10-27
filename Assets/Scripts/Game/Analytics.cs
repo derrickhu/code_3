@@ -80,6 +80,38 @@ namespace Rescue
             Track("level_fail", LevelParams(string.IsNullOrEmpty(reason) ? "lose" : reason, wave, kills));
         }
 
+        /// <summary>商店买、看广告白拿、抽奖抽中。how 是 coin / ad / lotto / refund。</summary>
+        public static void ShopBuy(string item, string how, int price)
+        {
+            if (!_sessionStarted) return;
+            Track("shop_buy", Param.Of("item", item ?? "").Str("how", how ?? "").Num("price", price));
+        }
+
+        /// <summary>开局带了什么：被动、主动、兵器。</summary>
+        public static void Loadout(string passives, string actives, int armed)
+        {
+            if (!_sessionStarted) return;
+            Track("battle_loadout", Param.Of("passives", passives ?? "").Str("actives", actives ?? "").Num("armed", armed).Num("level_id", _levelId));
+        }
+
+        public static void WeaponDrop(string weapon, int grade, bool recycled)
+        {
+            if (!_sessionStarted) return;
+            Track("weapon_drop", Param.Of("weapon", weapon ?? "").Num("grade", grade).Bool("recycled", recycled));
+        }
+
+        public static void RankChange(int oldTier, int oldStars, int tier, int stars, bool win)
+        {
+            if (!_sessionStarted) return;
+            Track("rank_change", Param.Of("old_tier", oldTier).Num("old_stars", oldStars).Num("tier", tier).Num("stars", stars).Bool("win", win));
+        }
+
+        public static void DailyBattle(bool win, bool first)
+        {
+            if (!_sessionStarted) return;
+            Track("daily_battle", Param.Of("win", win).Bool("first_win", first));
+        }
+
         public static void AdRequest(string scene) => Ad("ad_request", scene, null);
         public static void AdShow(string scene) => Ad("ad_show", scene, null);
 

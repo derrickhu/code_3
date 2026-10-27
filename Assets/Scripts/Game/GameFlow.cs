@@ -81,7 +81,11 @@ namespace Rescue
             {
                 CloudSync.Imported += OnCloudImported;
                 var loading = LoadingScreen.Open(transform);
-                CloudSync.Startup(() => StartCoroutine(FinishBoot(loading)));
+                CloudSync.Startup(() =>
+                {
+                    LiveConfig.Refresh();
+                    StartCoroutine(FinishBoot(loading));
+                });
             }
         }
 
@@ -140,6 +144,7 @@ namespace Rescue
             if (_home) Destroy(_home.gameObject);
             _home = null;
             _pending = Resolve(chapter);
+            if (_pending.IsDaily && !autoplay) Save.NoteDailyTry();
             if (BattleScreen.Epic(_pending)) Sfx.PlayEpic();
             else Sfx.PlayStory();
             if (autoplay) OpenBattle(chapter, true);
@@ -151,6 +156,7 @@ namespace Rescue
         /// <summary>剧情回直接取；越过终章的序号是聚义厅，按当前阵数和阵容现生成。</summary>
         static ChapterDef Resolve(int chapter)
         {
+            if (chapter == ChapterDef.DailySlot) return ChapterDef.Daily(int.Parse(Save.Today));
             if (chapter < ChapterDef.StoryCount) return ChapterDef.All[Mathf.Max(0, chapter)];
             return ChapterDef.Endless(Save.D.endlessRound, Save.Team(), (uint)Environment.TickCount);
         }
@@ -204,7 +210,7 @@ namespace Rescue
             Ui.Stroke(vsText, Ui.Edge, 5f);
             Tween.Pop(vs.transform, 0.35f, 0.3f);
             Tween.Pop(vsText.transform, 0.35f, 0.35f);
-            Ui.Label(layer, (ch.IsEndless ? "" : "第" + BattleView.ToCn(ch.Index + 1) + "回 · ") + ch.Name, 44, Pal.Paper.A(0.9f), new Vector2(0, -520), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
+            Ui.Label(layer, (ch.IsEndless || ch.IsDaily ? "" : "第" + BattleView.ToCn(ch.Index + 1) + "回 · ") + ch.Name, 44, Pal.Paper.A(0.9f), new Vector2(0, -520), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
             return layer;
         }
 
@@ -519,10 +525,15 @@ namespace Rescue
             yield return Shot("home");
             Save.D.claimTaken = false;
 
+            Save.D.region = "";
+            yield return Page(() => _home.ShowBoard(), "board_pick");
+            Save.D.region = "山东";
             yield return Page(() => _home.ShowBoard(), "board");
             yield return Page(() => _home.ShowArmory(), "armory");
             yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.WuSong); }, "armory_detail");
+            yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.LinChong); }, "armory_move");
             yield return Page(() => _home.ShowCodex(), "codex");
+            yield return Page(() => _home.ShowDailyBattle(), "daily_battle");
             yield return Page(() => _home.ShowChapters(), "chapters");
             yield return Page(() => JoinPanel.Show(new System.Collections.Generic.List<HeroId> { HeroId.LinChong }, 3, false, null), "join");
             Destroy(Ui.Root.Find("join")?.gameObject);
@@ -554,6 +565,13 @@ namespace Rescue
             _home.DebugSpin();
             yield return new WaitForSecondsRealtime(3.2f);
             yield return Shot("lotto_win");
+            foreach (var id in new[] { 0, 1, 2, 3, 12, 13 })
+                if (!ShopItem.All[id].Owned()) ShopItem.All[id].Give();
+            Destroy(_home.gameObject);
+            ShowHome();
+            _home.ShowShop();
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return Shot("shop_passive");
 
             Destroy(_home.gameObject);
             _home = null;
@@ -574,6 +592,12 @@ namespace Rescue
             yield return new WaitForSecondsRealtime(0.3f);
             yield return Shot("item_bubble");
             yield return new WaitForSecondsRealtime(1.2f);
+            if (_battle.View.ShotShuTarget(out var shuAt)) _battle.View.PreviewItemDrag(2, shuAt);
+            yield return new WaitForSecondsRealtime(0.3f);
+            yield return Shot("item_shu");
+            _battle.View.ShotStoveInfo();
+            yield return new WaitForSecondsRealtime(0.3f);
+            yield return Shot("item_stove");
             _battle.ShotPause();
             yield return new WaitForSecondsRealtime(0.6f);
             yield return Shot("pause");

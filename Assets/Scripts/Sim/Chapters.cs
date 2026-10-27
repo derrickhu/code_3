@@ -502,6 +502,45 @@ namespace Rescue.Sim
             };
         }
 
+        // ─────────────────────────── 每日一战 ───────────────────────────
+
+        /// <summary>每日一战用的回目序号。不是剧情回，也不是聚义厅。</summary>
+        public const int DailySlot = 1000;
+
+        /// <summary>
+        /// 每日一战：同一天所有人同一张图、同一个头目、同一池好汉、同一个种子。
+        /// 难度固定在前中期，第五回之后的玩家都能打；头目多一门当天抽的绝技。
+        /// </summary>
+        public static ChapterDef Daily(int day)
+        {
+            var rng = new Rng((uint)day * 2246822519u + 3266489917u);
+            var src = All[rng.Range(0, All.Length)];
+            var skills = new List<BossSkill>(src.Boss.Skills);
+            int kinds = Enum.GetValues(typeof(BossSkill)).Length;
+            if (skills.Count < 2)
+            {
+                var extra = (BossSkill)rng.Range(0, kinds);
+                if (!skills.Contains(extra)) skills.Add(extra);
+            }
+            var c = (ChapterDef)src.MemberwiseClone();
+            c.IsDaily = true;
+            c.Seed = (uint)day;
+            c.Name = "每日一战·" + src.Name;
+            c.Act = "每日一战";
+            c.Map = Maps[EndlessMaps[rng.Range(0, EndlessMaps.Length)]];
+            c.Boss = new BossDef { Name = src.Boss.Name, Title = src.Boss.Title, Skills = skills.ToArray(), Nemesis = src.Boss.Nemesis, SkillText = BossDef.Describe(skills.ToArray(), src.Boss.Nemesis) };
+            c.Joins = new HeroId[0];
+            c.RivalSkill = 0.72f;
+            c.RivalIncome = 1f;
+            c.FoeHp = All[Math.Min(10, All.Length - 1)].FoeHp;
+            return c;
+        }
+
+        /// <summary>每日一战；剧情回、聚义厅为假。</summary>
+        public bool IsDaily;
+        /// <summary>每日一战当天的种子，人人一样。</summary>
+        public uint Seed;
+
         /// <summary>同一回换一池好汉（地图、头目、对手不变）。</summary>
         public ChapterDef WithPool(params HeroId[] pool)
         {

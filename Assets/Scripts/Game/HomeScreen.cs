@@ -45,18 +45,20 @@ namespace Rescue
 
         public static readonly ShopItem[] All =
         {
-            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +30，抢先聚义", Rarity = "卓越", Icon = "it_gang", Price = 40, Count = () => B(Save.D.gang), Give = () => Save.D.gang = true, Take = () => Save.D.gang = false },
-            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +22%，全局生效", Rarity = "史诗", Icon = "it_flag", Price = 80, Count = () => B(Save.D.flag), Give = () => Save.D.flag = true, Take = () => Save.D.flag = false },
-            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -25%，全局生效", Rarity = "史诗", Icon = "it_marsh", Price = 70, Count = () => B(Save.D.marsh), Give = () => Save.D.marsh = true, Take = () => Save.D.marsh = false },
-            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时，天降石碣砸下", Rarity = "传说", Icon = "it_stele", Price = 120, Count = () => B(Save.D.stele), Give = () => Save.D.stele = true, Take = () => Save.D.stele = false },
+            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +30，抢先聚义", Rarity = "卓越", Icon = "it_gang", Price = 40, Count = () => B(Save.D.gang), Give = () => { Save.D.gang = true; Save.NotePassive(0); }, Take = () => { Save.D.gang = false; Save.NotePassive(0); } },
+            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +22%，全局生效", Rarity = "史诗", Icon = "it_flag", Price = 80, Count = () => B(Save.D.flag), Give = () => { Save.D.flag = true; Save.NotePassive(1); }, Take = () => { Save.D.flag = false; Save.NotePassive(1); } },
+            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -25%，全局生效", Rarity = "史诗", Icon = "it_marsh", Price = 70, Count = () => B(Save.D.marsh), Give = () => { Save.D.marsh = true; Save.NotePassive(2); }, Take = () => { Save.D.marsh = false; Save.NotePassive(2); } },
+            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时，天降石碣砸下", Rarity = "传说", Icon = "it_stele", Price = 120, Count = () => B(Save.D.stele), Give = () => { Save.D.stele = true; Save.NotePassive(3); }, Take = () => { Save.D.stele = false; Save.NotePassive(3); } },
             new ShopItem { Id = 4, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = 60, Count = () => Save.D.menghan, Give = () => { Save.D.menghan++; Save.NoteActive(4); }, Take = () => { Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1); Save.NoteActive(4); } },
-            new ShopItem { Id = 5, Name = "天书", Desc = "场上最低级的兵升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = 150, Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
+            new ShopItem { Id = 5, Name = "天书", Desc = "拖到哪个兵身上，哪个升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = 150, Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
             new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "五成半回一颗心，否则掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = 50, Count = () => Save.D.baozi, Give = () => { Save.D.baozi++; Save.NoteActive(6); }, Take = () => { Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1); Save.NoteActive(6); } },
-            new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江多八颗心，能硬吃第一波", Rarity = "传说", Icon = "it_xuming", Price = 150, Count = () => B(Save.D.xuming), Give = () => Save.D.xuming = true, Take = () => Save.D.xuming = false },
-            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子，多开两块地", Rarity = "稀有", Icon = "shovel", Price = 50, Count = () => Save.D.shovels, Give = () => Save.D.shovels = 2, Take = () => Save.D.shovels = 0 },
+            new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江多八颗心，能硬吃第一波", Rarity = "传说", Icon = "it_xuming", Price = 150, Count = () => B(Save.D.xuming), Give = () => { Save.D.xuming = true; Save.NotePassive(7); }, Take = () => { Save.D.xuming = false; Save.NotePassive(7); } },
+            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子，多开两块地", Rarity = "稀有", Icon = "shovel", Price = 50, Count = () => Save.D.shovels, Give = () => { Save.D.shovels = 2; Save.NotePassive(8); }, Take = () => { Save.D.shovels = 0; Save.NotePassive(8); } },
             new ShopItem { Id = 9, Name = "攻速符", Desc = "单位攻速 +40%，持续十二秒", Rarity = "史诗", Icon = "it_fu", Active = true, Price = 80, Count = () => Save.D.fu, Give = () => { Save.D.fu++; Save.NoteActive(9); }, Take = () => { Save.D.fu = Mathf.Max(0, Save.D.fu - 1); Save.NoteActive(9); } },
-            new ShopItem { Id = 10, Name = "御敌千里", Desc = "远程单位攻击范围翻倍，全局生效", Rarity = "稀有", Icon = "it_far", Price = 90, Count = () => B(Save.D.far), Give = () => Save.D.far = true, Take = () => Save.D.far = false },
+            new ShopItem { Id = 10, Name = "御敌千里", Desc = "远程单位攻击范围翻倍，全局生效", Rarity = "稀有", Icon = "it_far", Price = 90, Count = () => B(Save.D.far), Give = () => { Save.D.far = true; Save.NotePassive(10); }, Take = () => { Save.D.far = false; Save.NotePassive(10); } },
             new ShopItem { Id = 11, Name = "陷阱", Desc = "敌人掉下去一时会爬不出来", Rarity = "稀有", Icon = "it_trap", Active = true, Price = 35, Count = () => Save.D.trap, Give = () => { Save.D.trap++; Save.NoteActive(11); }, Take = () => { Save.D.trap = Mathf.Max(0, Save.D.trap - 1); Save.NoteActive(11); } },
+            new ShopItem { Id = 12, Name = "十字坡灶", Desc = "占一格，慢慢出炊饼；天书能升灶", Rarity = "卓越", Icon = "it_stove", Price = 70, Count = () => B(Save.D.stove), Give = () => { Save.D.stove = true; Save.NotePassive(12); }, Take = () => { Save.D.stove = false; Save.NotePassive(12); } },
+            new ShopItem { Id = 13, Name = "招贤酒", Desc = "聚义时更常出好汉的字", Rarity = "史诗", Icon = "it_wine", Price = 90, Count = () => B(Save.D.wine), Give = () => { Save.D.wine = true; Save.NotePassive(13); }, Take = () => { Save.D.wine = false; Save.NotePassive(13); } },
         };
     }
 
@@ -120,8 +122,10 @@ namespace Rescue
 
             Ui.Tap(Ui.Icon(tl, "ui_gear", 100, new Vector2(80, -222)), ToggleSound);
             SideSign(tl, "ui_notice", "公告", new Vector2(80, -350), ShowNotice);
-            SideSign(tl, "ui_notice", "好汉谱", new Vector2(80, -476), ShowCodex);
+            _codexDot = SideSign(tl, "ui_notice", "好汉谱", new Vector2(80, -476), ShowCodex);
             SideSign(tl, "ui_notice", "回目", new Vector2(80, -602), ShowChapters);
+            _dailyDot = SideSign(tl, "ui_notice", "每日\n一战", new Vector2(80, -728), ShowDailyBattle);
+            if (!Save.DailyOpen) _dailyDot.transform.parent.GetComponent<Image>().color = new Color(0.62f, 0.6f, 0.58f);
             BuildGm(tl);
 
             var tr = Corner(1f, 1f, "topRight");
@@ -147,6 +151,8 @@ namespace Rescue
             SideBigIcon(Corner(1f, 0f, "bagEntry"), "ui_bag", "武器背包", new Vector2(-150, 230), ShowArmory);
 
             Refresh();
+            LiveConfig.Refresh();
+            LiveConfig.SubmitRank();
             if (!Save.Volatile && Save.RollDaily()) ShowDaily();
         }
 
@@ -204,8 +210,9 @@ namespace Rescue
             Ui.Tap(plus, () =>
             {
                 if (Stamina.Current >= Stamina.Max) { Nope("体力已满"); return; }
-                AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); });
+                AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); Toast("体力 +5"); });
             });
+            AdStub.Badge(tl, new Vector2(x + 316, HudY - 50), "补充体力");
         }
 
         /// <summary>顶栏的深色圆角条，和座次牌同一套描边。left 是条的左端。</summary>
@@ -218,13 +225,22 @@ namespace Rescue
             Ui.Box(parent, new Vector2(w - 36, 8), c + new Vector2(6, h / 2 - 12), Color.white.A(0.08f), null, name + "Gloss");
         }
 
-        void SideSign(RectTransform parent, string img, string text, Vector2 pos, Action onClick)
+        /// <summary>左边一列木牌。返回右上角的小红点，默认藏着。</summary>
+        Image SideSign(RectTransform parent, string img, string text, Vector2 pos, Action onClick)
         {
             var icon = Ui.Icon(parent, img, 118, pos);
             Ui.Tap(icon, onClick);
-            var t = Ui.Label(icon.transform, text, text.Length > 2 ? 30 : 36, Pal.Hex("4A2E1C"), new Vector2(0, 6), new Vector2(110, 60), TextAnchor.MiddleCenter, Fonts.Brush);
+            bool two = text.Contains("\n");
+            var t = Ui.Label(icon.transform, text, two ? 28 : text.Length > 2 ? 30 : 36, Pal.Hex("4A2E1C"), new Vector2(0, two ? 4 : 6), new Vector2(110, two ? 80 : 60), TextAnchor.MiddleCenter, Fonts.Brush);
             t.resizeTextForBestFit = false;
+            if (two) t.lineSpacing = 0.82f;
+            var dot = Ui.Box(icon.transform, new Vector2(30, 30), new Vector2(46, 44), Pal.Hex("E8392B"), Art.Circle, "redDot");
+            dot.type = Image.Type.Simple;
+            dot.gameObject.SetActive(false);
+            return dot;
         }
+
+        Image _codexDot, _dailyDot;
 
         void SideBigIcon(RectTransform parent, string img, string text, Vector2 pos, Action onClick)
         {
@@ -345,23 +361,43 @@ namespace Rescue
 
         void ShowNotice()
         {
+            string remote = LiveConfig.Notice;
+            if (!string.IsNullOrEmpty(remote))
+            {
+                Panel(LiveConfig.NoticeTitle, out var live, new Vector2(900, 1300));
+                var body = Ui.Label(live, remote.Replace("\\n", "\n"), 36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 1080), TextAnchor.UpperLeft);
+                body.lineSpacing = 1.15f;
+                return;
+            }
             Panel("公告", out var card, new Vector2(900, 1300));
             Ui.Label(card, "· 剧情五十七回，从史家村一路打到蓼儿洼；每赢一回，原著里这一回上山的好汉入伙\n" +
                 "· 好汉谱收齐一百单八将，忠义堂排座次；之后聚义厅自选五将车轮战\n" +
                 "· 座次：喽啰→小校→都头→提辖→步/水/马军头领→八骠骑→五虎将→地煞→天罡→天魁星，每阶分叁贰壹\n" +
                 "· 胜加星，满五星升一小阶；败掉星，没星再败降一小阶，不跌出大阶\n" +
-                "· 兵器分凡、利、宝、神四品，可交给任意已入伙的好汉，特性跟着兵器走；有渊源的好汉同场触发羁绊",
+                "· 兵器分凡、利、宝、神四品，可交给任意已入伙的好汉，特性跟着兵器走；六把名兵器各有一招；有渊源的好汉同场触发羁绊\n" +
+                "· 一场最多带两个主动、四个被动道具，在商店背包里点选\n" +
+                "· 打过第五回开放每日一战：人人同一阵，当天首胜得铜钱和兵器",
                 36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 900), TextAnchor.MiddleLeft);
         }
 
-        void Fight()
+        void Fight() => Fight(_selected);
+
+        void Fight(int slot)
         {
             if (!Stamina.Spend())
             {
-                Confirm("体力不够了", "看段广告，补 5 点体力？", "看广告", () => AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); }));
+                int left = AdStub.Left("补充体力");
+                if (left == 0)
+                {
+                    int sec = Stamina.SecondsToNext;
+                    Nope($"体力不够，今天的补体力广告也看完了。{sec / 60}分{sec % 60:00}秒后回 1 点");
+                    return;
+                }
+                string more = left > 0 ? $"\n今天还能补 {left} 次" : "";
+                Confirm("体力不够了", "看段广告，补 5 点体力？" + more, "看广告", () => AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); }));
                 return;
             }
-            _onFight?.Invoke(_selected);
+            _onFight?.Invoke(slot);
         }
 
         float _refreshT;
@@ -374,6 +410,8 @@ namespace Rescue
 
         void Refresh()
         {
+            if (_codexDot) _codexDot.gameObject.SetActive(Save.CodexPending > 0);
+            if (_dailyDot) _dailyDot.gameObject.SetActive(Save.DailyOpen && !Save.DailyWonToday);
             _coins.text = Save.D.coins.ToString();
             _stamina.text = StaminaText();
             if (_shopCoins != null) _shopCoins.text = _coins.text;

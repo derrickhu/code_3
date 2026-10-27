@@ -14,9 +14,60 @@ namespace Rescue.Sim
         public static readonly WeaponAffix Bare = new WeaponAffix { Dmg = 1f, Water = 1f, Cd = 1f, UltMul = 1f, UltCd = 1f };
     }
 
+    /// <summary>六把名兵器在种类特性之外多一招。招式跟着兵器走，谁带都一样，大招仍是这个人自己的。</summary>
+    public enum WeaponMove { None, Snake, FarBow, WideAxe, StaffKnock, FirstCut, Hook }
+
     public static class Weapons
     {
         public static readonly string[] Grades = { "凡器", "利器", "宝器", "神兵" };
+
+        public const float SnakeStun = 0.25f;
+        public const float FarBowPerCell = 0.06f;
+        public const float FarBowCap = 0.3f;
+        public const float AxeSplashMul = 1.35f;
+        public const float AxeCdMul = 1.15f;
+        public const float StaffKnock = 0.45f;
+        public const float FirstCutMul = 1.6f;
+        public const float HookSlowT = 1.5f;
+        public const float HookSlowMul = 0.6f;
+
+        /// <summary>按兵器出自谁认名兵器，不看是谁带着。</summary>
+        public static WeaponMove MoveOf(HeroDef weapon)
+        {
+            if (weapon == null) return WeaponMove.None;
+            return weapon.Id switch
+            {
+                HeroId.LinChong => WeaponMove.Snake,
+                HeroId.HuaRong => WeaponMove.FarBow,
+                HeroId.LiKui => WeaponMove.WideAxe,
+                HeroId.LuZhiShen => WeaponMove.StaffKnock,
+                HeroId.YangZhi => WeaponMove.FirstCut,
+                HeroId.XuNing => WeaponMove.Hook,
+                _ => WeaponMove.None,
+            };
+        }
+
+        public static string MoveName(WeaponMove m) => m switch
+        {
+            WeaponMove.Snake => "蛇矛缠身",
+            WeaponMove.FarBow => "百步穿杨",
+            WeaponMove.WideAxe => "板斧开路",
+            WeaponMove.StaffKnock => "禅杖扫街",
+            WeaponMove.FirstCut => "宝刀头一刀",
+            WeaponMove.Hook => "钩镰绊马",
+            _ => "",
+        };
+
+        public static string MoveText(WeaponMove m) => m switch
+        {
+            WeaponMove.Snake => "穿过的每个人都定身 0.25 秒，站在直路上最好",
+            WeaponMove.FarBow => "打得越远越疼，每格 +6%，最多 +30%",
+            WeaponMove.WideAxe => "溅射再大三成半，出手慢一成半，守拐角",
+            WeaponMove.StaffKnock => "命中把小兵打退一大步，守路口",
+            WeaponMove.FirstCut => "每个官兵挨这把刀的头一下 ×1.6",
+            WeaponMove.Hook => "命中的官兵慢四成，持续 1.5 秒",
+            _ => "",
+        };
 
         public static string KindName(WeaponKind k) => k switch
         {
@@ -73,7 +124,7 @@ namespace Rescue.Sim
             WeaponKind.Sword => "剑走偏锋：暴击率 +12%",
             WeaponKind.Stone => "暗器连珠：出手速度 +12%",
             WeaponKind.Rope => "套索缠身：命中定身再 +0.4 秒",
-            WeaponKind.Staff => "杖法通神：大招伤害 +30%",
+            WeaponKind.Staff => "杖法通神：大招伤害 +30%，命中击退小兵",
             WeaponKind.Halberd => "戟锋横扫：溅射 +0.5 格",
             WeaponKind.Cannon => "火药充足：大招冷却 -15%",
             WeaponKind.Relic => "随身宝物：大招冷却 -20%",
@@ -102,7 +153,7 @@ namespace Rescue.Sim
                 case WeaponKind.Sword: a.Crit = 0.12f; break;
                 case WeaponKind.Stone: a.Cd = 0.88f; break;
                 case WeaponKind.Rope: a.Stun = 0.4f; break;
-                case WeaponKind.Staff: a.UltMul = 1.3f; break;
+                case WeaponKind.Staff: a.UltMul = 1.3f; a.Knock = 0.2f; break;
                 case WeaponKind.Halberd: a.Splash = 0.5f; break;
                 case WeaponKind.Cannon: a.UltCd = 0.85f; break;
                 case WeaponKind.Relic: a.UltCd = 0.8f; break;

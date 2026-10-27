@@ -11,35 +11,19 @@ namespace Rescue
     {
         // ─────────────────────────── 排行榜 ───────────────────────────
 
-        static readonly string[] BoardNames = { "无名", "燕顺", "王英", "郑天寿", "石勇", "杜迁", "宋万", "朱贵", "李云", "无名", "焦挺", "邹渊", "孟康", "汤隆" };
         static readonly string[] BoardGlyph = { "燕", "王", "郑", "石", "杜", "宋", "朱", "李", "焦", "邹", "孟", "汤", "曹", "侯" };
-        static readonly string[] Regions = { "山东", "河北", "河南", "江苏", "浙江", "福建", "广东", "四川", "湖北", "江西" };
         static readonly Color[] RowColors = { Pal.Hex("E8664A"), Pal.Hex("F08A3C"), Pal.Hex("F5B868"), Pal.Hex("C9C6C0") };
-        const string MyRegion = "山东";
+        const float RowPitch = 146f;
+        bool _boardProvince = true;
 
-        struct BoardRow { public string Name, Glyph, Region; public int Score; }
-
-        static List<BoardRow> FakeBoard(bool province)
+        static string GlyphOf(string name)
         {
-            var rng = new System.Random(int.Parse(Save.Today) + (province ? 11 : 29));
-            var rows = new List<BoardRow>();
-            int score = (province ? 2300 : 2900) + rng.Next(0, 300);
-            for (int i = 0; i < 6; i++)
-            {
-                rows.Add(new BoardRow
-                {
-                    Name = BoardNames[rng.Next(BoardNames.Length)],
-                    Glyph = BoardGlyph[rng.Next(BoardGlyph.Length)],
-                    Region = province ? MyRegion : Regions[rng.Next(Regions.Length)],
-                    Score = score,
-                });
-                score -= 25 + rng.Next(0, 180);
-            }
-            return rows;
+            uint h = 2166136261;
+            foreach (var ch in name ?? "") h = (h ^ ch) * 16777619;
+            return BoardGlyph[h % (uint)BoardGlyph.Length];
         }
 
-        static int MyScore => RankRules.Score(Save.D.tier, Save.D.stars) + Mathf.Min(Save.D.wins, 30);
-
+        /// <summary>省榜 / 总榜：真实数据，从云端拉前五十名；连不上时只显示自己这一行。</summary>
         public void ShowBoard()
         {
             var layer = Ui.Fill(_root, new Color(0, 0, 0, 0.55f), true, "board");
@@ -56,37 +40,116 @@ namespace Rescue
             Ui.CloseX(b, new Vector2(-450, 850), () => Destroy(layer.gameObject));
 
             var list = Ui.Rect(b, "list");
-            bool province = true;
+            int ticket = 0;
             void Fill()
             {
+                int mine = ++ticket;
                 for (int i = list.childCount - 1; i >= 0; i--) Destroy(list.GetChild(i).gameObject);
-                BoardTab(list, "省榜", -170, province, () => { province = true; Fill(); });
-                BoardTab(list, "总榜", 170, !province, () => { province = false; Fill(); });
-                var rows = FakeBoard(province);
-                int mine = -1;
-                for (int i = 0; i < rows.Count; i++)
-                    if (MyScore > rows[i].Score) { mine = i; break; }
-                int shown = 0;
-                for (int i = 0; shown < 6 && i < rows.Count; i++)
+                string region = LiveConfig.MyRegion;
+                BoardTab(list, region + "榜", -200, 260, _boardProvince, () => { _boardProvince = true; Fill(); });
+                BoardTab(list, "总榜", 80, 260, !_boardProvince, () => { _boardProvince = false; Fill(); });
+                var pick = Ui.Framed(list, new Vector2(150, 84), new Vector2(345, 470), Pal.Hex("33403F"), Pal.Hex("B8913C"), 4f, "regionPick");
+                Ui.Stroke(Ui.Label(pick.transform, "换地区", 32, Pal.Paper, new Vector2(0, 2), new Vector2(150, 84), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 1.5f);
+                Ui.Tap(pick, () => ShowRegionPicker(layer, Fill));
+
+                var status = Ui.Label(list, "正在打听各路好汉……", 38, Pal.Paper.A(0.8f), new Vector2(0, 0), new Vector2(800, 60));
+                MyRowAt(list, -552, 0, LiveConfig.MyScore, false);
+                LiveConfig.LoadRank(_boardProvince ? region : "全国", data =>
                 {
-                    if (shown == mine) { BoardRowView(list, shown, null); shown++; if (shown >= 6) break; }
-                    BoardRowView(list, shown, rows[i]);
-                    shown++;
-                }
-                MyRow(list, mine);
+                    if (!list || mine != ticket) return;
+                    for (int i = list.childCount - 1; i >= 0; i--)
+                    {
+                        var child = list.GetChild(i);
+                        if (child.name == "myRow" || child.name == "framedMine") Destroy(child.gameObject);
+                    }
+                    if (status) Destroy(status.gameObject);
+                    var top = data != null && data.top != null ? data.top : new LiveConfig.RankRow[0];
+                    if (data == null)
+                    {
+                        Ui.Label(list, "连不上山寨，先看看自己的座次", 36, Pal.Paper.A(0.8f), new Vector2(0, 120), new Vector2(800, 60));
+                        Ui.Label(list, "联网后再打开就能看到各路好汉", 30, Pal.Paper.A(0.6f), new Vector2(0, 60), new Vector2(800, 50));
+                    }
+                    else if (top.Length == 0)
+                        Ui.Label(list, _boardProvince ? $"{region}还没人上榜，你就是头一个" : "还没人上榜", 36, Pal.Paper.A(0.8f), new Vector2(0, 120), new Vector2(800, 60));
+                    else BoardRows(list, top);
+                    MyRowAt(list, -552, data != null ? data.rank : 0, LiveConfig.MyScore, data != null);
+                    if (data != null && data.total > 0)
+                        Ui.Label(list, $"共 {data.total} 位好汉", 26, Pal.Paper.A(0.6f), new Vector2(330, -640), new Vector2(240, 36), TextAnchor.MiddleRight);
+                });
             }
             Fill();
+            if (string.IsNullOrEmpty(Save.D.region)) ShowRegionPicker(layer, Fill);
 
             BuildClaimStrip(b);
             Tween.Pop(b, 0.28f);
         }
 
-        void BoardTab(RectTransform parent, string text, float x, bool on, Action onClick)
+        void BoardRows(RectTransform list, LiveConfig.RankRow[] top)
         {
-            var face = Ui.Framed(parent, new Vector2(290, 84), new Vector2(x, 470), on ? Pal.Hex("E9C46A") : Pal.Hex("33403F"), Pal.Hex("B8913C"), 4f, "framedTab");
-            Ui.Stroke(Ui.Label(face.transform, text, 50, on ? Edge : Pal.Paper, new Vector2(0, 2), new Vector2(290, 84), TextAnchor.MiddleCenter, Fonts.Brush),
+            const float viewH = 6 * RowPitch - 16f;
+            var content = Ui.Scroll(list, new Vector2(860, viewH), new Vector2(0, 405 - viewH * 0.5f), top.Length * RowPitch, "rows");
+            for (int i = 0; i < top.Length; i++)
+            {
+                var r = top[i];
+                var pos = Ui.Top(content, 0, i * RowPitch + 65f);
+                if (r.me)
+                {
+                    MyRowAt(content, pos.y, i + 1, r.score, true, "framedMine");
+                    continue;
+                }
+                var face = Ui.Framed(content, new Vector2(840, 130), pos, RowColors[Mathf.Min(i, 3)], Edge, 5f, "row");
+                var t = face.transform;
+                RankBadge(t, i);
+                Avatar(t, new Vector2(-236, 0), GlyphOf(r.name), Pal.Tile);
+                Ui.Label(t, r.name, 30, Pal.Ink, new Vector2(-60, 26), new Vector2(220, 40), TextAnchor.MiddleLeft);
+                Ui.Label(t, r.region, 40, Pal.Ink, new Vector2(-60, -20), new Vector2(220, 56), TextAnchor.MiddleLeft, Fonts.Brush);
+                Ui.Stroke(Ui.Label(t, RankRules.Name(RankRules.Clamp(r.tier)), 38, Pal.Hex("FFE36A"), new Vector2(270, 26), new Vector2(300, 50), TextAnchor.MiddleRight, Fonts.Brush), Edge, 2.5f);
+                var st = Ui.Label(t, Ui.RankStars(RankRules.Clamp(r.tier), r.stars, "FFD84A", "6B5D4A"), 34, Pal.Paper, new Vector2(290, -24), new Vector2(260, 50), TextAnchor.MiddleRight);
+                st.supportRichText = true;
+                Ui.Stroke(st, Edge, 1.5f);
+            }
+        }
+
+        void BoardTab(RectTransform parent, string text, float x, float w, bool on, Action onClick)
+        {
+            var face = Ui.Framed(parent, new Vector2(w, 84), new Vector2(x, 470), on ? Pal.Hex("E9C46A") : Pal.Hex("33403F"), Pal.Hex("B8913C"), 4f, "framedTab");
+            Ui.Stroke(Ui.Label(face.transform, text, text.Length > 3 ? 42 : 50, on ? Edge : Pal.Paper, new Vector2(0, 2), new Vector2(w, 84), TextAnchor.MiddleCenter, Fonts.Brush),
                 on ? Pal.Hex("FFF2B8") : Edge, 1.5f);
             if (!on) Ui.Tap(face, onClick);
+        }
+
+        /// <summary>选省份：三十四个省级地区加「江湖」。微信不再给地区，只能玩家自己选。</summary>
+        void ShowRegionPicker(RectTransform host, Action done)
+        {
+            var shade = Ui.Fill(host, new Color(0, 0, 0, 0.6f), true, "regions");
+            var card = Ui.WoodPanel(Ui.Fit(shade, 1500), new Vector2(940, 1000), new Vector2(0, 0), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
+            Ui.Title(card, "选地区", new Vector2(0, 480), 80);
+            Ui.Label(card, "和同乡比座次。选「江湖」就只上总榜", 32, Pal.InkSoft, new Vector2(0, 385), new Vector2(860, 50));
+            Ui.CloseX(card, new Vector2(-464, 490), () => Destroy(shade.gameObject));
+            const int cols = 5;
+            const float cw = 168f, rh = 112f;
+            var regions = LiveConfig.Regions;
+            for (int i = 0; i < regions.Length; i++)
+            {
+                string r = regions[i];
+                bool on = r == LiveConfig.MyRegion && !string.IsNullOrEmpty(Save.D.region);
+                bool jianghu = r == "江湖";
+                var pos = new Vector2(-336 + (i % cols) * cw, 295 - (i / cols) * rh);
+                var face = Ui.Framed(card, new Vector2(150, 92), pos, on ? Ui.BtnYellow : jianghu ? Pal.Hex("D9C29A") : Pal.Hex("FFF6E2"), on ? Pal.Hex("B5651D") : Edge, on ? 6f : 4f, "framedRegion");
+                var lb = Ui.Label(face.transform, r, r.Length > 2 ? 34 : 40, Pal.Ink, new Vector2(0, 2), new Vector2(150, 92), TextAnchor.MiddleCenter, Fonts.Brush);
+                if (on) lb.color = Pal.RedDeep;
+                Ui.Tap(face, () =>
+                {
+                    Save.D.region = r;
+                    Save.Write();
+                    LiveConfig.SubmitRank(true);
+                    Destroy(shade.gameObject);
+                    Toast(jianghu ? "就在江湖上闯荡" : "已选 " + r);
+                    _boardProvince = !jianghu;
+                    done?.Invoke();
+                });
+            }
+            Tween.Pop(card, 0.22f);
         }
 
         static void Avatar(Transform parent, Vector2 pos, string glyph, Color bg)
@@ -94,23 +157,6 @@ namespace Rescue
             var a = Ui.Framed(parent, new Vector2(108, 108), pos, bg, Edge, 4f, "avatar");
             a.pixelsPerUnitMultiplier = 1.4f;
             Ui.Label(a.transform, glyph, 76, Pal.Ink, new Vector2(0, 4), new Vector2(108, 108), TextAnchor.MiddleCenter, Fonts.Brush);
-        }
-
-        void BoardRowView(RectTransform parent, int i, BoardRow? row)
-        {
-            float y = 340 - i * 146;
-            if (row == null) { MyRowAt(parent, y, i); return; }
-            var r = row.Value;
-            var face = Ui.Framed(parent, new Vector2(840, 130), new Vector2(0, y), RowColors[Mathf.Min(i, 3)], Edge, 5f, "row");
-            var t = face.transform;
-            RankBadge(t, i);
-            Avatar(t, new Vector2(-236, 0), r.Glyph, Pal.Tile);
-            Ui.Label(t, r.Name, 30, Pal.Ink, new Vector2(-60, 26), new Vector2(220, 40), TextAnchor.MiddleLeft);
-            Ui.Label(t, r.Region, 40, Pal.Ink, new Vector2(-60, -20), new Vector2(220, 56), TextAnchor.MiddleLeft, Fonts.Brush);
-            Ui.Stroke(Ui.Label(t, RankRules.Name(r.Score / 100), 38, Pal.Hex("FFE36A"), new Vector2(270, 26), new Vector2(300, 50), TextAnchor.MiddleRight, Fonts.Brush), Edge, 2.5f);
-            var sc = Ui.Label(t, "<color=#FFD84A>★</color> " + r.Score, 36, Pal.Paper, new Vector2(290, -24), new Vector2(240, 50), TextAnchor.MiddleRight);
-            sc.supportRichText = true;
-            Ui.Stroke(sc, Edge, 2f);
         }
 
         static void RankBadge(Transform t, int i)
@@ -124,29 +170,25 @@ namespace Rescue
             }
             Ui.Box(t, new Vector2(78, 78), new Vector2(-352, 0), Edge, Art.Circle, "ringEdge").type = Image.Type.Simple;
             Ui.Box(t, new Vector2(68, 68), new Vector2(-352, 0), Pal.Tile, Art.Circle, "ring").type = Image.Type.Simple;
-            Ui.Label(t, (i + 1).ToString(), 38, Edge, new Vector2(-352, 0), new Vector2(60, 60)).fontStyle = FontStyle.Bold;
+            var label = Ui.Label(t, (i + 1).ToString(), i >= 99 ? 26 : 38, Edge, new Vector2(-352, 0), new Vector2(72, 60));
+            label.fontStyle = FontStyle.Bold;
         }
 
-        void MyRowAt(RectTransform parent, float y, int rank)
+        /// <summary>自己这一行。rank 从 1 起；0 表示没拿到名次。</summary>
+        void MyRowAt(RectTransform parent, float y, int rank, int score, bool online, string name = "myRow")
         {
-            var face = Ui.Framed(parent, new Vector2(840, 130), new Vector2(0, y), Pal.Hex("D9452F"), Pal.Hex("FFE36A"), 6f, "myRow");
+            var face = Ui.Framed(parent, new Vector2(840, 130), new Vector2(0, y), Pal.Hex("D9452F"), Pal.Hex("FFE36A"), 6f, name);
             var t = face.transform;
-            if (rank >= 0) RankBadge(t, rank);
-            else Ui.Stroke(Ui.Label(t, "未上榜", 30, Pal.Paper, new Vector2(-352, 0), new Vector2(110, 60)), Edge, 2f).fontStyle = FontStyle.Bold;
+            if (rank > 0) RankBadge(t, rank - 1);
+            else Ui.Stroke(Ui.Label(t, online ? "未上榜" : "离线", 30, Pal.Paper, new Vector2(-352, 0), new Vector2(110, 60)), Edge, 2f).fontStyle = FontStyle.Bold;
             var av = Ui.Icon(t, "ui_avatar", 112, new Vector2(-236, 0));
             av.preserveAspect = true;
-            Ui.Label(t, "我", 30, Pal.Paper, new Vector2(-60, 26), new Vector2(220, 40), TextAnchor.MiddleLeft);
-            Ui.Stroke(Ui.Label(t, MyRegion, 40, Pal.Paper, new Vector2(-60, -20), new Vector2(220, 56), TextAnchor.MiddleLeft, Fonts.Brush), Edge, 2f);
+            Ui.Label(t, "我 · " + LiveConfig.MyName, 30, Pal.Paper, new Vector2(-50, 26), new Vector2(240, 40), TextAnchor.MiddleLeft);
+            Ui.Stroke(Ui.Label(t, LiveConfig.MyRegion, 40, Pal.Paper, new Vector2(-60, -20), new Vector2(220, 56), TextAnchor.MiddleLeft, Fonts.Brush), Edge, 2f);
             Ui.Stroke(Ui.Label(t, Save.RankName, 38, Pal.Hex("FFE36A"), new Vector2(270, 26), new Vector2(300, 50), TextAnchor.MiddleRight, Fonts.Brush), Edge, 2.5f);
             var st = Ui.Label(t, Ui.RankStars(Save.D.tier, Save.D.stars, "FFD84A", "6B2A20"), 38, Pal.Paper, new Vector2(290, -24), new Vector2(260, 50), TextAnchor.MiddleRight);
             st.supportRichText = true;
             Ui.Stroke(st, Edge, 1.5f);
-        }
-
-        void MyRow(RectTransform parent, int mine)
-        {
-            if (mine >= 0) return;
-            MyRowAt(parent, 340 - 6 * 146 - 16, -1);
         }
 
         /// <summary>榜单下方：昨日座次发的俸禄，没领就亮着。</summary>
@@ -383,8 +425,10 @@ namespace Rescue
             var g = Ui.GradeColor(d.WGrade);
             var shade = Ui.Fill(a, new Color(0, 0, 0, 0.55f), true, "detail");
             var holder = Ui.Rect(Ui.Fit(shade, 1160), "holder");
-            holder.anchoredPosition = new Vector2(0, 40);
-            Ui.Framed(holder, new Vector2(820, 1000), Vector2.zero, Pal.Hex("F6EEDA"), g, 9f, "framedDetail");
+            var move = Weapons.MoveOf(d);
+            float dy = move == WeaponMove.None ? 0f : -120f;
+            holder.anchoredPosition = new Vector2(0, 40 - dy * 0.5f);
+            Ui.Framed(holder, new Vector2(820, 1000 - dy), new Vector2(0, dy * 0.5f), Pal.Hex("F6EEDA"), g, 9f, "framedDetail");
             var t = holder;
             Ui.CloseX(holder, new Vector2(-400, 490), () => { _armSel = -1; ShowArmory(); }, 100);
             var clip = Ui.Rect(t, "raysClip");
@@ -421,13 +465,22 @@ namespace Rescue
             Ui.Label(t, "品级越高底子越厚：凡器 +30%　利器 +40%　宝器 +50%　神兵 +65%，每多一阶 +15%", 24, Pal.InkSoft,
                 new Vector2(0, -255), new Vector2(720, 60));
 
+            if (move != WeaponMove.None)
+            {
+                var mv = Ui.Framed(t, new Vector2(740, 104), new Vector2(0, -360), Pal.Hex("FBE3CF"), Pal.Hex("B0451F"), 4f, "move");
+                Ui.Tag(mv.transform, "名兵招式", Pal.Hex("B0451F"), new Vector2(-280, 22), 140, 24);
+                Ui.Stroke(Ui.Label(mv.transform, Weapons.MoveName(move), 38, Pal.Hex("B0451F"), new Vector2(10, 22), new Vector2(400, 50), TextAnchor.MiddleLeft, Fonts.Brush), Pal.Hex("FFF6E2"), 2f);
+                Ui.Label(mv.transform, Weapons.MoveText(move), 28, Pal.Ink, new Vector2(0, -24), new Vector2(700, 44), TextAnchor.MiddleLeft);
+            }
+
             string tip = !own ? "入伙之后，凑出他的名字或在他出场的回目里撑过四波，才有机会缴获"
+                : move != WeaponMove.None ? "特性和招式都跟兵器走。同一件同时只能一个人带。"
                 : "特性跟兵器走。同一件同时只能一个人带。";
-            Ui.Label(t, tip, 28, Pal.Willow, new Vector2(0, -330), new Vector2(760, 50));
+            Ui.Label(t, tip, 28, Pal.Willow, new Vector2(0, -330 + dy), new Vector2(760, 50));
             if (own)
             {
-                Ui.CartoonBtn(t, who < 0 ? "交给好汉" : "换人带", new Vector2(260, 100), new Vector2(-150, -420), Ui.BtnRed, () => ShowWearPicker(k), 46);
-                Ui.CartoonBtn(t, "回收+" + Save.RecycleCoins, new Vector2(260, 100), new Vector2(150, -420), Ui.BtnYellow, () => { Recycle(d.Id); ShowArmory(); }, 38, null, Edge);
+                Ui.CartoonBtn(t, who < 0 ? "交给好汉" : "换人带", new Vector2(260, 100), new Vector2(-150, -420 + dy), Ui.BtnRed, () => ShowWearPicker(k), 46);
+                Ui.CartoonBtn(t, "回收+" + Save.RecycleCoins, new Vector2(260, 100), new Vector2(150, -420 + dy), Ui.BtnYellow, () => { Recycle(d.Id); ShowArmory(); }, 38, null, Edge);
             }
             Tween.Pop(holder, 0.22f);
         }
@@ -546,15 +599,36 @@ namespace Rescue
         {
             var layer = Panel("好汉谱", out var card, new Vector2(1000, 1700));
             int got = Save.JoinedCount;
-            var bar = Ui.Framed(card, new Vector2(620, 44), new Vector2(0, 720), Pal.Hex("5E4532"), Edge, 4f, "progress");
+            // 有赏钱没领时进度条让出右边，摆「领赏」按钮。
+            bool owed = Save.CodexPending > 0;
+            float barW = owed ? 540f : 620f;
+            var bar = Ui.Framed(card, new Vector2(barW, 44), new Vector2(owed ? -110 : 0, 720), Pal.Hex("5E4532"), Edge, 4f, "progress");
             float ratio = got / 108f;
-            var fill = Ui.Box(bar.transform, new Vector2(Mathf.Max(30, 620 * ratio), 44), new Vector2(-310 + Mathf.Max(30, 620 * ratio) / 2, 0), Pal.Hex("E9B53A"), null, "fill");
+            var fill = Ui.Box(bar.transform, new Vector2(Mathf.Max(30, barW * ratio), 44), new Vector2(-barW / 2 + Mathf.Max(30, barW * ratio) / 2, 0), Pal.Hex("E9B53A"), null, "fill");
             fill.pixelsPerUnitMultiplier = 1f;
-            Ui.Stroke(Ui.Label(bar.transform, $"已入伙 {Mathf.Min(got, 108)}/108", 30, Pal.Paper, Vector2.zero, new Vector2(620, 44)), Edge, 2f).fontStyle = FontStyle.Bold;
+            Ui.Stroke(Ui.Label(bar.transform, $"已入伙 {Mathf.Min(got, 108)}/108", 30, Pal.Paper, Vector2.zero, new Vector2(barW, 44)), Edge, 2f).fontStyle = FontStyle.Bold;
 
             var body = Ui.Rect(card, "body");
+            RectTransform claimAll = null;
             void Fill()
             {
+                if (claimAll) Destroy(claimAll.gameObject);
+                int pending = Save.CodexPending;
+                if (pending > 0)
+                {
+                    int sum = 0;
+                    foreach (var id in Save.D.joined) if (Save.CodexClaimable(id)) sum += Save.CodexCoins(HeroDef.Get((HeroId)id));
+                    claimAll = Ui.CartoonBtn(card, $"领赏 {sum}", new Vector2(240, 76), new Vector2(330, 720), Ui.BtnYellow, () =>
+                    {
+                        int got2 = Save.ClaimAllCodex();
+                        if (got2 <= 0) return;
+                        Sfx.Play(Snd.Rain);
+                        Toast($"好汉入伙赏钱 铜钱 +{got2}");
+                        Refresh();
+                        Fill();
+                    }, 34, "coin", Edge);
+                    Tween.Pop(claimAll, 0.25f);
+                }
                 for (int i = body.childCount - 1; i >= 0; i--) Destroy(body.GetChild(i).gameObject);
                 for (int i = 0; i < CodexTabs.Length; i++)
                 {
@@ -565,12 +639,12 @@ namespace Rescue
                     if (!on) Ui.Tap(tab, () => { _codexTab = k; Fill(); });
                 }
                 if (_codexTab == 3) BondList(body);
-                else HeroGrid(layer, body);
+                else HeroGrid(layer, body, Fill);
             }
             Fill();
         }
 
-        void HeroGrid(RectTransform layer, RectTransform body)
+        void HeroGrid(RectTransform layer, RectTransform body, Action refill)
         {
             var list = new List<HeroDef>();
             foreach (var d in HeroDef.All)
@@ -599,8 +673,10 @@ namespace Rescue
                 {
                     var nm = Ui.Label(t, d.Name, d.Name.Length > 2 ? 60 : 80, Pal.Ink, new Vector2(0, 14), new Vector2(200, 130), TextAnchor.MiddleCenter, Fonts.Brush);
                     nm.lineSpacing = 0.9f;
-                    Ui.Label(t, d.Nick, 28, Pal.RedDeep, new Vector2(0, -78), new Vector2(200, 40)).fontStyle = FontStyle.Bold;
-                    Ui.Label(t, (d.Rank > 0 ? d.Rank108 + " · " : "") + d.TypeLabel, 22, Pal.InkSoft, new Vector2(0, -112), new Vector2(200, 32));
+                    bool owed = Save.CodexClaimable((int)d.Id);
+                    Ui.Label(t, d.Nick, 28, Pal.RedDeep, new Vector2(0, owed ? -68 : -78), new Vector2(200, 36)).fontStyle = FontStyle.Bold;
+                    if (owed) CodexClaimChip(t, d, refill);
+                    else Ui.Label(t, (d.Rank > 0 ? d.Rank108 + " · " : "") + d.TypeLabel, 22, Pal.InkSoft, new Vector2(0, -112), new Vector2(200, 32));
                 }
                 else
                 {
@@ -610,6 +686,27 @@ namespace Rescue
                 }
                 Ui.Tap(face, () => HeroDetail(layer, d, have));
             }
+        }
+
+        /// <summary>入伙赏钱：卡片底下一块金签，点了就领，不用进详情。</summary>
+        void CodexClaimChip(Transform card, HeroDef d, Action refill)
+        {
+            int coins = Save.CodexCoins(d);
+            var chip = Ui.Framed(card, new Vector2(176, 46), new Vector2(0, -114), Pal.Hex("F6C531"), Edge, 4f, "claimChip");
+            chip.raycastTarget = true;
+            Ui.Icon(chip.transform, "coin", 42, new Vector2(-52, 0));
+            Ui.Label(chip.transform, "领 " + coins, 28, Edge, new Vector2(22, 0), new Vector2(110, 44)).fontStyle = FontStyle.Bold;
+            var dot = Ui.Box(card, new Vector2(30, 30), new Vector2(88, 126), Pal.Hex("E8392B"), Art.Circle, "redDot");
+            dot.type = Image.Type.Simple;
+            Ui.Tap(chip, () =>
+            {
+                int got = Save.ClaimCodex((int)d.Id);
+                if (got <= 0) return;
+                Sfx.Play(Snd.Rain, 0.7f);
+                Toast($"{d.Name}入伙赏钱 铜钱 +{got}");
+                Refresh();
+                refill();
+            });
         }
 
         void BondList(RectTransform body)

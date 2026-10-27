@@ -25,11 +25,26 @@ namespace Rescue
         public List<int> shopFree = new List<int>();
         public string lottoDay = "";
         public int lottoUsed;
-        public bool gang, flag, marsh, stele, xuming, far;
+        public bool gang, flag, marsh, stele, xuming, far, stove, wine;
         public int menghan, tianshu, baozi, shovels, fu, trap;
         /// <summary>今天带上场的主动道具。最多两件。没选过时，有的就带，超过两件只带前两件。</summary>
         public List<int> activeOn = new List<int>();
         public bool activeSet;
+        /// <summary>今天带上场的被动道具。最多四件。没选过时按稀有度从高到低带满四件。</summary>
+        public List<int> passiveOn = new List<int>();
+        public bool passiveSet;
+        /// <summary>今天各个广告入口看了几次。adScene 和 adCount 对齐。</summary>
+        public string adDay = "";
+        public List<string> adScene = new List<string>();
+        public List<int> adCount = new List<int>();
+        /// <summary>好汉谱里已经领过入伙赏钱的好汉。</summary>
+        public List<int> codexPaid = new List<int>();
+        /// <summary>排行榜上报的地区。空串表示还没选，「江湖」表示不分省。</summary>
+        public string region = "";
+        /// <summary>每日一战：今天打过没、赢过没。</summary>
+        public string dailyDay = "";
+        public bool dailyWon;
+        public int dailyTries;
         public bool sfx = true;
         public int wins, battles;
         public List<int> weapons = new List<int>();
@@ -54,11 +69,13 @@ namespace Rescue
 
         public Loadout PeekLoadout()
         {
+            bool On(int id) => Save.PassiveFielded(id);
             var l = new Loadout
             {
-                Gang = gang, Flag = flag, Marsh = marsh, Stele = stele,
+                Gang = gang && On(0), Flag = flag && On(1), Marsh = marsh && On(2), Stele = stele && On(3),
                 MengHan = Save.FieldCount(4), TianShu = Save.FieldCount(5), Baozi = Save.FieldCount(6),
-                Xuming = xuming, Shovels = shovels, Fu = Save.FieldCount(9), Trap = Save.FieldCount(11), Far = far,
+                Xuming = xuming && On(7), Shovels = On(8) ? shovels : 0, Fu = Save.FieldCount(9), Trap = Save.FieldCount(11), Far = far && On(10),
+                Stove = stove && On(12), Wine = wine && On(13),
                 Armed = new List<int>(),
                 Gear = new int[HeroDef.All.Length],
                 WeaponLv = new int[HeroDef.All.Length],
@@ -82,13 +99,15 @@ namespace Rescue
 
         public void ClearItems()
         {
-            gang = flag = marsh = stele = xuming = far = false;
+            gang = flag = marsh = stele = xuming = far = stove = wine = false;
             menghan = tianshu = baozi = shovels = fu = trap = 0;
             if (activeOn != null) activeOn.Clear();
             activeSet = true;
+            if (passiveOn != null) passiveOn.Clear();
+            passiveSet = true;
         }
 
-        public bool HasAnyItem => gang || flag || marsh || stele || xuming || far || menghan > 0 || tianshu > 0 || baozi > 0 || shovels > 0 || fu > 0 || trap > 0;
+        public bool HasAnyItem => gang || flag || marsh || stele || xuming || far || stove || wine || menghan > 0 || tianshu > 0 || baozi > 0 || shovels > 0 || fu > 0 || trap > 0;
     }
 
     public static class Save
@@ -96,7 +115,7 @@ namespace Rescue
         const string Key = "rescue_save_v1";
         public static SaveData D { get; private set; }
 
-        public const int Version = 3;
+        public const int Version = 4;
 
         public static string RankName => RankRules.Name(D.tier);
         public static int Major => RankRules.Major(D.tier);
@@ -160,8 +179,15 @@ namespace Rescue
                     D.stars = Mathf.Clamp(D.stars, 0, RankRules.StarsAt(D.tier));
                     D.unlocked = 0;
                 }
+                // 4 起被动一场只带四件：老档没选过，按稀有度挑最好的四件带上，其余留在背包。
+                if (D.ver < 4) D.passiveSet = false;
                 D.ver = Version;
             }
+            if (D.passiveOn == null) D.passiveOn = new List<int>();
+            if (D.adScene == null) D.adScene = new List<string>();
+            if (D.adCount == null) D.adCount = new List<int>();
+            if (D.codexPaid == null) D.codexPaid = new List<int>();
+            if (D.region == null) D.region = "";
             D.tier = RankRules.Clamp(D.tier);
             D.unlocked = Mathf.Clamp(D.unlocked, 0, ChapterDef.StoryCount);
             D.team.RemoveAll(id => !Joined(id));
@@ -174,6 +200,7 @@ namespace Rescue
             Sfx.On = D.sfx;
             TidyGear();
             PrepareActiveField();
+            PreparePassiveField();
         }
 
         /// <summary>自动截图等验收模式下不落盘，避免污染真实存档。</summary>
@@ -192,7 +219,8 @@ namespace Rescue
             PlayerPrefs.Save();
         }
 
-        public static string Today => DateTime.Now.ToString("yyyyMMdd");
+        /// <summary>按北京时间算日子。拿到服务器时间后用服务器的，改手机时钟刷不了每日次数。</summary>
+        public static string Today => LiveConfig.Now.ToOffset(TimeSpan.FromHours(8)).ToString("yyyyMMdd");
 
         /// <summary>过零点才清背包。打完一局只换货架上的新货，已经买下的留到当天结束。</summary>
         public static void RefreshShopDay()
@@ -458,6 +486,184 @@ namespace Rescue
             D.activeSet = true;
         }
 
+        // ───────────── 被动：一场最多四件 ─────────────
+
+        public const int MaxPassiveField = 4;
+        /// <summary>背包被动一行七格。</summary>
+        public const int MaxPassiveBag = 7;
+
+        static bool PassiveOwned(int id) => id >= 0 && id < ShopItem.All.Length && !ShopItem.All[id].Active && ShopItem.All[id].Count() > 0;
+
+        public static int PassiveKinds
+        {
+            get
+            {
+                int n = 0;
+                foreach (var it in ShopItem.All) if (!it.Active && it.Count() > 0) n++;
+                return n;
+            }
+        }
+
+        public static int PassiveFieldCount
+        {
+            get
+            {
+                PreparePassiveField();
+                return D.passiveOn.Count;
+            }
+        }
+
+        public static bool PassiveFielded(int id)
+        {
+            PreparePassiveField();
+            return D.passiveOn.Contains(id);
+        }
+
+        /// <summary>买到或退掉被动之后调用。上场没满就自动带上。</summary>
+        public static void NotePassive(int id)
+        {
+            if (!D.passiveSet) PreparePassiveField();
+            D.passiveSet = true;
+            if (!PassiveOwned(id))
+            {
+                D.passiveOn.Remove(id);
+                return;
+            }
+            if (!D.passiveOn.Contains(id) && D.passiveOn.Count < MaxPassiveField) D.passiveOn.Add(id);
+        }
+
+        public static bool TogglePassiveField(int id, out string err)
+        {
+            err = null;
+            PreparePassiveField();
+            if (!PassiveOwned(id)) { err = "还没有这件"; return false; }
+            if (D.passiveOn.Remove(id)) { Write(); return true; }
+            if (D.passiveOn.Count >= MaxPassiveField) { err = "一场最多带四个被动，先点掉一个"; return false; }
+            D.passiveOn.Add(id);
+            Write();
+            return true;
+        }
+
+        static int RarityRank(ShopItem it) => Array.IndexOf(ShopItem.Rarities, it.Rarity);
+
+        static void PreparePassiveField()
+        {
+            if (D.passiveOn == null) D.passiveOn = new List<int>();
+            D.passiveOn.RemoveAll(id => !PassiveOwned(id));
+            var seen = new HashSet<int>();
+            D.passiveOn.RemoveAll(id => !seen.Add(id));
+            while (D.passiveOn.Count > MaxPassiveField) D.passiveOn.RemoveAt(D.passiveOn.Count - 1);
+            if (D.passiveSet) return;
+            var owned = new List<ShopItem>();
+            foreach (var it in ShopItem.All) if (!it.Active && it.Count() > 0 && !D.passiveOn.Contains(it.Id)) owned.Add(it);
+            owned.Sort((a, b) => RarityRank(b) != RarityRank(a) ? RarityRank(b).CompareTo(RarityRank(a)) : b.Price.CompareTo(a.Price));
+            foreach (var it in owned)
+            {
+                if (D.passiveOn.Count >= MaxPassiveField) break;
+                D.passiveOn.Add(it.Id);
+            }
+            D.passiveSet = true;
+        }
+
+        // ───────────── 广告：各入口每天的次数 ─────────────
+
+        public static int AdUsed(string scene)
+        {
+            if (D.adDay != Today) return 0;
+            int i = D.adScene.IndexOf(scene);
+            return i < 0 || i >= D.adCount.Count ? 0 : D.adCount[i];
+        }
+
+        public static void NoteAd(string scene)
+        {
+            if (D.adDay != Today)
+            {
+                D.adDay = Today;
+                D.adScene.Clear();
+                D.adCount.Clear();
+            }
+            int i = D.adScene.IndexOf(scene);
+            if (i < 0 || i >= D.adCount.Count)
+            {
+                D.adScene.Add(scene);
+                D.adCount.Add(1);
+            }
+            else D.adCount[i]++;
+            Write();
+        }
+
+        // ───────────── 好汉谱入伙赏钱 ─────────────
+
+        public const int CodexCoinsTiangang = 20;
+        public const int CodexCoinsDisha = 10;
+
+        public static int CodexCoins(HeroDef d) => d.Rank <= 0 ? CodexCoinsDisha : d.Disha ? CodexCoinsDisha : CodexCoinsTiangang;
+
+        public static bool CodexClaimable(int id) => Joined(id) && !D.codexPaid.Contains(id);
+
+        public static int CodexPending
+        {
+            get
+            {
+                int n = 0;
+                foreach (var id in D.joined) if (!D.codexPaid.Contains(id)) n++;
+                return n;
+            }
+        }
+
+        /// <summary>领一位好汉的入伙赏钱。老玩家已入伙的人也能补领一次。</summary>
+        public static int ClaimCodex(int id)
+        {
+            if (!CodexClaimable(id)) return 0;
+            int coins = CodexCoins(HeroDef.Get((HeroId)id));
+            D.codexPaid.Add(id);
+            D.coins += coins;
+            Write();
+            return coins;
+        }
+
+        public static int ClaimAllCodex()
+        {
+            int total = 0;
+            foreach (var id in new List<int>(D.joined))
+            {
+                if (D.codexPaid.Contains(id)) continue;
+                total += CodexCoins(HeroDef.Get((HeroId)id));
+                D.codexPaid.Add(id);
+            }
+            if (total <= 0) return 0;
+            D.coins += total;
+            Write();
+            return total;
+        }
+
+        // ───────────── 每日一战 ─────────────
+
+        /// <summary>打过第五回才开放。</summary>
+        public const int DailyUnlock = 5;
+        public const int DailyCoinsReward = 60;
+
+        public static bool DailyOpen => D.unlocked >= DailyUnlock;
+        public static bool DailyWonToday => D.dailyDay == Today && D.dailyWon;
+
+        public static void NoteDailyTry()
+        {
+            if (D.dailyDay != Today) { D.dailyDay = Today; D.dailyWon = false; D.dailyTries = 0; }
+            D.dailyTries++;
+            Write();
+        }
+
+        /// <summary>每日一战赢了：当天头一回给铜钱，返回是否首胜。座次不动。</summary>
+        public static bool WinDaily()
+        {
+            if (D.dailyDay != Today) { D.dailyDay = Today; D.dailyTries = 0; D.dailyWon = false; }
+            if (D.dailyWon) return false;
+            D.dailyWon = true;
+            D.coins += DailyCoinsReward;
+            Write();
+            return true;
+        }
+
         public static int WeaponCount(int hero)
         {
             if (D.weapons == null) return 0;
@@ -559,10 +765,12 @@ namespace Rescue
         /// <summary>撑到第四波掉一件兵器：只掉已经入伙的，凑出来的优先，品级越高越难掉。过关入伙发生在这一步之前。</summary>
         public static WeaponFind RollWeapon(BattleResult r)
         {
-            if (r.Quit || (!r.GmDrop && r.Wave < 4)) return default;
+            bool sure = r.GmDrop || r.SureDrop;
+            if (r.Quit || (!sure && r.Wave < 4)) return default;
             var cands = new List<HeroId>();
             Weapons.CollectDropCandidates(r.Formed, r.Pool, Joined, cands);
-            if (cands.Count == 0 || (!r.GmDrop && UnityEngine.Random.value > 0.72f)) return default;
+            if (cands.Count == 0 && r.SureDrop) foreach (var id in D.joined) if (!string.IsNullOrEmpty(HeroDef.Get((HeroId)id).Weapon)) cands.Add((HeroId)id);
+            if (cands.Count == 0 || (!sure && UnityEngine.Random.value > 0.72f)) return default;
             int total = 0;
             foreach (var id in cands) total += Weapons.DropWeight(HeroDef.Get(id).WGrade);
             int x = UnityEngine.Random.Range(0, total);
@@ -589,7 +797,7 @@ namespace Rescue
         public const int Cost = 5;
         public const int RegenSeconds = 300;
 
-        static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        static long Now => LiveConfig.Now.ToUnixTimeSeconds();
 
         public static int Current
         {

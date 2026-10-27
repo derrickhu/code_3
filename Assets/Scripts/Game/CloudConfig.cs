@@ -14,6 +14,10 @@ namespace Rescue
         public const string LoginPath = Prefix + "/login";
         public const string PullPath = Prefix + "/save/pull";
         public const string PushPath = Prefix + "/save/push";
+        public const string LivePath = Prefix + "/config";
+        public const string RankSubmitPath = Prefix + "/rank/submit";
+        public const string RankListPath = Prefix + "/rank/list";
+        public const string LiveCacheKey = GameKey + "_live";
 
         public const int RequestTimeoutSec = 10;
         public const int SchemaVersion = 1;

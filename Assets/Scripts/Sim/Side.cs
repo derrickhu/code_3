@@ -20,6 +20,10 @@ namespace Rescue.Sim
         public float RewardMul = 1f;
         public int LeakDamage;
         public bool Dead;
+        /// <summary>被钩镰枪绊住，剩余秒数。期间走得慢。</summary>
+        public float SlowT;
+        /// <summary>已经挨过祖传宝刀的头一下。</summary>
+        public bool Cut;
 
         public bool IsBig => Def.Kind == EnemyKind.Bu || Def.Kind == EnemyKind.Boss;
         /// <summary>还在出兵口草堆里，没走到看得见的路上。</summary>
@@ -41,6 +45,10 @@ namespace Rescue.Sim
         public int Fu;
         public int Trap;
         public bool Far;
+        /// <summary>十字坡灶：开局摆一张灶，慢慢出炊饼。</summary>
+        public bool Stove;
+        /// <summary>招贤酒：聚义时好汉字更常出现。</summary>
+        public bool Wine;
         /// <summary>这一局带着兵器的好汉。</summary>
         public List<int> Armed;
         /// <summary>下标是好汉。值是他带着的兵器（兵器出自谁），-1 表示空手。</summary>
@@ -135,6 +143,64 @@ namespace Rescue.Sim
             if (Items.Xuming) AddMaxHp(Tuning.XumingHearts);
             ShovelStock = Items.Shovels;
             FillShovels();
+            _stovePending = Items.Stove;
+            PlaceStove();
+        }
+
+        // ───────────── 十字坡灶 ─────────────
+
+        bool _stovePending;
+        float _stoveT;
+        /// <summary>这一局灶已经出了多少炊饼。记在山寨上，不记在灶上，挪灶不会重新计数。</summary>
+        public int StoveMade;
+
+        public static int StoveCapAt(int level) => Tuning.StoveCap[Math.Max(1, Math.Min(Tuning.StoveMaxLevel, level)) - 1];
+
+        /// <summary>灶落在离官兵路最远的空地上。没有空地就等有了再摆。</summary>
+        void PlaceStove()
+        {
+            if (!_stovePending) return;
+            int best = int.MaxValue, bc = -1, br = -1;
+            for (int r = 0; r < Board.Rows; r++)
+                for (int c = 0; c < Board.Cols; c++)
+                {
+                    if (!Board.Placeable(c, r) || Board.Pieces[c, r] != null) continue;
+                    int near = 0;
+                    for (int dc = -1; dc <= 1; dc++)
+                        for (int dr = -1; dr <= 1; dr++)
+                            if (Board.InBounds(c + dc, r + dr) && Board.Cells[c + dc, r + dr] == Cell.Path) near++;
+                    if (near < best) { best = near; bc = c; br = r; }
+                }
+            if (bc < 0) return;
+            _stovePending = false;
+            Board.Pieces[bc, br] = Piece.Stove();
+        }
+
+        public bool FindStove(out int sc, out int sr)
+        {
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (Board.Pieces[c, r] != null && Board.Pieces[c, r].Type == PieceType.Stove) { sc = c; sr = r; return true; }
+            sc = sr = -1;
+            return false;
+        }
+
+        void TickStove(float dt)
+        {
+            if (_stovePending) PlaceStove();
+            if (!FindStove(out int c, out int r)) return;
+            var p = Board.Pieces[c, r];
+            int lv = Math.Max(1, Math.Min(Tuning.StoveMaxLevel, p.Level));
+            int cap = StoveCapAt(lv);
+            if (StoveMade >= cap || Disabled(p, c, r)) return;
+            _stoveT += dt;
+            float gap = Tuning.StoveGap[lv - 1];
+            if (_stoveT < gap) return;
+            _stoveT -= gap;
+            int n = Math.Min(Tuning.StoveYield[lv - 1], cap - StoveMade);
+            StoveMade += n;
+            Buns += n;
+            Emit(new SimEvent { Type = Ev.Buns, Val = n, P = new CellPos(c, r).Center, A = p.Id, Flag = 2 });
         }
 
         public int MaxHearts => (MaxHp + Tuning.HeartHp - 1) / Tuning.HeartHp;
@@ -275,7 +341,7 @@ namespace Rescue.Sim
         {
             bool gold = _sinceGold >= Tuning.GoldPity;
             if (!gold && Board.AnyDiggable() && _rng.Chance(Tuning.ShovelChance * (EmptyCells() == 0 ? 2f : 1f))) return Piece.Shovel();
-            if (gold || _rng.Chance(Tuning.HeroCharChance))
+            if (gold || _rng.Chance(Items.Wine ? Tuning.WineCharChance : Tuning.HeroCharChance))
             {
                 _sinceGold = 0;
                 return Piece.Hero(RollChar());
@@ -328,7 +394,7 @@ namespace Rescue.Sim
         {
             if (M.Over || !Board.InBounds(c, r)) return false;
             var p = Board.Pieces[c, r];
-            if (p == null) return false;
+            if (p == null || p.Type == PieceType.Stove) return false;
             Board.Pieces[c, r] = null;
             Refund(p, new CellPos(c, r).Center);
             RecomputeHeroes();
@@ -377,6 +443,7 @@ namespace Rescue.Sim
             }
             if (!Board.Placeable(c, r)) return false;
             var t = Board.Pieces[c, r];
+            if (t != null && t.Type == PieceType.Stove) return false;
             if (t == null)
             {
                 Board.Pieces[c, r] = p;
@@ -427,7 +494,7 @@ namespace Rescue.Sim
         {
             if (M.Over || !Board.InBounds(c, r)) return false;
             var p = Board.Pieces[c, r];
-            if (p == null) return false;
+            if (p == null || p.Type == PieceType.Stove) return false;
             var t = Camp[slot];
             if (t == null)
             {
@@ -566,22 +633,25 @@ namespace Rescue.Sim
             return true;
         }
 
-        public bool UseTianShu()
+        /// <summary>天书能不能落在这一格：没满级的兵，或者没到三级的灶。</summary>
+        public bool ShuTarget(int c, int r)
+        {
+            if (!Board.InBounds(c, r)) return false;
+            var p = Board.Pieces[c, r];
+            if (p == null) return false;
+            if (p.Type == PieceType.Unit) return p.Level < UnitDef.MaxLevel;
+            if (p.Type == PieceType.Stove) return p.Level < Tuning.StoveMaxLevel;
+            return false;
+        }
+
+        /// <summary>天书拖到哪一格就升哪一格。落空不消耗，也不进冷却。</summary>
+        public bool UseTianShu(int c, int r)
         {
             if (Items.TianShu <= 0 || ShuCd > 0f || M.Over) return false;
-            Piece best = null;
-            var at = new V2();
-            for (int c = 0; c < Board.Cols; c++)
-                for (int r = 0; r < Board.Rows; r++)
-                {
-                    var p = Board.Pieces[c, r];
-                    if (p == null || p.Type != PieceType.Unit || p.Level >= UnitDef.MaxLevel) continue;
-                    if (best == null || p.Level < best.Level) { best = p; at = new CellPos(c, r).Center; }
-                }
-            if (best == null) return false;
+            if (!ShuTarget(c, r)) return false;
             Items.TianShu--;
             ShuCd = Tuning.CdShu;
-            MergeInto(best, at);
+            MergeInto(Board.Pieces[c, r], new CellPos(c, r).Center);
             RecomputeHeroes();
             Emit(new SimEvent { Type = Ev.ItemUsed, Text = "天书" });
             return true;
@@ -692,6 +762,7 @@ namespace Rescue.Sim
             TickBosses(dt);
             TickUnits(dt);
             TickHeroes(dt);
+            TickStove(dt);
             TickStele();
             Enemies.RemoveAll(e => e.Dead);
         }
@@ -703,8 +774,9 @@ namespace Rescue.Sim
             {
                 if (e.Dead) continue;
                 e.HasteT = Math.Max(0, e.HasteT - dt);
+                e.SlowT = Math.Max(0, e.SlowT - dt);
                 if (e.StunT > 0) { e.StunT -= dt; continue; }
-                float spd = e.Def.Speed * globalMul * (e.HasteT > 0 ? 1.65f : 1f) * (e.Enraged ? 1.3f : 1f);
+                float spd = e.Def.Speed * globalMul * (e.HasteT > 0 ? 1.65f : 1f) * (e.Enraged ? 1.3f : 1f) * (e.SlowT > 0 ? Weapons.HookSlowMul : 1f);
                 if (e.DashT > 0) { e.DashT -= dt; spd = Math.Max(spd, 2.8f); }
                 e.Progress += spd * dt;
                 if (e.Progress >= Board.PathLength)
@@ -1059,24 +1131,36 @@ namespace Rescue.Sim
                 if (range < 50f) range += aff.Range;
                 var target = FindTarget(pos, range, def.PreferBig);
                 if (target == null) { h.Cd = 0; continue; }
-                h.Cd = def.CooldownAt(h.Level) * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd;
+                var move = Weapons.MoveOf(GearOf(def));
+                h.Cd = def.CooldownAt(h.Level) * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd * (move == WeaponMove.WideAxe ? Weapons.AxeCdMul : 1f);
                 float dmg = HeroDamage(h, aff);
                 int crit = 0;
                 float critChance = def.CritChance + aff.Crit;
                 if (critChance > 0 && _rng.Chance(critChance)) { dmg *= def.CritMul; crit = 1; }
+                if (move == WeaponMove.FarBow) dmg *= 1f + FarBowBonus(V2.Dist(pos, target.Pos));
                 Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = target.Pos, Flag = crit });
 
                 int pierce = def.Pierce + (def.Pierce > 1 ? aff.Pierce : 0);
-                if (pierce > 1) PierceLine(pos, target.Pos, range, pierce, dmg, def);
+                if (pierce > 1)
+                {
+                    var hits = PierceLine(pos, target.Pos, range, pierce, dmg, def);
+                    if (move == WeaponMove.Snake)
+                        foreach (var e in hits) if (!e.IsBig) e.StunT = Math.Max(e.StunT, Weapons.SnakeStun);
+                }
                 else
                 {
+                    if (move == WeaponMove.FirstCut && !target.Cut) { target.Cut = true; dmg *= Weapons.FirstCutMul; }
                     Hit(target, dmg, def, crit == 1);
                     float splash = def.Splash + aff.Splash;
+                    if (move == WeaponMove.WideAxe) splash = Math.Max(splash, 0.6f) * Weapons.AxeSplashMul;
                     if (splash > 0) Splash(target, splash, dmg * 0.6f, def);
+                    if (move == WeaponMove.Snake && !target.IsBig) target.StunT = Math.Max(target.StunT, Weapons.SnakeStun);
                 }
+                if (move == WeaponMove.Hook && target.Boss == null) target.SlowT = Math.Max(target.SlowT, Weapons.HookSlowT);
                 float stun = def.HitStun + aff.Stun;
                 if (stun > 0) target.StunT = Math.Max(target.StunT, stun);
                 float knock = def.HitKnock + aff.Knock;
+                if (move == WeaponMove.StaffKnock) knock = Math.Max(knock, Weapons.StaffKnock);
                 if (knock > 0 && !target.IsBig) Knock(target, knock);
                 GainXp(h, 0.2f);
             }
@@ -1336,8 +1420,11 @@ namespace Rescue.Sim
             return list;
         }
 
-        void PierceLine(V2 from, V2 to, float range, int count, float dmg, HeroDef src)
+        public static float FarBowBonus(float dist) => Math.Min(Weapons.FarBowCap, Math.Max(0f, dist) * Weapons.FarBowPerCell);
+
+        List<Enemy> PierceLine(V2 from, V2 to, float range, int count, float dmg, HeroDef src)
         {
+            var hit = new List<Enemy>();
             var dir = (to - from).Norm;
             var hits = new List<KeyValuePair<float, Enemy>>();
             foreach (var e in Enemies)
@@ -1351,7 +1438,12 @@ namespace Rescue.Sim
                 hits.Add(new KeyValuePair<float, Enemy>(along, e));
             }
             hits.Sort((a, b) => a.Key.CompareTo(b.Key));
-            for (int i = 0; i < hits.Count && i < count; i++) Hit(hits[i].Value, dmg, src);
+            for (int i = 0; i < hits.Count && i < count; i++)
+            {
+                hit.Add(hits[i].Value);
+                Hit(hits[i].Value, dmg, src);
+            }
+            return hit;
         }
 
         void Splash(Enemy center, float radius, float dmg, HeroDef src)

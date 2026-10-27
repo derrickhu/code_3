@@ -999,7 +999,8 @@ namespace Rescue.Tests
             s.Items.TianShu = 1;
             s.Items.Fu = 2;
 
-            Assert.IsFalse(s.UseTianShu(), "没有兵不能用天书");
+            Clear(s);
+            Assert.IsFalse(s.UseTianShu(1, 1), "没有兵不能用天书");
             Assert.AreEqual(1, s.Items.TianShu);
             Assert.AreEqual(0f, s.ShuCd, 0.001f);
 
@@ -1019,6 +1020,251 @@ namespace Rescue.Tests
             Assert.AreEqual(0f, s.MengCd, 0.001f);
             Assert.IsTrue(s.UseMengHan());
             Assert.AreEqual(0, s.Items.MengHan);
+        }
+
+        [Test]
+        public void TianShuUpgradesOnlyTheChosenCell()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            s.Items.TianShu = 2;
+            var low = Piece.Unit(UnitKind.Gong);
+            var picked = Piece.Unit(UnitKind.Dao, 3);
+            var full = Piece.Unit(UnitKind.Qiang, UnitDef.MaxLevel);
+            s.Board.Pieces[0, 0] = low;
+            s.Board.Pieces[1, 0] = picked;
+            s.Board.Pieces[2, 0] = full;
+            s.Board.Pieces[3, 0] = Piece.Hero('林');
+
+            Assert.IsFalse(s.UseTianShu(2, 0), "满级兵不能再升");
+            Assert.IsFalse(s.UseTianShu(3, 0), "金字不吃天书");
+            Assert.IsFalse(s.UseTianShu(4, 0), "空格落空");
+            Assert.AreEqual(2, s.Items.TianShu, "落空不消耗");
+            Assert.AreEqual(0f, s.ShuCd, 0.001f, "落空不进冷却");
+
+            Assert.IsTrue(s.UseTianShu(1, 0));
+            Assert.AreEqual(4, picked.Level, "拖到谁身上就升谁");
+            Assert.AreEqual(1, low.Level, "不会自动挑最低级的");
+            Assert.AreEqual(1, s.Items.TianShu);
+            Assert.AreEqual(Tuning.CdShu, s.ShuCd, 0.01f);
+        }
+
+        [Test]
+        public void StoveBakesUpToItsCapAndCannotBeBanked()
+        {
+            var m = new Match(ChapterDef.All[0], 42, new Loadout { Stove = true });
+            var s = m.Player;
+            Assert.IsTrue(s.FindStove(out int c, out int r), "带灶开局就摆在场上");
+            var stove = s.Board.Pieces[c, r];
+            Assert.AreEqual(PieceType.Stove, stove.Type);
+            Assert.IsFalse(new Match(ChapterDef.All[0], 42).Player.FindStove(out _, out _), "没带灶就没有");
+            Assert.IsFalse(m.Rival.FindStove(out _, out _), "对手不带灶");
+
+            int slot = System.Array.IndexOf(s.Camp, null);
+            if (slot < 0) { s.Camp[0] = null; slot = 0; }
+            Assert.IsFalse(s.CellToCamp(c, r, slot), "灶不能收进山寨");
+            Assert.IsFalse(s.DismissCell(c, r), "灶不能遣散换炊饼");
+
+            int start = s.Buns;
+            for (int i = 0; i < 20 * 60; i++) s.Tick(0.1f);
+            Assert.AreEqual(Side.StoveCapAt(1), s.StoveMade, "一级灶一局最多出这么多");
+            Assert.GreaterOrEqual(s.Buns - start, Side.StoveCapAt(1));
+
+            s.Items.TianShu = 3;
+            Assert.IsTrue(s.UseTianShu(c, r), "天书能升灶");
+            s.ShuCd = 0;
+            Assert.IsTrue(s.UseTianShu(c, r));
+            s.ShuCd = 0;
+            Assert.AreEqual(Tuning.StoveMaxLevel, stove.Level);
+            Assert.IsFalse(s.UseTianShu(c, r), "灶最多三级");
+            for (int i = 0; i < 20 * 60; i++) s.Tick(0.1f);
+            Assert.AreEqual(Side.StoveCapAt(3), s.StoveMade, "升级抬高上限，但已出的不清零");
+
+            OpenAll(s);
+            int tc = (c + 1) % Board.Cols;
+            s.Board.Pieces[tc, r] = null;
+            Assert.IsTrue(s.CellToCell(c, r, tc, r), "灶可以挪位置");
+            for (int i = 0; i < 600; i++) s.Tick(0.1f);
+            Assert.AreEqual(Side.StoveCapAt(3), s.StoveMade, "挪灶不会重新计数");
+        }
+
+        [Test]
+        public void WineRaisesHeroCharOdds()
+        {
+            int Chars(bool wine)
+            {
+                var s = new Match(ChapterDef.All[12], 42, new Loadout { Wine = wine }).Player;
+                int n = 0;
+                for (int i = 0; i < 400; i++)
+                {
+                    for (int k = 0; k < s.Camp.Length; k++) s.Camp[k] = null;
+                    s.Buns = 99999;
+                    s.Recruit();
+                    foreach (var p in s.Camp) if (p != null && p.Type == PieceType.HeroChar) n++;
+                }
+                return n;
+            }
+            int plain = Chars(false), wine = Chars(true);
+            UnityEngine.Debug.Log($"[平衡] 招贤酒 金字 {plain} → {wine}");
+            Assert.Greater(wine, plain * 1.15f, "带酒金字明显变多");
+            Assert.Less(wine, plain * 1.6f, "也不会多得离谱");
+        }
+
+        static Side Armed(HeroId wearer, HeroId weapon, out Match m)
+        {
+            m = new Match(ChapterDef.All[0].WithPool(wearer), 42);
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            int n = HeroDef.All.Length;
+            s.Items.Gear = new int[n];
+            s.Items.WeaponLv = new int[n];
+            for (int i = 0; i < n; i++) s.Items.Gear[i] = -1;
+            s.Items.Gear[(int)wearer] = (int)weapon;
+            s.Items.WeaponLv[(int)wearer] = 1;
+            var name = HeroDef.Get(wearer).Name;
+            for (int i = 0; i < name.Length; i++) s.Board.Pieces[1 + i, 1] = Piece.Hero(name[i]);
+            s.RecomputeHeroes();
+            Assert.AreEqual(1, s.Heroes.Count, name + " 应能凑出");
+            s.Heroes[0].UltCd = 999f;
+            return s;
+        }
+
+        /// <summary>在离好汉最近的路上放一个打不死的小兵，让好汉出一下手。</summary>
+        static Enemy FirstShot(Side s, Match m)
+        {
+            var at = s.Heroes[0].Pos;
+            float progress = 0f, best = float.MaxValue;
+            for (float d = 2f; d < s.Board.PathLength - 1f; d += 0.1f)
+            {
+                float dist = V2.Dist(s.Board.PosAt(d), at);
+                if (dist < best) { best = dist; progress = d; }
+            }
+            m.SpawnOn(s, EnemyKind.Zu, progress);
+            var e = s.Enemies[s.Enemies.Count - 1];
+            e.Hp = e.MaxHp = 1e6f;
+            s.Heroes[0].Cd = 0f;
+            s.Heroes[0].UltCd = 999f;
+            s.Tick(0.02f);
+            return e;
+        }
+
+        [Test]
+        public void NamedWeaponsChangeHowHeroesFight()
+        {
+            Assert.AreEqual(WeaponMove.Snake, Weapons.MoveOf(HeroDef.Get(HeroId.LinChong)));
+            Assert.AreEqual(WeaponMove.None, Weapons.MoveOf(HeroDef.Get(HeroId.WuSong)));
+            foreach (WeaponMove mv in System.Enum.GetValues(typeof(WeaponMove)))
+            {
+                if (mv == WeaponMove.None) continue;
+                Assert.IsNotEmpty(Weapons.MoveName(mv));
+                Assert.IsNotEmpty(Weapons.MoveText(mv));
+            }
+
+            Assert.AreEqual(0f, Side.FarBowBonus(0f), 0.001f);
+            Assert.AreEqual(Weapons.FarBowCap, Side.FarBowBonus(40f), 0.001f, "雕弓加成封顶");
+
+            var hook = Armed(HeroId.WuSong, HeroId.XuNing, out var m1);
+            var slowed = FirstShot(hook, m1);
+            Assert.Greater(slowed.SlowT, 0f, "钩镰枪命中就绊住");
+
+            var staff = Armed(HeroId.WuSong, HeroId.LuZhiShen, out var m2);
+            var knocked = FirstShot(staff, m2);
+            var sameSpot = FirstShot(Armed(HeroId.WuSong, HeroId.XuNing, out var m2b), m2b);
+            Assert.Less(knocked.Progress, sameSpot.Progress - Weapons.StaffKnock * 0.8f, "禅杖打退一大步");
+
+            var blade = Armed(HeroId.WuSong, HeroId.YangZhi, out var m3);
+            var cut = FirstShot(blade, m3);
+            float first = cut.MaxHp - cut.Hp;
+            Assert.IsTrue(cut.Cut);
+            blade.Heroes[0].Cd = 0f;
+            blade.Tick(0.02f);
+            float second = cut.MaxHp - cut.Hp - first;
+            Assert.Greater(first, second * 1.4f, "宝刀只有头一下重");
+
+            var plain = Armed(HeroId.WuSong, HeroId.WuSong, out var m4);
+            var bare = FirstShot(plain, m4);
+            Assert.AreEqual(0f, bare.SlowT, 0.001f, "普通兵器没有招式");
+            Assert.IsFalse(bare.Cut);
+        }
+
+        [Test]
+        public void DailyIsSameForEveryoneAndChangesByDay()
+        {
+            var a = ChapterDef.Daily(20261027);
+            var b = ChapterDef.Daily(20261027);
+            Assert.IsTrue(a.IsDaily);
+            Assert.IsFalse(a.IsEndless);
+            Assert.AreEqual(a.Name, b.Name);
+            Assert.AreSame(a.Map, b.Map);
+            CollectionAssert.AreEqual(a.Boss.Skills, b.Boss.Skills);
+            Assert.AreEqual(a.Seed, b.Seed);
+            Assert.AreEqual(0, a.Joins.Length, "每日一战不收人");
+            Assert.GreaterOrEqual(a.Boss.Skills.Length, 2);
+            bool differs = false;
+            for (int d = 1; d < 7; d++)
+            {
+                var o = ChapterDef.Daily(20261027 + d);
+                if (o.Name != a.Name || !ReferenceEquals(o.Map, a.Map)) differs = true;
+            }
+            Assert.IsTrue(differs, "一周里每天不能全一样");
+            foreach (var ch in ChapterDef.All) Assert.IsFalse(ch.IsDaily, "生成每日一战不能改到剧情回");
+
+            int casual = 0, expert = 0;
+            const int runs = 16;
+            for (uint s = 1; s <= runs; s++)
+            {
+                foreach (var skill in new[] { 0.5f, 1f })
+                {
+                    var m = new Match(a, a.Seed + s);
+                    var p = new RivalAI(m.Player, skill, s * 3);
+                    var r = new RivalAI(m.Rival, a.RivalSkill, s * 5);
+                    while (!m.Over && m.Time < 15 * 60) { p.Tick(0.05f); r.Tick(0.05f); m.Step(0.05f); m.Events.Clear(); }
+                    if (m.Winner == 0) { if (skill < 1f) casual++; else expert++; }
+                }
+            }
+            UnityEngine.Debug.Log($"[平衡] 每日一战 {a.Name} 普通 {casual}/{runs} 高手 {expert}/{runs}");
+            Assert.GreaterOrEqual(expert, runs / 3, "每日一战打得好要能赢");
+            Assert.LessOrEqual(casual, runs * 9 / 10, "也不能闭眼赢");
+        }
+
+        static bool LoadoutWins(int chapter, uint seed, Loadout items)
+        {
+            var ch = ChapterDef.All[chapter];
+            var m = new Match(ch, seed, items);
+            var player = new RivalAI(m.Player, 0.5f, seed * 3);
+            var rival = new RivalAI(m.Rival, ch.RivalSkill, seed * 5);
+            const float dt = 1f / 20f;
+            while (!m.Over && m.Time < 15 * 60)
+            {
+                player.Tick(dt);
+                rival.Tick(dt);
+                m.Step(dt);
+                m.Events.Clear();
+            }
+            return m.Winner == 0;
+        }
+
+        [Test]
+        public void FourPassivesHelpButDoNotTrivialize()
+        {
+            const int runs = 32;
+            int Wins(System.Func<Loadout> make)
+            {
+                int w = 0;
+                for (uint s = 2001; s < 2001 + runs; s++) if (LoadoutWins(12, s, make())) w++;
+                return w;
+            }
+            int none = Wins(() => new Loadout());
+            int stove = Wins(() => new Loadout { Stove = true, Wine = true, Gang = true, Flag = true });
+            int classic = Wins(() => new Loadout { Gang = true, Flag = true, Marsh = true, Stele = true });
+            UnityEngine.Debug.Log($"[平衡] {ChapterDef.All[12].Name} 被动：不带 {none}/{runs}，灶酒纲旗 {stove}/{runs}，纲旗泊碣 {classic}/{runs}");
+            Assert.Greater(stove, none, "带被动要比不带好打");
+            Assert.Greater(classic, none);
+            Assert.LessOrEqual(stove, runs * 9 / 10, "四个被动也不该稳赢");
+            Assert.LessOrEqual(classic, runs * 9 / 10);
         }
     }
 }

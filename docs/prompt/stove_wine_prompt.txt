@@ -1,0 +1,5 @@
+A 2 columns x 1 row sprite sheet, 2 panels, each object centered alone on a flat pure white background with generous empty margin, no frames, no grid lines.
+Style: bold cartoon mobile game item icon, thick dark brown outline, rich saturated colors, soft cel shading with a small highlight, same style as a cute casual Chinese-themed mobile game (treasure chest / clay medicine jar icons), Water Margin Song dynasty theme.
+(1) A small traditional Chinese clay brick stove (zao) with a round opening at the front showing bright orange fire, a bamboo steamer basket stacked on top with two puffs of white steam rising, warm orange and brown tones, three-quarter view.
+(2) A round brown ceramic wine jar with a red cloth cover tied with red string, a small wooden ladle leaning on it, a red diamond-shaped paper label on the belly that is completely blank, warm brown and red tones, three-quarter view.
+NO TEXT, no labels, no captions, no characters, no calligraphy, no seals, no writing anywhere in the image.

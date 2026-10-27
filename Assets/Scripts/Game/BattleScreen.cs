@@ -17,6 +17,10 @@ namespace Rescue
         public int Wave, Kills, Rains;
         /// <summary>GM 跳过时一定缴获兵器，方便看结算掉落。</summary>
         public bool GmDrop;
+        /// <summary>每日一战：不动座次，当天首胜给铜钱。</summary>
+        public bool Daily;
+        /// <summary>这一局一定缴获兵器（每日一战首胜）。</summary>
+        public bool SureDrop;
         public List<HeroId> Formed = new List<HeroId>();
         public List<HeroId> NewHeroes = new List<HeroId>();
     }
@@ -60,7 +64,7 @@ namespace Rescue
 
         void Init(ChapterDef ch, Camera cam, Loadout items)
         {
-            uint seed = (uint)(DateTime.Now.Ticks & 0x7fffffff);
+            uint seed = ch.IsDaily ? ch.Seed : (uint)(DateTime.Now.Ticks & 0x7fffffff);
             M = new Match(ch, seed, items);
             M.Hold = true;
             M.Rival.IncomeMul = ch.RivalIncome + Mathf.Min(0.1f, Save.Major * 0.012f);
@@ -155,6 +159,7 @@ namespace Rescue
             _started = true;
             M.Hold = false;
             Analytics.LevelStart(M.Chapter.Index + 1, M.Chapter.Name);
+            if (!Autoplay) LogLoadout(M.Player.Items);
             if (_tutorialRun && !Save.Tut((int)Tut.Recruit))
             {
                 M.Hold = true;
@@ -211,7 +216,7 @@ namespace Rescue
             var layer = Ui.Fill(_overlay, new Color(0.08f, 0.06f, 0.04f, 0.78f), true, "intro");
             _intro = layer;
             var card = Ui.WoodPanel(Ui.Fit(layer, 1420), new Vector2(940, 1240), new Vector2(0, 40), Pal.Hex("8C6B4E"), Pal.Paper);
-            string head = ch.IsEndless ? "聚义厅 · 车轮战" : $"第{BattleView.ToCn(ch.Index + 1)}回 · {ch.Act}";
+            string head = ch.IsDaily ? "每日一战 · 今天人人同一阵" : ch.IsEndless ? "聚义厅 · 车轮战" : $"第{BattleView.ToCn(ch.Index + 1)}回 · {ch.Act}";
             Ui.Label(card.transform, head, 42, Pal.InkSoft, new Vector2(0, 500), new Vector2(800, 64));
             Ui.Label(card.transform, ch.Name, 140, Pal.Ink, new Vector2(0, 385), new Vector2(860, 170), TextAnchor.MiddleCenter, Fonts.Brush);
             if (!string.IsNullOrEmpty(ch.Hui))
@@ -221,7 +226,10 @@ namespace Rescue
             var names = new List<string>();
             foreach (var id in ch.Pool) { var d = HeroDef.Get(id); if (!d.Hidden) names.Add(d.Name); }
             Ui.Label(card.transform, "本回好汉：" + string.Join("  ", names), 38, Pal.Gold, new Vector2(0, 20), new Vector2(820, 70));
-            if (ch.Joins.Length > 0)
+            if (ch.IsDaily)
+                Ui.Label(card.transform, Save.DailyWonToday ? "今天已经赢过，再赢不另给铜钱" : $"今日首胜：铜钱 ×{Save.DailyCoinsReward}，必掉一件兵器　不动座次",
+                    34, Save.DailyWonToday ? Pal.InkSoft : Pal.Red, new Vector2(0, -55), new Vector2(840, 90));
+            else if (ch.Joins.Length > 0)
             {
                 var j = new List<string>();
                 foreach (var id in ch.Joins) j.Add(HeroDef.Get(id).Nick + HeroDef.Get(id).Name);
@@ -247,6 +255,27 @@ namespace Rescue
             Tween.Pop(card.transform, 0.4f);
         }
 
+        static void LogLoadout(Loadout l)
+        {
+            var passives = new List<string>();
+            var actives = new List<string>();
+            if (l.Gang) passives.Add("gang");
+            if (l.Flag) passives.Add("flag");
+            if (l.Marsh) passives.Add("marsh");
+            if (l.Stele) passives.Add("stele");
+            if (l.Xuming) passives.Add("xuming");
+            if (l.Shovels > 0) passives.Add("shovel");
+            if (l.Far) passives.Add("far");
+            if (l.Stove) passives.Add("stove");
+            if (l.Wine) passives.Add("wine");
+            if (l.MengHan > 0) actives.Add("menghan");
+            if (l.TianShu > 0) actives.Add("tianshu");
+            if (l.Baozi > 0) actives.Add("baozi");
+            if (l.Fu > 0) actives.Add("fu");
+            if (l.Trap > 0) actives.Add("trap");
+            Analytics.Loadout(string.Join(",", passives), string.Join(",", actives), l.Armed != null ? l.Armed.Count : 0);
+        }
+
         public static string ItemSummary(Loadout l)
         {
             var parts = new List<string>();
@@ -262,6 +291,8 @@ namespace Rescue
             if (l.Fu > 0) parts.Add("攻速符×" + l.Fu);
             if (l.Trap > 0) parts.Add("陷阱×" + l.Trap);
             if (l.Far) parts.Add("御敌千里");
+            if (l.Stove) parts.Add("十字坡灶");
+            if (l.Wine) parts.Add("招贤酒");
             return string.Join("、", parts);
         }
 
@@ -602,9 +633,11 @@ namespace Rescue
             string worn = GearSummary(M.Player.Items);
             string yours = mine.Length > 0 ? "你身上的：" + mine : "无";
             if (worn.Length > 0) yours = (mine.Length > 0 ? yours + "\n" : "") + "带着：" + worn;
-            int winCoins = ResultPanel.WinCoins(M.Chapter);
+            int winCoins = M.Chapter.IsDaily ? ResultPanel.DailyWinCoins : ResultPanel.WinCoins(M.Chapter);
             SpoilBox(card, new Vector2(0, 205), "对手战利品：", yours);
-            SpoilBox(card, new Vector2(0, -45), "战利品：", $"铜钱 ×{winCoins}　兵器（撑过四波有机会）");
+            SpoilBox(card, new Vector2(0, -45), "战利品：", M.Chapter.IsDaily && !Save.DailyWonToday
+                ? $"今日首胜 铜钱 ×{winCoins}　必掉一件兵器"
+                : $"铜钱 ×{winCoins}　兵器（撑过四波有机会）");
 
             Ui.CartoonBtn(card, "耻辱撤退", new Vector2(340, 120), new Vector2(-190, -240), Ui.BtnBlue, () =>
             {
@@ -666,7 +699,7 @@ namespace Rescue
             var r = new BattleResult
             {
                 Chapter = M.Chapter.Index, Round = M.Chapter.Round, Pool = M.Chapter.Pool, Win = win, Quit = quit, Wave = M.Wave, Kills = M.Player.Kills, Rains = M.Player.Rains,
-                GmDrop = _gmDrop,
+                GmDrop = _gmDrop, Daily = M.Chapter.IsDaily,
             };
             foreach (var id in M.Player.FormedEver)
             {

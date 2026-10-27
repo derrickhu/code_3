@@ -15,15 +15,29 @@ namespace Rescue
         public static int WinCoins(int chapter, int round) =>
             round > 0 ? 40 + 5 * Mathf.Min(round, 30) : 30 + 4 * Mathf.Min(chapter, 45);
 
+        /// <summary>每日一战：当天首胜给大头，之后再赢只给一点。</summary>
+        public static int DailyWinCoins => Save.DailyWonToday ? 15 : Save.DailyCoinsReward;
+
         /// <summary>preview 有值时，结算一定演出这件兵器落下。截图用，正式对局不传。</summary>
         public static void Show(BattleResult r, System.Action onClose, HeroId? preview = null)
         {
-            int coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : 8 + r.Wave);
-            var rank = r.Quit
+            bool dailyFirst = false;
+            int coins;
+            if (r.Daily)
+            {
+                coins = r.Quit ? 0 : r.Win ? (Save.DailyWonToday ? 15 : 0) : 8 + r.Wave;
+                if (r.Win) dailyFirst = Save.WinDaily();
+                if (dailyFirst) r.SureDrop = true;
+                if (!r.Quit) Analytics.DailyBattle(r.Win, dailyFirst);
+            }
+            else coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : 8 + r.Wave);
+            var rank = r.Quit || r.Daily
                 ? new Save.RankDelta { OldTier = Save.D.tier, OldStars = Save.D.stars }
                 : Save.ApplyResult(r.Win);
+            if (!r.Quit && !r.Daily) Analytics.RankChange(rank.OldTier, rank.OldStars, Save.D.tier, Save.D.stars, r.Win);
             var joined = new List<HeroId>();
-            if (r.Round > 0)
+            if (r.Daily) joined.Clear();
+            else if (r.Round > 0)
             {
                 if (r.Win)
                 {
@@ -37,7 +51,9 @@ namespace Rescue
             if (seatNow) Save.D.seated = true;
             foreach (var id in r.Formed) if (!Save.D.heroes.Contains((int)id)) Save.D.heroes.Add((int)id);
             Save.D.coins += coins;
+            if (dailyFirst) coins += Save.DailyCoinsReward;
             var loot = Save.RollWeapon(r);
+            if (!string.IsNullOrEmpty(loot.Text)) Analytics.WeaponDrop(HeroDef.Get(loot.Hero).Weapon, HeroDef.Get(loot.Hero).WGrade, !loot.IsWeapon);
             bool showWeapon = loot.IsWeapon;
             HeroId dropped = loot.Hero;
             if (preview is HeroId forced)
@@ -46,6 +62,7 @@ namespace Rescue
                 dropped = forced;
             }
             Save.Write();
+            LiveConfig.SubmitRank();
 
             var layer = Ui.Fill(Ui.Root, r.Win ? Pal.Hex("F3EAD6") : Pal.Hex("C9D6DC"), true, "result");
             var c = Ui.Rect(Ui.Fit(layer, 1880), "c");
@@ -71,6 +88,8 @@ namespace Rescue
             var stage = BuildStage(c, r.Win);
 
             var tags = new List<(string, Color)>();
+            if (dailyFirst) tags.Add(("每日一战 首胜", Pal.Hex("C0392B")));
+            else if (r.Daily) tags.Add(("每日一战 不动座次", Pal.Hex("6E5D45")));
             if (showWeapon) tags.Add(("缴获 " + HeroDef.Get(dropped).Weapon, Ui.GradeColor(HeroDef.Get(dropped).WGrade)));
             else if (!string.IsNullOrEmpty(loot.Text)) tags.Add((loot.Text, Pal.Hex("8A54C0")));
             if (joined.Count > 0) tags.Add(($"{joined.Count} 位好汉入伙", Pal.Hex("C0392B")));
@@ -113,6 +132,7 @@ namespace Rescue
                         if (dbl) dbl.gameObject.SetActive(false);
                         Tween.Run(coinText, 1.0f, k => { }, Close);
                     }), 58, "ui_video");
+                AdStub.Badge(dbl, new Vector2(250, 60), "双倍铜钱");
                 Breathe(dbl);
                 y -= 160;
             }
@@ -131,6 +151,7 @@ namespace Rescue
                         Ui.Toast("星星保住了！");
                         if (keep) keep.gameObject.SetActive(false);
                     }), 58, "ui_video");
+                AdStub.Badge(keep, new Vector2(250, 60), "保星");
                 Breathe(keep);
                 y -= 160;
             }
@@ -182,7 +203,11 @@ namespace Rescue
             var owner = Ui.Label(page, who + "　<color=#" + hex + ">" + Weapons.Grades[grade] + "</color>", 40, Pal.InkSoft, new Vector2(0, -510), new Vector2(900, 56), TextAnchor.MiddleCenter, Fonts.Brush);
             owner.supportRichText = true;
             owner.transform.localScale = Vector3.zero;
-            var affix = Ui.Label(page, Weapons.AffixText(d.WKind), 36, Pal.Ink, new Vector2(0, -590), new Vector2(860, 90));
+            var move = Weapons.MoveOf(d);
+            string affixText = Weapons.AffixText(d.WKind);
+            if (move != WeaponMove.None) affixText += $"\n<color=#B0451F>名兵招式·{Weapons.MoveName(move)}</color>：{Weapons.MoveText(move)}";
+            var affix = Ui.Label(page, affixText, move != WeaponMove.None ? 32 : 36, Pal.Ink, new Vector2(0, -590), new Vector2(940, 100));
+            affix.supportRichText = true;
             affix.transform.localScale = Vector3.zero;
             var give = Ui.Label(page, "可交给任意已入伙的好汉", 32, Pal.InkSoft, new Vector2(0, -670), new Vector2(860, 48));
             give.transform.localScale = Vector3.zero;

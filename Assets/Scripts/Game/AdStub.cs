@@ -10,10 +10,104 @@ namespace Rescue
     {
         public const float Seconds = 3f;
 
+        /// <summary>这个入口今天还能看几次；-1 表示不限。</summary>
+        public static int Left(string reason) => LiveConfig.AdLeft(Analytics.Scene(reason));
+
+        /// <summary>按钮上的小字：「今日剩 N 次」。不限次数时返回空串。</summary>
+        public static string LeftText(string reason)
+        {
+            int n = Left(reason);
+            return n < 0 ? "" : n > 0 ? $"今日剩{n}次" : "今日已用完";
+        }
+
         public static void Show(string reason, Action onReward, Action onCancel = null)
         {
             string scene = Analytics.Scene(reason);
+            if (LiveConfig.AdLeft(scene) == 0)
+            {
+                Ui.Nope("今天这里的广告次数用完了，明天再来");
+                onCancel?.Invoke();
+                return;
+            }
             Analytics.AdRequest(scene);
+            void Reward()
+            {
+                Save.NoteAd(scene);
+                onReward?.Invoke();
+            }
+            if (WxAd.Available && !Save.Volatile)
+            {
+                var block = Ui.Fill(Ui.Root, Color.black.A(0.35f), true, "adWait");
+                bool wasPaused = AudioListener.pause;
+                AudioListener.pause = true;
+                Analytics.AdShow(scene);
+                WxAd.Show(ended =>
+                {
+                    AudioListener.pause = wasPaused;
+                    if (block) UnityEngine.Object.Destroy(block.gameObject);
+                    Analytics.AdClose(scene, ended);
+                    if (ended) Reward();
+                    else
+                    {
+                        Ui.Nope("没看完，这次没有奖励");
+                        onCancel?.Invoke();
+                    }
+                }, () =>
+                {
+                    AudioListener.pause = wasPaused;
+                    if (block) UnityEngine.Object.Destroy(block.gameObject);
+                    Analytics.AdClose(scene, false);
+                    Ui.Nope("暂时没有广告，稍后再试");
+                    onCancel?.Invoke();
+                });
+                return;
+            }
+            Demo(reason, scene, Reward, onCancel);
+        }
+
+        /// <summary>广告按钮右上角的小红签「剩N」。不限次数的入口不显示，用完变灰。</summary>
+        public static void Badge(Transform parent, Vector2 pos, string reason)
+        {
+            if (Left(reason) < 0) return;
+            var bg = Ui.Box(parent, new Vector2(78, 40), pos, Pal.Hex("E8392B"), null, "adLeft");
+            bg.pixelsPerUnitMultiplier = 2f;
+            var edge = bg.gameObject.AddComponent<Outline>();
+            edge.effectColor = Pal.Hex("FFF6E2");
+            edge.effectDistance = new Vector2(2f, -2f);
+            var text = Ui.Label(bg.transform, "", 24, Color.white, new Vector2(0, 1), new Vector2(78, 40));
+            text.fontStyle = FontStyle.Bold;
+            var b = bg.gameObject.AddComponent<LeftBadge>();
+            b.Reason = reason;
+            b.Bg = bg;
+            b.Text = text;
+            b.Tick();
+        }
+
+        sealed class LeftBadge : MonoBehaviour
+        {
+            public string Reason;
+            public Image Bg;
+            public Text Text;
+            float _t;
+
+            void Update()
+            {
+                _t -= Time.unscaledDeltaTime;
+                if (_t <= 0f) Tick();
+            }
+
+            public void Tick()
+            {
+                _t = 0.5f;
+                int n = Left(Reason);
+                Bg.enabled = Text.enabled = n >= 0;
+                Text.text = "剩" + Mathf.Max(0, n);
+                Bg.color = n > 0 ? Pal.Hex("E8392B") : Pal.Hex("8E8A86");
+            }
+        }
+
+        static void Demo(string reason, string scene, Action onReward, Action onCancel)
+        {
             Analytics.AdShow(scene);
             var layer = Ui.Fill(Ui.Root, Color.black, true, "ad");
             var video = Ui.Box(layer, new Vector2(1080, 1300), new Vector2(0, 120), Color.white, Art.Img("home_bg2"), "video");

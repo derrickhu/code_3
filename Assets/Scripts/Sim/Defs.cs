@@ -5,8 +5,8 @@ namespace Rescue.Sim
 {
     public enum UnitKind { Dao, Qiang, Gong, Qi }
 
-    /// <summary>Shovel 是鲁智深的方便铲：拖到紧挨白地的草地上开出新地。</summary>
-    public enum PieceType { Unit, HeroChar, Shovel }
+    /// <summary>Shovel 是鲁智深的方便铲：拖到紧挨白地的草地上开出新地。Stove 是十字坡灶，占一格慢慢出炊饼。</summary>
+    public enum PieceType { Unit, HeroChar, Shovel, Stove }
 
     public sealed class Piece
     {
@@ -25,11 +25,13 @@ namespace Rescue.Sim
         public static Piece Unit(UnitKind k, int level = 1) => new Piece { Type = PieceType.Unit, Kind = k, Level = level };
         public static Piece Hero(char c, int level = 1) => new Piece { Type = PieceType.HeroChar, Char = c, Level = level };
         public static Piece Shovel() => new Piece { Type = PieceType.Shovel };
+        public static Piece Stove() => new Piece { Type = PieceType.Stove };
 
         public char Glyph => Type switch
         {
             PieceType.Unit => UnitDef.Get(Kind).Glyph,
             PieceType.HeroChar => Char,
+            PieceType.Stove => '灶',
             _ => '铲',
         };
     }
@@ -107,6 +109,13 @@ namespace Rescue.Sim
         /// <summary>掉一颗心补 6 个炊饼。只够喘口气，不够靠漏怪回本。</summary>
         public const int RainBuns = 6;
         public const float HeroCharChance = 0.24f;
+        /// <summary>带着招贤酒时好汉字的几率。保底照旧，小兵仍占大半。</summary>
+        public const float WineCharChance = 0.32f;
+        /// <summary>十字坡灶：一级到三级的出饼间隔、每次几个、这一局最多出多少。</summary>
+        public static readonly float[] StoveGap = { 10f, 8.5f, 7f };
+        public static readonly int[] StoveYield = { 1, 1, 2 };
+        public static readonly int[] StoveCap = { 12, 14, 16 };
+        public const int StoveMaxLevel = 3;
         /// <summary>聚义自带铲子很少，白地主要靠看广告开。看完一次固定给两把。</summary>
         public const float ShovelChance = 0.05f;
         public const int AdShovels = 2;

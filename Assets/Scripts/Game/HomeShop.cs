@@ -67,7 +67,7 @@ namespace Rescue
             }
             Rebuild(null);
 
-            var tip = Ui.Label(_shop, "打完一局就换新货。主动道具可以多买，一场最多带两个", 36, Pal.Paper, new Vector2(0, -640), new Vector2(940, 60));
+            var tip = Ui.Label(_shop, "打完一局换新货。一场最多带两个主动、四个被动", 36, Pal.Paper, new Vector2(0, -640), new Vector2(940, 60));
             tip.fontStyle = FontStyle.Bold;
             Tween.Pop(body, 0.3f);
         }
@@ -137,17 +137,19 @@ namespace Rescue
                     var adBtn = Ui.CartoonBtn(t, "免费\n领取", new Vector2(212, 108), new Vector2(276, 0), Ui.BtnOrange, () =>
                     {
                         if (!CanTake(it)) return;
-                        AdStub.Show("免费领取" + it.Name, () =>
+                        WarnPassiveFull(it, () => AdStub.Show("免费领取" + it.Name, () =>
                         {
                             it.Give();
                             Save.D.shopFree.Add(it.Id);
                             Save.Write();
+                            Analytics.ShopBuy(ItemKey(it), "ad", 0);
                             Sfx.Play(Snd.Merge);
                             Toast(BoughtLine(it));
                             rebuild("白送的，客官拿好！");
-                        });
+                        }));
                     }, 40, "ui_video");
                     adBtn.Find("text").GetComponent<Text>().lineSpacing = 0.9f;
+                    AdStub.Badge(adBtn, new Vector2(80, 58), "免费领取");
                     Shine(adBtn);
                     continue;
                 }
@@ -161,13 +163,18 @@ namespace Rescue
                 {
                     if (Save.D.coins < it.Price) { Nope("铜钱不够，打一局再来"); return; }
                     if (!CanTake(it)) return;
-                    Save.D.coins -= it.Price;
-                    it.Give();
-                    Save.D.shopSold.Add(it.Id);
-                    Save.Write();
-                    Sfx.Play(Snd.Merge);
-                    Toast(BoughtLine(it));
-                    rebuild("客官好眼力！");
+                    WarnPassiveFull(it, () =>
+                    {
+                        if (Save.D.coins < it.Price) return;
+                        Save.D.coins -= it.Price;
+                        it.Give();
+                        Save.D.shopSold.Add(it.Id);
+                        Save.Write();
+                        Analytics.ShopBuy(ItemKey(it), "coin", it.Price);
+                        Sfx.Play(Snd.Merge);
+                        Toast(BoughtLine(it));
+                        rebuild("客官好眼力！");
+                    });
                 });
             }
         }
@@ -176,7 +183,17 @@ namespace Rescue
         {
             if (!it.Active && it.Owned()) { Nope("这件已经有了"); return false; }
             if (it.Active && it.Count() == 0 && ActiveKinds() >= ActiveSlots) { Nope("背包里的主动道具最多四种"); return false; }
+            if (!it.Active && it.Count() == 0 && Save.PassiveKinds >= Save.MaxPassiveBag) { Nope("背包里的被动道具最多七种"); return false; }
             return true;
+        }
+
+        static string ItemKey(ShopItem it) => it.Icon + ":" + it.Id;
+
+        /// <summary>被动上场已满四个时，买之前先说清楚：买下只进背包，要带上得换下一个。</summary>
+        void WarnPassiveFull(ShopItem it, Action go)
+        {
+            if (it.Active || Save.PassiveFieldCount < Save.MaxPassiveField) { go(); return; }
+            Confirm("被动已带满四个", $"「{it.Name}」买下先放背包，\n这场不生效。要带它，\n在背包里点掉一个再点它", "照样要", go);
         }
 
         /// <summary>广告按钮上一道斜光来回扫，提醒「这个免费」。</summary>
@@ -290,20 +307,24 @@ namespace Rescue
             });
         }
 
-        /// <summary>抽中的发进背包；主动种类满了或被动已有，就折成铜钱。</summary>
+        /// <summary>抽中的发进背包；主动种类满了、被动已有或上场已带满四个，就折成铜钱。</summary>
         static string GiveLotto(ShopItem it)
         {
             bool full = it.Active && it.Count() == 0 && ActiveKinds() >= ActiveSlots;
             bool dup = !it.Active && it.Owned();
-            if (full || dup)
+            bool fifth = !it.Active && !dup && (Save.PassiveFieldCount >= Save.MaxPassiveField || Save.PassiveKinds >= Save.MaxPassiveBag);
+            if (full || dup || fifth)
             {
                 int coins = it.Price / 2;
                 Save.D.coins += coins;
                 Save.Write();
-                return $"抽中「{it.Name}」，{(full ? "主动道具已满" : "已经有了")}，折铜钱 {coins}";
+                Analytics.ShopBuy(ItemKey(it), "lotto_coin", coins);
+                string why = full ? "主动道具已满" : dup ? "已经有了" : "被动已带满四个";
+                return $"抽中「{it.Name}」，{why}，折铜钱 {coins}";
             }
             it.Give();
             Save.Write();
+            Analytics.ShopBuy(ItemKey(it), "lotto", 0);
             if (it.Active && !Save.ActiveFielded(it.Id)) return $"抽中「{it.Rarity}·{it.Name}」，上场已满，先放背包";
             return $"抽中「{it.Rarity}·{it.Name}」！";
         }
@@ -311,13 +332,20 @@ namespace Rescue
         static string BoughtLine(ShopItem it)
         {
             if (it.Active && !Save.ActiveFielded(it.Id)) return it.Name + "已放进背包，上场已满两个";
+            if (!it.Active && !Save.PassiveFielded(it.Id)) return it.Name + "已放进背包，被动上场已满四个";
             return "成功获得" + it.Name;
         }
 
-        /// <summary>我的道具：主动一行可点选上场（最多两件，背包最多四种），被动一行；今天买的可以点红减号退货。</summary>
+        /// <summary>我的道具：主动一行（上场两件，背包四种）、被动一行（上场四件，背包七种），点图标决定带不带；今天买的可以点红减号退货。</summary>
         void BuildBag(RectTransform content, Action<string> rebuild)
         {
-            if (!_lottoTab) Ui.Label(content, "我的道具 · 点主动决定上场", 32, Pal.Ink, new Vector2(-150, -186), new Vector2(560, 50), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
+            if (!_lottoTab)
+            {
+                Ui.Label(content, "我的道具 · 点图标决定上场", 32, Pal.Ink, new Vector2(-190, -186), new Vector2(480, 50), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
+                var count = Ui.Label(content, $"主动 {Save.D.activeOn.Count}/{Save.MaxActiveField}　被动 {Save.PassiveFieldCount}/{Save.MaxPassiveField}", 28, Pal.Hex("4A3A2C"),
+                    new Vector2(250, -186), new Vector2(320, 50), TextAnchor.MiddleRight);
+                count.fontStyle = FontStyle.Bold;
+            }
             Ui.Framed(content, new Vector2(790, 248), new Vector2(26, -330), Pal.Hex("3A2A20"), Pal.Hex("5A4632"), 5f, "bag");
             var side = _lottoTab ? Pal.Hex("5A2E10") : Pal.Hex("3A2A20");
             Ui.Label(content, "主\n动", 30, side, new Vector2(-400, -270), new Vector2(44, 90)).fontStyle = FontStyle.Bold;
@@ -332,11 +360,11 @@ namespace Rescue
                     Ui.Box(content, new Vector2(102, 102), pos, Pal.Hex("53392A"), null, "cell").pixelsPerUnitMultiplier = 1.4f;
                     if (c >= items.Count) continue;
                     var it = items[c];
-                    bool fielded = it.Active && Save.ActiveFielded(it.Id);
-                    var cell = Ui.Box(content, new Vector2(96, 96), pos, fielded || !it.Active ? it.DiscColor : it.DiscColor.A(0.4f), null, "item");
+                    bool fielded = it.Active ? Save.ActiveFielded(it.Id) : Save.PassiveFielded(it.Id);
+                    var cell = Ui.Box(content, new Vector2(96, 96), pos, fielded ? it.DiscColor : it.DiscColor.A(0.4f), null, "item");
                     cell.pixelsPerUnitMultiplier = 1.4f;
                     var icon = Ui.Icon(cell.transform, it.Icon, 80, Vector2.zero);
-                    if (it.Active && !fielded) icon.color = new Color(1f, 1f, 1f, 0.45f);
+                    if (!fielded) icon.color = new Color(1f, 1f, 1f, 0.45f);
                     int n = it.Count();
                     if (n > 1) Ui.Stroke(Ui.Label(cell.transform, "×" + n, 26, Pal.Paper, new Vector2(22, -30), new Vector2(60, 34)), Edge, 2f);
                     if (fielded)
@@ -347,9 +375,11 @@ namespace Rescue
                     }
                     Ui.Tap(cell, () =>
                     {
-                        if (!it.Active) { Toast(it.Name + "：" + it.Desc); return; }
-                        bool was = Save.ActiveFielded(it.Id);
-                        if (!Save.ToggleActiveField(it.Id, out var err)) { Nope(err); return; }
+                        bool was = it.Active ? Save.ActiveFielded(it.Id) : Save.PassiveFielded(it.Id);
+                        string err;
+                        bool ok = it.Active ? Save.ToggleActiveField(it.Id, out err) : Save.TogglePassiveField(it.Id, out err);
+                        if (!ok) { Nope(err); return; }
+                        if (!was) Toast(it.Name + "：" + it.Desc);
                         rebuild(was ? it.Name + "这场不带" : it.Name + "这场带上");
                     });
                     if (!Save.D.shopSold.Contains(it.Id)) continue;
@@ -362,6 +392,7 @@ namespace Rescue
                         Save.D.shopSold.Remove(it.Id);
                         Save.D.coins += it.Price;
                         Save.Write();
+                        Analytics.ShopBuy(ItemKey(it), "refund", -it.Price);
                         Toast($"已退回{it.Name}，铜钱 +{it.Price}");
                         rebuild("下回再来哟");
                     });
@@ -371,7 +402,7 @@ namespace Rescue
             plank.rectTransform.sizeDelta = new Vector2(350, 120);
             plank.preserveAspect = false;
             plank.rectTransform.localRotation = Quaternion.Euler(0, 0, -2);
-            Ui.Tap(plank, () => Toast("背包最多四种。点图标决定上场，一场两个"));
+            Ui.Tap(plank, () => Toast("主动背包最多四种，一场带两个；被动一场带四个"));
         }
     }
 }
