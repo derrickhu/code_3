@@ -184,8 +184,10 @@ namespace Rescue
             owner.transform.localScale = Vector3.zero;
             var affix = Ui.Label(page, Weapons.AffixText(d.WKind), 36, Pal.Ink, new Vector2(0, -590), new Vector2(860, 90));
             affix.transform.localScale = Vector3.zero;
+            var give = Ui.Label(page, "可交给任意已入伙的好汉", 32, Pal.InkSoft, new Vector2(0, -670), new Vector2(860, 48));
+            give.transform.localScale = Vector3.zero;
 
-            Ui.CartoonBtn(page, "收入囊中", new Vector2(460, 128), new Vector2(0, -760), relic ? Ui.BtnOrange : Ui.BtnRed, () =>
+            Ui.CartoonBtn(page, "收入囊中", new Vector2(460, 128), new Vector2(0, -820), relic ? Ui.BtnOrange : Ui.BtnRed, () =>
             {
                 Object.Destroy(layer.gameObject);
                 done?.Invoke();
@@ -225,6 +227,7 @@ namespace Rescue
                 Tween.Pop(name.transform, 0.32f, 0.02f);
                 Tween.Pop(owner.transform, 0.28f, 0.08f);
                 Tween.Pop(affix.transform, 0.28f, 0.14f);
+                Tween.Pop(give.transform, 0.28f, 0.18f);
                 Sfx.Play(relic ? Snd.RankUp : Snd.Hero, 0.9f);
                 int n = relic ? 12 : 8;
                 for (int i = 0; i < n; i++)

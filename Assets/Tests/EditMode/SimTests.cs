@@ -818,6 +818,34 @@ namespace Rescue.Tests
         }
 
         [Test]
+        public void BorrowedWeaponUsesTheWeaponsGradeNotTheWearer()
+        {
+            var m = NewMatch();
+            var s = m.Player;
+            int n = HeroDef.All.Length;
+            s.Items.Gear = new int[n];
+            s.Items.WeaponLv = new int[n];
+            for (int i = 0; i < n; i++) s.Items.Gear[i] = -1;
+            var wearer = HeroDef.Get(HeroId.HuaRong);
+            var blade = HeroDef.Get(HeroId.WuSong);
+            s.Items.Gear[(int)wearer.Id] = (int)blade.Id;
+            s.Items.WeaponLv[(int)wearer.Id] = 2;
+
+            Assert.AreEqual(blade, s.GearOf(wearer));
+            Assert.IsTrue(s.Armed(wearer));
+            Assert.IsFalse(s.Armed(blade));
+            Assert.AreEqual(HeroDef.ArmedMul(2, blade.WGrade), s.GearMul(wearer), 0.001f);
+            Assert.AreEqual(1.1f, Weapons.Affix(blade, wearer).Dmg, 0.001f);
+            Assert.AreEqual(1f, s.GearMul(blade), 0.001f);
+
+            var song = HeroDef.Get(HeroId.WuSong);
+            var spear = HeroDef.Get(HeroId.LinChong);
+            s.Items.Gear[(int)song.Id] = (int)spear.Id;
+            s.Items.WeaponLv[(int)song.Id] = 1;
+            Assert.AreEqual(song.RangeWith(s.Items.Far) + 0.3f, s.ShownRange(song), 0.001f);
+        }
+
+        [Test]
         public void TrapDropsEnemiesAndStunsThem()
         {
             var m = NewMatch();

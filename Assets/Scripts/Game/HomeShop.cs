@@ -67,7 +67,7 @@ namespace Rescue
             }
             Rebuild(null);
 
-            var tip = Ui.Label(_shop, "打完一局就换新货，道具仅当天有效", 42, Pal.Paper, new Vector2(0, -640), new Vector2(900, 60));
+            var tip = Ui.Label(_shop, "打完一局就换新货。主动道具可以多买，一场最多带两个", 36, Pal.Paper, new Vector2(0, -640), new Vector2(940, 60));
             tip.fontStyle = FontStyle.Bold;
             Tween.Pop(body, 0.3f);
         }
@@ -143,7 +143,7 @@ namespace Rescue
                             Save.D.shopFree.Add(it.Id);
                             Save.Write();
                             Sfx.Play(Snd.Merge);
-                            Toast("成功获得" + it.Name);
+                            Toast(BoughtLine(it));
                             rebuild("白送的，客官拿好！");
                         });
                     }, 40, "ui_video");
@@ -166,7 +166,7 @@ namespace Rescue
                     Save.D.shopSold.Add(it.Id);
                     Save.Write();
                     Sfx.Play(Snd.Merge);
-                    Toast("成功获得" + it.Name);
+                    Toast(BoughtLine(it));
                     rebuild("客官好眼力！");
                 });
             }
@@ -175,7 +175,7 @@ namespace Rescue
         static bool CanTake(ShopItem it)
         {
             if (!it.Active && it.Owned()) { Nope("这件已经有了"); return false; }
-            if (it.Active && it.Count() == 0 && ActiveKinds() >= ActiveSlots) { Nope($"主动道具最多带 {ActiveSlots} 种"); return false; }
+            if (it.Active && it.Count() == 0 && ActiveKinds() >= ActiveSlots) { Nope("背包里的主动道具最多四种"); return false; }
             return true;
         }
 
@@ -304,13 +304,20 @@ namespace Rescue
             }
             it.Give();
             Save.Write();
+            if (it.Active && !Save.ActiveFielded(it.Id)) return $"抽中「{it.Rarity}·{it.Name}」，上场已满，先放背包";
             return $"抽中「{it.Rarity}·{it.Name}」！";
         }
 
-        /// <summary>我的道具：主动一行（战斗里最多四种，后三格木板封着）、被动一行；今天买的可以点红减号退货。</summary>
+        static string BoughtLine(ShopItem it)
+        {
+            if (it.Active && !Save.ActiveFielded(it.Id)) return it.Name + "已放进背包，上场已满两个";
+            return "成功获得" + it.Name;
+        }
+
+        /// <summary>我的道具：主动一行可点选上场（最多两件，背包最多四种），被动一行；今天买的可以点红减号退货。</summary>
         void BuildBag(RectTransform content, Action<string> rebuild)
         {
-            if (!_lottoTab) Ui.Label(content, "我的道具:", 34, Pal.Ink, new Vector2(-262, -186), new Vector2(300, 50), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
+            if (!_lottoTab) Ui.Label(content, "我的道具 · 点主动决定上场", 32, Pal.Ink, new Vector2(-150, -186), new Vector2(560, 50), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
             Ui.Framed(content, new Vector2(790, 248), new Vector2(26, -330), Pal.Hex("3A2A20"), Pal.Hex("5A4632"), 5f, "bag");
             var side = _lottoTab ? Pal.Hex("5A2E10") : Pal.Hex("3A2A20");
             Ui.Label(content, "主\n动", 30, side, new Vector2(-400, -270), new Vector2(44, 90)).fontStyle = FontStyle.Bold;
@@ -325,12 +332,26 @@ namespace Rescue
                     Ui.Box(content, new Vector2(102, 102), pos, Pal.Hex("53392A"), null, "cell").pixelsPerUnitMultiplier = 1.4f;
                     if (c >= items.Count) continue;
                     var it = items[c];
-                    var cell = Ui.Box(content, new Vector2(96, 96), pos, it.DiscColor, null, "item");
+                    bool fielded = it.Active && Save.ActiveFielded(it.Id);
+                    var cell = Ui.Box(content, new Vector2(96, 96), pos, fielded || !it.Active ? it.DiscColor : it.DiscColor.A(0.4f), null, "item");
                     cell.pixelsPerUnitMultiplier = 1.4f;
-                    Ui.Icon(cell.transform, it.Icon, 80, Vector2.zero);
+                    var icon = Ui.Icon(cell.transform, it.Icon, 80, Vector2.zero);
+                    if (it.Active && !fielded) icon.color = new Color(1f, 1f, 1f, 0.45f);
                     int n = it.Count();
                     if (n > 1) Ui.Stroke(Ui.Label(cell.transform, "×" + n, 26, Pal.Paper, new Vector2(22, -30), new Vector2(60, 34)), Edge, 2f);
-                    Ui.Tap(cell, () => Toast(it.Name + "：" + it.Desc));
+                    if (fielded)
+                    {
+                        var tag = Ui.Box(cell.transform, new Vector2(40, 28), new Vector2(-28, 34), Pal.Hex("C0392B"), null, "on");
+                        tag.pixelsPerUnitMultiplier = 1.4f;
+                        Ui.Label(tag.transform, "上", 22, Pal.Paper, Vector2.zero, new Vector2(40, 28));
+                    }
+                    Ui.Tap(cell, () =>
+                    {
+                        if (!it.Active) { Toast(it.Name + "：" + it.Desc); return; }
+                        bool was = Save.ActiveFielded(it.Id);
+                        if (!Save.ToggleActiveField(it.Id, out var err)) { Nope(err); return; }
+                        rebuild(was ? it.Name + "这场不带" : it.Name + "这场带上");
+                    });
                     if (!Save.D.shopSold.Contains(it.Id)) continue;
                     var minus = Ui.Box(cell.transform, new Vector2(42, 42), new Vector2(42, 42), Pal.Hex("D7362B"), Art.Circle, "minus");
                     minus.type = Image.Type.Simple;
@@ -350,7 +371,7 @@ namespace Rescue
             plank.rectTransform.sizeDelta = new Vector2(350, 120);
             plank.preserveAspect = false;
             plank.rectTransform.localRotation = Quaternion.Euler(0, 0, -2);
-            Ui.Tap(plank, () => Toast($"战斗里最多带 {ActiveSlots} 种主动道具"));
+            Ui.Tap(plank, () => Toast("背包最多四种。点图标决定上场，一场两个"));
         }
     }
 }

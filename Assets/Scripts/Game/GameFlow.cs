@@ -504,8 +504,10 @@ namespace Rescue
             foreach (var id in Save.D.joined) Save.D.heroes.Add(id);
             Save.D.weapons.AddRange(new[] { (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.LinChong, (int)HeroId.LiKui, (int)HeroId.LiKui, (int)HeroId.HuaRong,
                 (int)HeroId.LuZhiShen, (int)HeroId.ZhangHeng, (int)HeroId.SunErNiang });
-            Save.D.armed.Add((int)HeroId.WuSong);
-            Save.D.armed.Add((int)HeroId.HuaRong);
+            Save.D.armWho.Add((int)HeroId.HuaRong);
+            Save.D.armWhat.Add((int)HeroId.WuSong);
+            Save.D.armWho.Add((int)HeroId.LinChong);
+            Save.D.armWhat.Add((int)HeroId.LinChong);
             ShowHome();
             _home.ShowDaily();
             yield return new WaitForSecondsRealtime(1.2f);

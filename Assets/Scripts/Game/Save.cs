@@ -27,14 +27,22 @@ namespace Rescue
         public int lottoUsed;
         public bool gang, flag, marsh, stele, xuming, far;
         public int menghan, tianshu, baozi, shovels, fu, trap;
+        /// <summary>今天带上场的主动道具。最多两件。没选过时，有的就带，超过两件只带前两件。</summary>
+        public List<int> activeOn = new List<int>();
+        public bool activeSet;
         public bool sfx = true;
         public int wins, battles;
         public List<int> weapons = new List<int>();
+        /// <summary>旧档：装备自己成名兵器的好汉。版本 3 起改成 armWho / armWhat。</summary>
         public List<int> armed = new List<int>();
+        /// <summary>带着兵器的人，和 armWhat 对齐。</summary>
+        public List<int> armWho = new List<int>();
+        /// <summary>兵器出自谁。同一件同时只能出现一次。</summary>
+        public List<int> armWhat = new List<int>();
         public string claimDay = "";
         public int claimTier, claimStars;
         public bool claimTaken = true;
-        /// <summary>存档版本。2 起是梁山座次三十四阶、按回目入伙。</summary>
+        /// <summary>存档版本。2 起是梁山座次三十四阶。3 起兵器可以交给别人带。</summary>
         public int ver;
         /// <summary>已入伙的好汉（好汉谱解锁）。heroes 只记“凑出过”。</summary>
         public List<int> joined = new List<int>();
@@ -48,14 +56,27 @@ namespace Rescue
         {
             var l = new Loadout
             {
-                Gang = gang, Flag = flag, Marsh = marsh, Stele = stele, MengHan = menghan, TianShu = tianshu,
-                Baozi = baozi, Xuming = xuming, Shovels = shovels, Fu = fu, Trap = trap, Far = far,
-                Armed = armed == null ? new List<int>() : new List<int>(armed),
+                Gang = gang, Flag = flag, Marsh = marsh, Stele = stele,
+                MengHan = Save.FieldCount(4), TianShu = Save.FieldCount(5), Baozi = Save.FieldCount(6),
+                Xuming = xuming, Shovels = shovels, Fu = Save.FieldCount(9), Trap = Save.FieldCount(11), Far = far,
+                Armed = new List<int>(),
+                Gear = new int[HeroDef.All.Length],
                 WeaponLv = new int[HeroDef.All.Length],
             };
-            if (armed != null)
-                foreach (var id in armed)
-                    if (id >= 0 && id < l.WeaponLv.Length) l.WeaponLv[id] = Save.WeaponCount(id);
+            for (int i = 0; i < l.Gear.Length; i++) l.Gear[i] = -1;
+            if (armWho != null && armWhat != null)
+            {
+                int n = armWho.Count < armWhat.Count ? armWho.Count : armWhat.Count;
+                for (int i = 0; i < n; i++)
+                {
+                    int who = armWho[i];
+                    int what = armWhat[i];
+                    if (who < 0 || who >= l.Gear.Length) continue;
+                    l.Gear[who] = what;
+                    l.WeaponLv[who] = Save.WeaponCount(what);
+                    l.Armed.Add(who);
+                }
+            }
             return l;
         }
 
@@ -63,6 +84,8 @@ namespace Rescue
         {
             gang = flag = marsh = stele = xuming = far = false;
             menghan = tianshu = baozi = shovels = fu = trap = 0;
+            if (activeOn != null) activeOn.Clear();
+            activeSet = true;
         }
 
         public bool HasAnyItem => gang || flag || marsh || stele || xuming || far || menghan > 0 || tianshu > 0 || baozi > 0 || shovels > 0 || fu > 0 || trap > 0;
@@ -73,7 +96,7 @@ namespace Rescue
         const string Key = "rescue_save_v1";
         public static SaveData D { get; private set; }
 
-        public const int Version = 2;
+        public const int Version = 3;
 
         public static string RankName => RankRules.Name(D.tier);
         public static int Major => RankRules.Major(D.tier);
@@ -117,7 +140,16 @@ namespace Rescue
             // 旧规则没过关也会掉兵器，清掉还没入伙的人那几件。
             D.weapons.RemoveAll(id => id < 0 || id >= HeroDef.All.Length || !Joined(id));
             if (D.armed == null) D.armed = new List<int>();
-            D.armed.RemoveAll(id => WeaponCount(id) <= 0 || id < 0 || id >= HeroDef.All.Length);
+            if (D.armWho == null) D.armWho = new List<int>();
+            if (D.armWhat == null) D.armWhat = new List<int>();
+            if (D.ver < 3 && D.armWho.Count == 0)
+            {
+                foreach (var id in D.armed)
+                {
+                    D.armWho.Add(id);
+                    D.armWhat.Add(id);
+                }
+            }
             if (D.team == null) D.team = new List<int>();
             if (D.ver < Version)
             {
@@ -140,6 +172,8 @@ namespace Rescue
                 D.staminaRule = 1;
             }
             Sfx.On = D.sfx;
+            TidyGear();
+            PrepareActiveField();
         }
 
         /// <summary>自动截图等验收模式下不落盘，避免污染真实存档。</summary>
@@ -347,12 +381,165 @@ namespace Rescue
             return pick;
         }
 
+        public const int MaxActiveField = 2;
+
+        static int ActiveStock(int id)
+        {
+            switch (id)
+            {
+                case 4: return D.menghan;
+                case 5: return D.tianshu;
+                case 6: return D.baozi;
+                case 9: return D.fu;
+                case 11: return D.trap;
+                default: return 0;
+            }
+        }
+
+        /// <summary>带上场的件数。没选中的主动道具留在背包，这场不生效。</summary>
+        public static int FieldCount(int id)
+        {
+            PrepareActiveField();
+            return D.activeOn.Contains(id) ? ActiveStock(id) : 0;
+        }
+
+        public static bool ActiveFielded(int id)
+        {
+            PrepareActiveField();
+            return D.activeOn.Contains(id);
+        }
+
+        /// <summary>买到或退掉之后调用。空位够就自动带上，满了就只进背包。</summary>
+        public static void NoteActive(int id)
+        {
+            if (!D.activeSet) PrepareActiveField();
+            if (D.activeOn == null) D.activeOn = new List<int>();
+            D.activeSet = true;
+            if (ActiveStock(id) <= 0)
+            {
+                D.activeOn.Remove(id);
+                return;
+            }
+            if (!D.activeOn.Contains(id) && D.activeOn.Count < MaxActiveField) D.activeOn.Add(id);
+        }
+
+        /// <summary>背包里点一下：带上或拿下。场上同时最多两件。</summary>
+        public static bool ToggleActiveField(int id, out string err)
+        {
+            err = null;
+            PrepareActiveField();
+            if (ActiveStock(id) <= 0) { err = "还没有这件"; return false; }
+            if (D.activeOn.Contains(id))
+            {
+                D.activeOn.Remove(id);
+                Write();
+                return true;
+            }
+            if (D.activeOn.Count >= MaxActiveField) { err = "一场最多带两个主动技能"; return false; }
+            D.activeOn.Add(id);
+            Write();
+            return true;
+        }
+
+        static void PrepareActiveField()
+        {
+            if (D.activeOn == null) D.activeOn = new List<int>();
+            D.activeOn.RemoveAll(id => ActiveStock(id) <= 0);
+            var seen = new HashSet<int>();
+            D.activeOn.RemoveAll(id => !seen.Add(id));
+            while (D.activeOn.Count > MaxActiveField) D.activeOn.RemoveAt(D.activeOn.Count - 1);
+            if (D.activeSet) return;
+            foreach (var it in ShopItem.All)
+            {
+                if (!it.Active || it.Count() <= 0 || D.activeOn.Contains(it.Id)) continue;
+                D.activeOn.Add(it.Id);
+                if (D.activeOn.Count >= MaxActiveField) break;
+            }
+            D.activeSet = true;
+        }
+
         public static int WeaponCount(int hero)
         {
             if (D.weapons == null) return 0;
             int n = 0;
             foreach (var id in D.weapons) if (id == hero) n++;
             return n;
+        }
+
+        public static int ArmedCount => D.armWho == null ? 0 : D.armWho.Count;
+
+        /// <summary>这件兵器现在在谁身上。没有人带时返回 -1。</summary>
+        public static int WearerOf(int weapon)
+        {
+            if (D.armWhat == null) return -1;
+            int i = D.armWhat.IndexOf(weapon);
+            if (i < 0 || i >= D.armWho.Count) return -1;
+            return D.armWho[i];
+        }
+
+        /// <summary>这位好汉带着哪件兵器。空手返回 -1。</summary>
+        public static int WeaponOn(int hero)
+        {
+            if (D.armWho == null) return -1;
+            int i = D.armWho.IndexOf(hero);
+            if (i < 0 || i >= D.armWhat.Count) return -1;
+            return D.armWhat[i];
+        }
+
+        public static void UnequipWeapon(int weapon)
+        {
+            if (D.armWhat == null) return;
+            int i = D.armWhat.IndexOf(weapon);
+            if (i < 0) return;
+            D.armWhat.RemoveAt(i);
+            D.armWho.RemoveAt(i);
+        }
+
+        /// <summary>把兵器交给一位已入伙的好汉。他原来带着的、以及这件原来的主人，都会卸下来。</summary>
+        public static bool Equip(int hero, int weapon, out string err)
+        {
+            err = null;
+            if (WeaponCount(weapon) <= 0) { err = "还没缴获这件兵器"; return false; }
+            if (hero < 0 || hero >= HeroDef.All.Length || !Joined((HeroId)hero)) { err = "这位好汉还没入伙"; return false; }
+            if (string.IsNullOrEmpty(HeroDef.Get((HeroId)weapon).Weapon)) { err = "这件兵器不能带"; return false; }
+            int curWho = WearerOf(weapon);
+            int curWhat = WeaponOn(hero);
+            if (curWho == hero) return true;
+            bool newSlot = curWhat < 0 && curWho < 0;
+            if (newSlot && ArmedCount >= MaxArmed) { err = "最多三位好汉同时带兵器"; return false; }
+            if (curWho >= 0) UnequipWeapon(weapon);
+            int still = WeaponOn(hero);
+            if (still >= 0) UnequipWeapon(still);
+            D.armWho.Add(hero);
+            D.armWhat.Add(weapon);
+            TidyGear();
+            Write();
+            return true;
+        }
+
+        /// <summary>丢掉已经不在背包里、或人还没入伙的搭配。同一件、同一个人只留第一份。</summary>
+        public static void TidyGear()
+        {
+            if (D.armWho == null) D.armWho = new List<int>();
+            if (D.armWhat == null) D.armWhat = new List<int>();
+            int n = D.armWho.Count < D.armWhat.Count ? D.armWho.Count : D.armWhat.Count;
+            var who = new List<int>();
+            var what = new List<int>();
+            var seenWho = new HashSet<int>();
+            var seenWhat = new HashSet<int>();
+            for (int i = 0; i < n && who.Count < MaxArmed; i++)
+            {
+                int h = D.armWho[i];
+                int w = D.armWhat[i];
+                if (h < 0 || h >= HeroDef.All.Length || !Joined((HeroId)h)) continue;
+                if (w < 0 || w >= HeroDef.All.Length || WeaponCount(w) <= 0) continue;
+                if (string.IsNullOrEmpty(HeroDef.Get((HeroId)w).Weapon)) continue;
+                if (!seenWho.Add(h) || !seenWhat.Add(w)) continue;
+                who.Add(h);
+                what.Add(w);
+            }
+            D.armWho = who;
+            D.armWhat = what;
         }
 
         public const int MaxArmed = 3;
@@ -392,7 +579,7 @@ namespace Rescue
             }
             D.weapons.Add((int)pick);
             var d = HeroDef.Get(pick);
-            return new WeaponFind(d.Name + "的" + d.Weapon, pick, true);
+            return new WeaponFind(d.Weapon, pick, true);
         }
     }
 

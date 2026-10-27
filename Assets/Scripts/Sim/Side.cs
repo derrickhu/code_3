@@ -41,9 +41,11 @@ namespace Rescue.Sim
         public int Fu;
         public int Trap;
         public bool Far;
-        /// <summary>带进这一局的兵器，元素是 HeroId。</summary>
+        /// <summary>这一局带着兵器的好汉。</summary>
         public List<int> Armed;
-        /// <summary>与 HeroId 下标对齐的兵器阶数。0 表示没装备。</summary>
+        /// <summary>下标是好汉。值是他带着的兵器（兵器出自谁），-1 表示空手。</summary>
+        public int[] Gear;
+        /// <summary>下标是带着兵器的好汉，值是那件兵器的阶数。</summary>
         public int[] WeaponLv;
     }
 
@@ -479,25 +481,52 @@ namespace Rescue.Sim
             return true;
         }
 
-        float WeaponMul(HeroDef def)
+        /// <summary>这名好汉身上的兵器。空手时返回 null。品级、特性、图都读这件兵器，不读人自己的成名兵器。</summary>
+        public HeroDef GearOf(HeroDef wearer)
         {
-            if (!Armed(def)) return 1f;
-            int lv = 1;
-            if (Items.WeaponLv != null)
-            {
-                int i = (int)def.Id;
-                if (i >= 0 && i < Items.WeaponLv.Length && Items.WeaponLv[i] > 0) lv = Items.WeaponLv[i];
-            }
-            return HeroDef.ArmedMul(lv, def.WGrade);
+            if (wearer == null || Index != 0 || Items.Gear == null) return null;
+            int i = (int)wearer.Id;
+            if (i < 0 || i >= Items.Gear.Length) return null;
+            int w = Items.Gear[i];
+            if (w < 0 || w >= HeroDef.All.Length) return null;
+            var def = HeroDef.Get((HeroId)w);
+            return string.IsNullOrEmpty(def.Weapon) ? null : def;
         }
 
-        public bool Armed(HeroDef def)
+        public int GearRank(HeroDef wearer)
         {
-            if (Index != 0 || string.IsNullOrEmpty(def.Weapon) || Items.Armed == null) return false;
-            return Items.Armed.Contains((int)def.Id);
+            if (GearOf(wearer) == null || Items.WeaponLv == null) return 1;
+            int i = (int)wearer.Id;
+            if (i < 0 || i >= Items.WeaponLv.Length || Items.WeaponLv[i] <= 0) return 1;
+            int lv = Items.WeaponLv[i];
+            return lv > 5 ? 5 : lv;
         }
 
-        WeaponAffix AffixOf(HeroDef def) => Armed(def) ? Weapons.Affix(def) : WeaponAffix.Bare;
+        public bool Armed(HeroDef def) => GearOf(def) != null;
+
+        /// <summary>纸签和射程圈用的射程，含兵器加的那一截。</summary>
+        public float ShownRange(HeroDef def)
+        {
+            if (def == null || def.NoAttack) return 0f;
+            float range = def.RangeWith(Items.Far);
+            if (range < 50f) range += AffixOf(def).Range;
+            return range;
+        }
+
+        float WeaponMul(HeroDef wearer)
+        {
+            var w = GearOf(wearer);
+            if (w == null) return 1f;
+            return HeroDef.ArmedMul(GearRank(wearer), w.WGrade);
+        }
+
+        public float GearMul(HeroDef wearer) => WeaponMul(wearer);
+
+        WeaponAffix AffixOf(HeroDef wearer)
+        {
+            var w = GearOf(wearer);
+            return w == null ? WeaponAffix.Bare : Weapons.Affix(w, wearer);
+        }
 
         /// <summary>普攻 / 大招共用的伤害：等级、水上、兵器、羁绊。</summary>
         float HeroDamage(HeroInstance h, in WeaponAffix aff)

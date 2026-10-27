@@ -81,15 +81,20 @@ namespace Rescue.Sim
             _ => "",
         };
 
-        public static WeaponAffix Affix(HeroDef d)
+        public static WeaponAffix Affix(HeroDef d) => Affix(d.WKind, d.Pierce, d.Splash);
+
+        /// <summary>特性跟兵器走，穿透和溅射按带着它的人来算。</summary>
+        public static WeaponAffix Affix(HeroDef weapon, HeroDef wearer) => Affix(weapon.WKind, wearer.Pierce, wearer.Splash);
+
+        public static WeaponAffix Affix(WeaponKind kind, int pierce, float splash)
         {
             var a = WeaponAffix.Bare;
-            switch (d.WKind)
+            switch (kind)
             {
                 case WeaponKind.Blade: a.Dmg = 1.1f; break;
-                case WeaponKind.Spear: if (d.Pierce > 1) a.Pierce = 1; else a.Range = 0.3f; break;
+                case WeaponKind.Spear: if (pierce > 1) a.Pierce = 1; else a.Range = 0.3f; break;
                 case WeaponKind.Bow: a.Range = 0.4f; break;
-                case WeaponKind.Axe: a.Splash = d.Splash > 0 ? d.Splash * 0.4f : 0.5f; break;
+                case WeaponKind.Axe: a.Splash = splash > 0 ? splash * 0.4f : 0.5f; break;
                 case WeaponKind.Club: a.Knock = 0.25f; break;
                 case WeaponKind.Whip: a.Stun = 0.3f; break;
                 case WeaponKind.Hammer: a.Stun = 0.2f; a.Knock = 0.2f; break;

@@ -117,7 +117,8 @@ namespace Rescue
 
         /// <summary>
         /// 宽度永远刚好是 8 格，左右贴边。不够高就收紧界面，不再把整张棋盘缩小。
-        /// 真机上标题让开微信胶囊。比 9:16 更高时，多出来的高度补在两军之间，下半场贴着屏幕底，底下不再空出一大块。
+        /// 真机上标题让开微信胶囊。比 9:16 更高时，多出来的高度补在两军之间。
+        /// 底下先让开指示条，再留一截给聚义下面那排被动，名字才不会被切掉。
         /// </summary>
         public static void FitCamera(Camera cam)
         {
@@ -137,8 +138,13 @@ namespace Rescue
             float viewH = cam.orthographicSize * 2f;
             float designH = WidthNeed * (Ui.DesignH / Ui.DesignW);
             float extra = Mathf.Max(0f, viewH - designH);
-            // 底部安全区只留指示条那一截。报得太大时不能把多出来的高度又吃回去。
-            float inset = Mathf.Clamp(bottomPx, 0f, vh * 0.08f) * upp;
+            // 模拟器经常不报底部安全区。比 9:16 更高就按指示条兜一截，报得过大则封顶。
+            bool tall = vh > vw * (Ui.DesignH / Ui.DesignW) + 8f;
+            float reported = Mathf.Clamp(bottomPx, 0f, vh * 0.08f);
+            if (tall && reported < vh * 0.04f) reported = vh * 0.04f;
+            // 被动图标在聚义正下方，名字条还往下探。这一截从两军之间匀出来。
+            float passive = tall ? vh * 0.065f : 0f;
+            float inset = Mathf.Min(reported + passive, vh * 0.14f) * upp;
             LowerShift = Mathf.Max(0f, extra - inset);
         }
 
@@ -663,7 +669,7 @@ namespace Rescue
             var btns = new[] { _mengBtn, _baoziBtn, _shuBtn, _fuBtn, _trapBtn };
             int shown = 0;
             foreach (var b in btns) if (b.gameObject.activeSelf) shown++;
-            shown = Mathf.Min(shown, 4);
+            shown = Mathf.Min(shown, 2);
             const float left = -3.72f;
             const float right = -1.48f;
             _activeScale = shown <= 1 ? 0.96f : shown == 2 ? 0.86f : shown == 3 ? 0.74f : 0.64f;
@@ -679,7 +685,7 @@ namespace Rescue
             for (int i = 0; i < btns.Length; i++)
             {
                 if (!btns[i].gameObject.activeSelf) continue;
-                if (s >= 4)
+                if (s >= 2)
                 {
                     btns[i].gameObject.SetActive(false);
                     continue;
@@ -1956,20 +1962,30 @@ namespace Rescue
                 level = $"Lv.{h.Level}";
                 seal = d.Disha ? Pal.Hex("E4D4F2") : Pal.TileHero;
                 center = World(0, h.Pos);
-                bool armed = M.Player.Armed(d);
-                int wlv = armed && M.Player.Items.WeaponLv != null && (int)d.Id < M.Player.Items.WeaponLv.Length ? Mathf.Max(1, M.Player.Items.WeaponLv[(int)d.Id]) : 1;
-                float wmul = armed ? HeroDef.ArmedMul(wlv, d.WGrade) : 1f;
+                var gearDef = M.Player.GearOf(d);
+                var aff = gearDef == null ? WeaponAffix.Bare : Weapons.Affix(gearDef, d);
+                int wlv = gearDef == null ? 1 : M.Player.GearRank(d);
+                float wmul = gearDef == null ? 1f : HeroDef.ArmedMul(wlv, gearDef.WGrade);
                 float bond = M.Player.BondBonus(d.Id);
-                wmul *= 1f + bond;
+                float water = h.OnWater ? d.WaterBonus * aff.Water : 1f;
+                float power = d.DamageAt(h.Level) * water * wmul * aff.Dmg * (1f + bond);
+                float cd = d.CooldownAt(h.Level) * (aff.Cd <= 0f ? 1f : aff.Cd);
                 string xp = h.Level >= UnitDef.MaxLevel ? "已满级" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}　满级{UnitDef.MaxLevel}级";
-                string atk = d.NoAttack ? "不出手" : $"攻击力：{d.DamageAt(h.Level) * (h.OnWater ? d.WaterBonus : 1f) * wmul:0.#}　攻速：{1f / d.CooldownAt(h.Level):0.0}次/秒";
-                string gear = armed ? $"兵器 {d.Weapon}（{Weapons.Grades[Mathf.Clamp(d.WGrade, 0, 3)]}）伤害 +{Mathf.RoundToInt((HeroDef.ArmedMul(wlv, d.WGrade) - 1f) * 100f)}%　{Weapons.AffixText(d.WKind)}" : "";
+                string atk = d.NoAttack ? "不出手" : $"攻击力：{power:0.#}　攻速：{1f / cd:0.0}次/秒";
+                string gear = "";
+                if (gearDef != null)
+                {
+                    int pct = Mathf.RoundToInt((wmul - 1f) * 100f);
+                    string from = gearDef.Id == d.Id ? "" : "出自" + gearDef.Name + "　";
+                    gear = $"兵器 {gearDef.Weapon}　{Weapons.Grades[Mathf.Clamp(gearDef.WGrade, 0, 3)]} {wlv}阶　{from}伤害 +{pct}%";
+                }
                 string bonds = "";
                 foreach (var bd in M.Player.ActiveBonds) if (System.Array.IndexOf(bd.Members, d.Id) >= 0) bonds += (bonds.Length > 0 ? "、" : "") + bd.Name;
-                if (bonds.Length > 0) gear = (gear.Length > 0 ? gear + "　" : "") + $"羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
+                if (bonds.Length > 0) bonds = $"羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
                 string star = d.Rank > 0 ? d.Star : "隐藏好汉";
-                body = FitLines(26, 5, $"{star}·{d.Nick}　类型：{d.TypeLabel}", atk, xp, d.Skill, gear);
-                range = d.NoAttack ? 0f : d.RangeWith(M.Player.Items.Far);
+                string affix = gearDef == null ? "" : Weapons.AffixText(gearDef.WKind);
+                body = FitLines(26, 7, $"{star}·{d.Nick}　类型：{d.TypeLabel}", atk, xp, gear, affix, d.Skill, bonds);
+                range = M.Player.ShownRange(d);
                 style = d.Disha ? RangeStyle.Disha : RangeStyle.Hero;
             }
             else
@@ -2000,7 +2016,7 @@ namespace Rescue
             int lines = 1;
             foreach (var ch in body) if (ch == '\n') lines++;
             if (string.IsNullOrEmpty(body)) lines = 0;
-            float h = Mathf.Clamp(0.72f + lines * pitch, 1.28f, 2.02f);
+            float h = Mathf.Clamp(0.72f + lines * pitch, 1.28f, 2.55f);
 
             _card.gameObject.SetActive(true);
             _card.localPosition = new Vector2(0f, CampY - 0.66f);
@@ -2042,6 +2058,13 @@ namespace Rescue
             _cardT = 4f;
             _cardFrame = _frame;
             Tween.Pop(_card, 0.18f);
+        }
+
+        static string GearBadge(HeroDef weapon)
+        {
+            var name = weapon.Weapon;
+            if (string.IsNullOrEmpty(name) || name.Length <= 4) return name ?? "";
+            return name.Substring(name.Length - 2);
         }
 
         static string FitLines(int width, int maxLines, params string[] parts)
@@ -2590,14 +2613,15 @@ namespace Rescue
                 _seal = Gfx.Text(_root, disha ? "煞" : "罡", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 26);
                 _xpBg = Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.45f), Vector2.zero, new Vector2(1, 0.06f), 25);
                 _xpFg = Gfx.Sprite(_root, Art.White, _tintBright, Vector2.zero, new Vector2(1, 0.06f), 26);
-                bool armed = side == 0 && !string.IsNullOrEmpty(h.Def.Weapon)
-                    && v.M.Player.Items.Armed != null && v.M.Player.Items.Armed.Contains((int)h.Def.Id);
+                var gear = side == 0 ? v.M.Player.GearOf(h.Def) : null;
                 _armBg = null;
                 _arm = null;
-                if (armed)
+                if (gear != null)
                 {
-                    _armBg = Gfx.Sprite(_root, Art.Rounded, Ui.GradeColor(h.Def.WGrade), Vector2.zero, new Vector2(0.72f, 0.32f), 27);
-                    _arm = Gfx.Text(_root, "用" + h.Def.WeaponTag, Fonts.Kai, 0.2f, Pal.Paper, Vector2.zero, 28);
+                    string badge = GearBadge(gear);
+                    float bw = 0.42f + badge.Length * 0.22f;
+                    _armBg = Gfx.Sprite(_root, Art.Rounded, Ui.GradeColor(gear.WGrade), Vector2.zero, new Vector2(bw, 0.34f), 27);
+                    _arm = Gfx.Text(_root, badge, Fonts.Kai, badge.Length > 3 ? 0.15f : 0.18f, Pal.Paper, Vector2.zero, 28);
                 }
                 _side = side;
                 Place(h);
@@ -2629,7 +2653,8 @@ namespace Rescue
                 _xpBg.transform.localScale = new Vector3(_barW, 0.06f, 1);
                 if (_arm != null)
                 {
-                    var p = new Vector2(-size.x * 0.5f + 0.42f, size.y * 0.5f - 0.22f);
+                    float bw = _armBg.size.x;
+                    var p = new Vector2(-size.x * 0.5f + bw * 0.5f + 0.06f, size.y * 0.5f - 0.22f);
                     _armBg.transform.localPosition = p;
                     _arm.transform.localPosition = p;
                 }

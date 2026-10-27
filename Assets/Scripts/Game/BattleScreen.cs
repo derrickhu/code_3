@@ -235,6 +235,8 @@ namespace Rescue
             Ui.Label(card.transform, "对手：" + ch.RivalName + "（谁的宋江先倒谁输）", 32, Pal.InkSoft, new Vector2(0, -260), new Vector2(800, 56));
             if (items != null && ItemSummary(items).Length > 0)
                 Ui.Label(card.transform, "随身：" + ItemSummary(items), 32, Pal.Willow, new Vector2(0, -320), new Vector2(800, 56));
+            if (items != null && GearSummary(items).Length > 0)
+                Ui.Label(card.transform, "带着：" + GearSummary(items), 32, Pal.Willow, new Vector2(0, -378), new Vector2(800, 48));
 
             Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Ui.BtnRed, () =>
             {
@@ -260,6 +262,23 @@ namespace Rescue
             if (l.Fu > 0) parts.Add("攻速符×" + l.Fu);
             if (l.Trap > 0) parts.Add("陷阱×" + l.Trap);
             if (l.Far) parts.Add("御敌千里");
+            return string.Join("、", parts);
+        }
+
+        /// <summary>这一局谁带着哪件兵器。长名字只留最后两字，跟棋盘角标一样。</summary>
+        public static string GearSummary(Loadout l)
+        {
+            if (l == null || l.Gear == null) return "";
+            var parts = new List<string>();
+            for (int i = 0; i < l.Gear.Length; i++)
+            {
+                int w = l.Gear[i];
+                if (w < 0 || w >= HeroDef.All.Length) continue;
+                var weapon = HeroDef.Get((HeroId)w);
+                if (string.IsNullOrEmpty(weapon.Weapon)) continue;
+                string name = weapon.Weapon.Length <= 4 ? weapon.Weapon : weapon.Weapon.Substring(weapon.Weapon.Length - 2);
+                parts.Add(HeroDef.Get((HeroId)i).Name + "带" + name);
+            }
             return string.Join("、", parts);
         }
 
@@ -580,8 +599,11 @@ namespace Rescue
             });
 
             string mine = ItemSummary(M.Player.Items);
+            string worn = GearSummary(M.Player.Items);
+            string yours = mine.Length > 0 ? "你身上的：" + mine : "无";
+            if (worn.Length > 0) yours = (mine.Length > 0 ? yours + "\n" : "") + "带着：" + worn;
             int winCoins = ResultPanel.WinCoins(M.Chapter);
-            SpoilBox(card, new Vector2(0, 205), "对手战利品：", mine.Length > 0 ? "你身上的：" + mine : "无");
+            SpoilBox(card, new Vector2(0, 205), "对手战利品：", yours);
             SpoilBox(card, new Vector2(0, -45), "战利品：", $"铜钱 ×{winCoins}　兵器（撑过四波有机会）");
 
             Ui.CartoonBtn(card, "耻辱撤退", new Vector2(340, 120), new Vector2(-190, -240), Ui.BtnBlue, () =>

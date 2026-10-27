@@ -49,14 +49,14 @@ namespace Rescue
             new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +22%，全局生效", Rarity = "史诗", Icon = "it_flag", Price = 80, Count = () => B(Save.D.flag), Give = () => Save.D.flag = true, Take = () => Save.D.flag = false },
             new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -25%，全局生效", Rarity = "史诗", Icon = "it_marsh", Price = 70, Count = () => B(Save.D.marsh), Give = () => Save.D.marsh = true, Take = () => Save.D.marsh = false },
             new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时，天降石碣砸下", Rarity = "传说", Icon = "it_stele", Price = 120, Count = () => B(Save.D.stele), Give = () => Save.D.stele = true, Take = () => Save.D.stele = false },
-            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = 60, Count = () => Save.D.menghan, Give = () => Save.D.menghan++, Take = () => Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1) },
-            new ShopItem { Id = 5, Name = "天书", Desc = "场上最低级的兵升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = 150, Count = () => Save.D.tianshu, Give = () => Save.D.tianshu++, Take = () => Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1) },
-            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "五成半回一颗心，否则掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = 50, Count = () => Save.D.baozi, Give = () => Save.D.baozi++, Take = () => Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1) },
+            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = 60, Count = () => Save.D.menghan, Give = () => { Save.D.menghan++; Save.NoteActive(4); }, Take = () => { Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1); Save.NoteActive(4); } },
+            new ShopItem { Id = 5, Name = "天书", Desc = "场上最低级的兵升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = 150, Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
+            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "五成半回一颗心，否则掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = 50, Count = () => Save.D.baozi, Give = () => { Save.D.baozi++; Save.NoteActive(6); }, Take = () => { Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1); Save.NoteActive(6); } },
             new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江多八颗心，能硬吃第一波", Rarity = "传说", Icon = "it_xuming", Price = 150, Count = () => B(Save.D.xuming), Give = () => Save.D.xuming = true, Take = () => Save.D.xuming = false },
             new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子，多开两块地", Rarity = "稀有", Icon = "shovel", Price = 50, Count = () => Save.D.shovels, Give = () => Save.D.shovels = 2, Take = () => Save.D.shovels = 0 },
-            new ShopItem { Id = 9, Name = "攻速符", Desc = "单位攻速 +40%，持续十二秒", Rarity = "史诗", Icon = "it_fu", Active = true, Price = 80, Count = () => Save.D.fu, Give = () => Save.D.fu++, Take = () => Save.D.fu = Mathf.Max(0, Save.D.fu - 1) },
+            new ShopItem { Id = 9, Name = "攻速符", Desc = "单位攻速 +40%，持续十二秒", Rarity = "史诗", Icon = "it_fu", Active = true, Price = 80, Count = () => Save.D.fu, Give = () => { Save.D.fu++; Save.NoteActive(9); }, Take = () => { Save.D.fu = Mathf.Max(0, Save.D.fu - 1); Save.NoteActive(9); } },
             new ShopItem { Id = 10, Name = "御敌千里", Desc = "远程单位攻击范围翻倍，全局生效", Rarity = "稀有", Icon = "it_far", Price = 90, Count = () => B(Save.D.far), Give = () => Save.D.far = true, Take = () => Save.D.far = false },
-            new ShopItem { Id = 11, Name = "陷阱", Desc = "敌人掉下去一时会爬不出来", Rarity = "稀有", Icon = "it_trap", Active = true, Price = 35, Count = () => Save.D.trap, Give = () => Save.D.trap++, Take = () => Save.D.trap = Mathf.Max(0, Save.D.trap - 1) },
+            new ShopItem { Id = 11, Name = "陷阱", Desc = "敌人掉下去一时会爬不出来", Rarity = "稀有", Icon = "it_trap", Active = true, Price = 35, Count = () => Save.D.trap, Give = () => { Save.D.trap++; Save.NoteActive(11); }, Take = () => { Save.D.trap = Mathf.Max(0, Save.D.trap - 1); Save.NoteActive(11); } },
         };
     }
 
@@ -350,7 +350,7 @@ namespace Rescue
                 "· 好汉谱收齐一百单八将，忠义堂排座次；之后聚义厅自选五将车轮战\n" +
                 "· 座次：喽啰→小校→都头→提辖→步/水/马军头领→八骠骑→五虎将→地煞→天罡→天魁星，每阶分叁贰壹\n" +
                 "· 胜加星，满五星升一小阶；败掉星，没星再败降一小阶，不跌出大阶\n" +
-                "· 兵器分凡、利、宝、神四品，各带特性；有渊源的好汉同场触发羁绊",
+                "· 兵器分凡、利、宝、神四品，可交给任意已入伙的好汉，特性跟着兵器走；有渊源的好汉同场触发羁绊",
                 36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 900), TextAnchor.MiddleLeft);
         }
 
@@ -378,7 +378,12 @@ namespace Rescue
             _stamina.text = StaminaText();
             if (_shopCoins != null) _shopCoins.text = _coins.text;
             if (_shopStamina != null) _shopStamina.text = _stamina.text;
-            _loadout.text = Save.D.HasAnyItem ? "下一战随身：" + BattleScreen.ItemSummary(Save.D.PeekLoadout()) : "";
+            var next = Save.D.PeekLoadout();
+            string carried = BattleScreen.ItemSummary(next);
+            string worn = BattleScreen.GearSummary(next);
+            string line = carried;
+            if (worn.Length > 0) line = carried.Length > 0 ? worn + "　" + carried : worn;
+            _loadout.text = line.Length > 0 ? "下一战随身：" + line : "";
             _rankName.text = Save.RankName;
             _stars.text = StarRich(Save.D.stars);
             if (_badgeTier != Save.D.tier)

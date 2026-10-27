@@ -455,6 +455,27 @@ namespace Rescue
             };
         }
 
+        /// <summary>带着别人的兵器时，普攻的样子跟着兵器走。空手仍用好汉自己的出手。</summary>
+        static Look LookOfWeapon(WeaponKind kind, Look fallback) => kind switch
+        {
+            WeaponKind.Blade => Look.Dao,
+            WeaponKind.Spear => Look.Spear,
+            WeaponKind.Bow => Look.Bow,
+            WeaponKind.Axe => Look.Axe,
+            WeaponKind.Club => Look.Staff,
+            WeaponKind.Whip => Look.Whip,
+            WeaponKind.Hammer => Look.Hammer,
+            WeaponKind.Fork => Look.Fork,
+            WeaponKind.Sword => Look.Sword,
+            WeaponKind.Stone => Look.Dart,
+            WeaponKind.Rope => Look.Lasso,
+            WeaponKind.Staff => Look.Staff,
+            WeaponKind.Halberd => Look.Axe,
+            WeaponKind.Cannon => Look.Fire,
+            WeaponKind.Fist => Look.Fist,
+            _ => fallback,
+        };
+
         static HeroSwing SwingOf(HeroDef d)
         {
             switch (d.WKind)
@@ -602,19 +623,22 @@ namespace Rescue
             var n = dir.sqrMagnitude > 1e-4f ? dir.normalized : Vector2.up;
             bool mine = ev.Side == 0;
             var hd = HeroDef.Get(id);
+            var gear = mine ? M.Player.GearOf(hd) : null;
+            var kit = gear ?? hd;
+            var look = gear == null ? hd.Look : LookOfWeapon(gear.WKind, hd.Look);
             var gold = Pal.GoldBright;
             var glow = Color.Lerp(Pal.GoldBright, Color.white, 0.45f);
-            ShowHeroWeapon(hd, from, to, n);
+            ShowHeroWeapon(kit, from, to, n);
             LungeHero(ev.A, n);
 
-            switch (hd.Look)
+            switch (look)
             {
                 case Look.Fist:
                     if (mine) Sfx.Play(Snd.Fist, 0.4f);
                     After(0.08f, () => { Impact(to, 0.45f, Pal.Ink.A(0.75f), gold, 1); Kick(to, n, 0.08f); });
                     break;
                 case Look.Dart:
-                    if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.35f);
+                    if (mine) Sfx.Play(kit.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.35f);
                     Streak(to - n * 0.5f, to, 0.05f, 0.08f, Pal.Ink, glow, 0.13f);
                     Impact(to, 0.4f, Pal.Ink.A(0.7f), glow, 1);
                     Kick(to, n, 0.08f);
@@ -636,7 +660,7 @@ namespace Rescue
                     After(0.06f, () => { Impact(to, 0.45f, Pal.Ink.A(0.75f), gold, 2); Kick(to, n, 0.1f); });
                     break;
                 case Look.Bow:
-                    if (mine) Sfx.Play(hd.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Bow, 0.4f);
+                    if (mine) Sfx.Play(kit.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Bow, 0.4f);
                     InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.6f, 0.17f, () =>
                     {
                         if (mine) Sfx.Play(Snd.ArrowHit, 0.35f);
@@ -651,11 +675,11 @@ namespace Rescue
                     break;
                 case Look.Water:
                 case Look.WaterFire:
-                    if (mine) Sfx.Play(Snd.Water, 0.35f, hd.Look == Look.WaterFire ? 0.9f : 1f);
+                    if (mine) Sfx.Play(Snd.Water, 0.35f, look == Look.WaterFire ? 0.9f : 1f);
                     WaveTo(from, to, 0.85f, () =>
                     {
                         Splash(to, 0.55f);
-                        if (hd.Look == Look.WaterFire) FireBurst(to, 0.4f);
+                        if (look == Look.WaterFire) FireBurst(to, 0.4f);
                         Kick(to, n, 0.1f);
                     });
                     break;
@@ -680,7 +704,7 @@ namespace Rescue
                 case Look.Staff:
                 case Look.Hammer:
                 case Look.Whip:
-                    if (mine) Sfx.Play(hd.Look == Look.Hammer ? Snd.Hammer : hd.Look == Look.Whip ? Snd.Whip : Snd.Smash, 0.4f);
+                    if (mine) Sfx.Play(look == Look.Hammer ? Snd.Hammer : look == Look.Whip ? Snd.Whip : Snd.Smash, 0.4f);
                     After(0.08f, () =>
                     {
                         Impact(to, 0.55f, Pal.Ink.A(0.8f), Steel, 2);
@@ -716,8 +740,8 @@ namespace Rescue
                 FloatText(to + new Vector2(0, 0.6f), "暴击！", Pal.Red, 0.32f, 0.6f);
                 if (mine) { HitStop(0.03f); Sfx.Play(Snd.Crit, 0.4f); }
             }
-            if (mine && M.Player.Armed(hd) && hd.WeaponTag.Length > 0 && UnityEngine.Random.value < 0.3f)
-                FloatText(from + new Vector2(0, 0.95f), "用" + hd.WeaponTag, Ui.GradeColor(hd.WGrade), 0.3f, 0.7f);
+            if (mine && gear != null && UnityEngine.Random.value < 0.3f)
+                FloatText(from + new Vector2(0, 0.95f), "用" + GearBadge(gear), Ui.GradeColor(gear.WGrade), 0.3f, 0.7f);
             if (_frames.TryGetValue(ev.A, out var fv)) fv.Pulse();
         }
 
