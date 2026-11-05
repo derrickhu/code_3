@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""把启动封面换成和游戏内同一张水墨页：营救宋江，底下印健康游戏忠告，进度条让在忠告上面。"""
+"""微信启动封面：和游戏内同一张水墨页。健康忠告印在图上，进度条由插件画成细的一条，不在图上再挖槽。"""
 
 from pathlib import Path
 
@@ -21,14 +21,18 @@ BODY_H = round(176 * SY)
 TITLE_PX = round(36 * SY)
 BODY_PX = round(30 * SY)
 ADVICE_TOP = TITLE_BOTTOM + TITLE_H
-BAR_BOTTOM = ADVICE_TOP + 18
-BAR_H = 8
-TEXT_BOTTOM = BAR_BOTTOM + BAR_H + 8
-TEXT_H = 22
+BAR_W = 320
+BAR_H = 16
+BAR_PAD = 0
+BAR_BOTTOM = ADVICE_TOP + 36
+TEXT_BOTTOM = BAR_BOTTOM + BAR_H + 12
+TEXT_H = 24
+BADGE = ROOT / "Assets/Resources/Art/age12.png"
+BADGE_SIZE = 72
+BADGE_XY = (24, 88)
 
 INK = (30, 26, 22)
-INK_SOFT = (74, 66, 56)
-BAR = "#8C3A32"
+BAR = "#8E3A30"
 
 TITLE = "健康游戏忠告"
 LINES = [
@@ -52,9 +56,50 @@ def draw_center(draw, text, face, bottom, height, fill):
     draw.text((x, y), text, font=face, fill=fill)
 
 
+def system_font(size):
+    for path in (
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ):
+        if Path(path).exists():
+            return ImageFont.truetype(path, size)
+    return font(ROOT / "Assets/Resources/Fonts/Kai.ttf", size)
+
+
+def write_badge():
+    size = 256
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(im)
+    draw.rounded_rectangle((14, 18, 246, 250), radius=56, fill=(30, 26, 22, 80))
+    draw.rounded_rectangle((8, 8, 244, 244), radius=56, fill=(31, 95, 214, 255))
+    draw.rounded_rectangle((24, 24, 228, 228), radius=44, outline=(255, 255, 255, 230), width=8)
+    big = system_font(118)
+    small = system_font(40)
+    box = draw.textbbox((0, 0), "12+", font=big)
+    tw, th = box[2] - box[0], box[3] - box[1]
+    draw.text(((size - tw) / 2 - box[0], 58 - box[1]), "12+", font=big, fill=(255, 255, 255, 255))
+    box = draw.textbbox((0, 0), "适龄", font=small)
+    tw = box[2] - box[0]
+    draw.text(((size - tw) / 2 - box[0], 168 - box[1]), "适龄", font=small, fill=(255, 255, 255, 255))
+    BADGE.parent.mkdir(parents=True, exist_ok=True)
+    im.save(BADGE)
+    print(f"适龄标 {BADGE}")
+
+
+def paste_badge(im):
+    if not BADGE.exists():
+        return im
+    badge = Image.open(BADGE).convert("RGBA").resize((BADGE_SIZE, BADGE_SIZE), Image.Resampling.LANCZOS)
+    base = im.convert("RGBA")
+    base.paste(badge, BADGE_XY, badge)
+    return base.convert("RGB")
+
+
 def compose():
     src = Image.open(SRC).convert("RGB")
     im = src.resize((W, H), Image.Resampling.LANCZOS)
+    im = paste_badge(im)
     draw = ImageDraw.Draw(im)
     brush = font(ROOT / "Assets/Resources/Fonts/Brush.ttf", TITLE_PX)
     kai = font(ROOT / "Assets/Resources/Fonts/Kai.ttf", BODY_PX)
@@ -97,7 +142,7 @@ def patch_game_js():
     block = f"""loadingPageConfig: {{
                 totalLaunchTime: 7000,
                 animationDuration: 100,
-                // 720x1280，和游戏内启动页同一张图。进度条停在健康忠告上面。
+                // 720x1280。细进度条停在健康忠告上面，图上不再画槽。
                 designWidth: {W},
                 designHeight: {H},
                 scaleMode: scaleMode.exactFit,
@@ -113,17 +158,18 @@ def patch_game_js():
                         height: {TEXT_H},
                         width: 360,
                         lineHeight: {TEXT_H},
-                        color: '#4A4238',
-                        fontSize: 15,
+                        color: '#5A4C40',
+                        fontSize: 16,
                     }},
                 }},
                 barConfig: {{
                     style: {{
-                        width: 280,
+                        width: {BAR_W},
                         height: {BAR_H},
-                        padding: 1,
+                        padding: {BAR_PAD},
                         bottom: {BAR_BOTTOM},
                         backgroundColor: '{BAR}',
+                        borderRadius: 8,
                     }},
                 }},
                 iconConfig: {{
@@ -140,15 +186,81 @@ def patch_game_js():
                     iconImage: 'images/unity_logo.png',
                 }},
             }}"""
-    GAME_JS.write_text(js[:start] + block + js[end:], encoding="utf-8")
-    print("已改 game.js：封面与健康忠告同一页，进度条在忠告上方")
+    js = js[:start] + block + js[end:]
+    js = js.replace("hideAfterCallmain: true", "hideAfterCallmain: false")
+    js = js.replace("callmain结束后立即隐藏封面视频", "封面留到主界面画出来再揭")
+    GAME_JS.write_text(js, encoding="utf-8")
+    print("已改 game.js：一张封面留到主界面出来，细进度条在忠告上方")
+
+
+TRANSPORT_HOOK = """// songjiang: Unity 的请求走插件，不经过 weapp-adapter。真机关掉 QUIC 和高性能模式，否则排行榜握手失败。
+function lockSongjiangTransport() {
+    if (typeof wx === 'undefined' || !wx.request || wx.request.__songjiangLocked) return;
+    const raw = wx.request.bind(wx);
+    function locked(opt) {
+        if (opt && typeof opt === 'object') {
+            opt.enableQuic = false;
+            opt.enableHttp2 = false;
+            opt.useHighPerformanceMode = false;
+        }
+        return raw(opt);
+    }
+    locked.__songjiangLocked = true;
+    wx.request = locked;
+}
+lockSongjiangTransport();
+"""
+
+
+def patch_request_transport():
+    """导出的适配器默认开 QUIC。真机握手失败，开调试才通，排行榜就显示连不上。
+    UnityWebRequest 实际走插件，不经过这份适配器，所以 game.js 里还要包一层 wx.request。"""
+    path = ROOT / "wechat-minigame/minigame/weapp-adapter.js"
+    if path.exists():
+        js = path.read_text(encoding="utf-8")
+        old = "enableHttp2: true,\n                                enableQuic: true,"
+        new = "enableHttp2: false,\n                                enableQuic: false,"
+        if old in js:
+            path.write_text(js.replace(old, new, 1), encoding="utf-8")
+            print("已关 weapp-adapter 的 QUIC/HTTP2")
+    game = ROOT / "wechat-minigame/minigame/game.js"
+    if not game.exists():
+        return
+    src = game.read_text(encoding="utf-8")
+    if "lockSongjiangTransport" not in src:
+        needle = "const managerConfig = {"
+        if needle not in src:
+            print("game.js 没有 managerConfig，请求钩子没插上")
+        else:
+            src = src.replace(needle, TRANSPORT_HOOK + needle, 1)
+    if "requirePlugin('UnityPlugin'" in src and src.count("lockSongjiangTransport()") < 2:
+        src = src.replace("}).default;\n", "}).default;\n            lockSongjiangTransport();\n", 1)
+    game.write_text(src, encoding="utf-8")
+    print("已让 Unity 的请求关掉 QUIC")
+
+
+def patch_privacy_check():
+    """开发版、体验版不走隐私接口校验。没勾用户信息时，点授权会被微信打成 112。"""
+    path = ROOT / "wechat-minigame/minigame/game.json"
+    if not path.exists():
+        return
+    js = path.read_text(encoding="utf-8")
+    if "__usePrivacyCheck__" in js:
+        return
+    js = js.replace("{", '{\n  "__usePrivacyCheck__": false,', 1)
+    path.write_text(js, encoding="utf-8")
+    print("已关开发版隐私接口校验")
 
 
 def main():
     if not SRC.exists():
         raise SystemExit(f"缺少 {SRC}")
+    if not BADGE.exists():
+        write_badge()
     compose()
     patch_game_js()
+    patch_request_transport()
+    patch_privacy_check()
 
 
 if __name__ == "__main__":

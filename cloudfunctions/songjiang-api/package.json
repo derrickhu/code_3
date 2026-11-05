@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@cloudbase/node-sdk": "^3.5.0",
+    "ip2region": "2.3.0",
     "jsonwebtoken": "^9.0.2"
   }
 }

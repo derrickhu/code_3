@@ -70,7 +70,7 @@ namespace Rescue
             if (_shots != null)
             {
                 if (Arg("-gm") != null) Gm.Force = true;
-                StartCoroutine(Arg("-gm") != null ? GmShots() : Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : Arg("-maps") != null ? MapShots() : Arg("-drop") != null ? DropShots() : AutoShots());
+                StartCoroutine(Arg("-load") != null ? LoadShots() : Arg("-tut") != null ? TutShots() : Arg("-gm") != null ? GmShots() : Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : Arg("-maps") != null ? MapShots() : Arg("-drop") != null ? DropShots() : AutoShots());
             }
             else if (Application.isBatchMode)
             {
@@ -80,7 +80,12 @@ namespace Rescue
             else
             {
                 CloudSync.Imported += OnCloudImported;
-                var loading = LoadingScreen.Open(transform);
+                if (WxSession.InWeChat)
+                {
+                    var auto = GameObject.Find("HideLoadingPage");
+                    if (auto != null) Destroy(auto);
+                }
+                var loading = WxSession.InWeChat ? null : LoadingScreen.Open(transform);
                 CloudSync.Startup(() =>
                 {
                     LiveConfig.Refresh();
@@ -122,11 +127,40 @@ namespace Rescue
 
         IEnumerator FinishBoot(LoadingScreen loading)
         {
+            WxSession.Boot();
+            if (WxSession.InWeChat)
+            {
+                ShowHome();
+                yield return null;
+                yield return null;
+                WxSession.HideLoadingCover();
+                yield return null;
+                if (!WxSession.PrivacyChosen)
+                {
+                    bool wait = true;
+                    WxSession.ShowPrivacy(_ => wait = false);
+                    while (wait) yield return null;
+                }
+                WxSession.EnableTimeline();
+                yield break;
+            }
+            if (!WxSession.PrivacyChosen)
+            {
+                yield return new WaitForSecondsRealtime(1.1f);
+                bool wait = true;
+                WxSession.ShowPrivacy(_ => wait = false);
+                while (wait) yield return null;
+            }
             if (loading) yield return loading.WaitMin();
             ShowHome();
-            if (!loading) yield break;
-            loading.BringToFront();
-            yield return loading.FadeOut();
+            if (loading)
+            {
+                loading.SetFill(1f);
+                loading.BringToFront();
+                yield return new WaitForSecondsRealtime(0.12f);
+                yield return loading.FadeOut();
+            }
+            WxSession.EnableTimeline();
         }
 
         void ShowHome()
@@ -141,6 +175,7 @@ namespace Rescue
 
         void StartBattle(int chapter, bool autoplay)
         {
+            WxSession.KeepAwake();
             if (_home) Destroy(_home.gameObject);
             _home = null;
             _pending = Resolve(chapter);
@@ -482,6 +517,19 @@ namespace Rescue
             yield return new WaitForSecondsRealtime(0.35f);
             yield return Shot("gm_skipped");
 
+            Save.D.unlocked = ChapterDef.StoryCount;
+            Save.D.endlessRound = 2;
+            Destroy(_home.gameObject);
+            ShowHome();
+            yield return new WaitForSecondsRealtime(0.5f);
+            yield return Shot("gm_hall_home");
+            _home.ShowGm();
+            yield return new WaitForSecondsRealtime(0.4f);
+            yield return Shot("gm_hall");
+            _home.GmSkip(1);
+            yield return new WaitForSecondsRealtime(0.35f);
+            yield return Shot("gm_hall_skipped");
+
             if (_home) Destroy(_home.gameObject);
             _home = null;
             OpenBattle(0, false);
@@ -493,6 +541,33 @@ namespace Rescue
             _battle.GmFinish(true);
             yield return new WaitForSecondsRealtime(2.6f);
             yield return Shot("gm_result");
+            Application.Quit();
+        }
+
+        /// <summary>启动页：-shots DIR -load 1。</summary>
+        IEnumerator LoadShots()
+        {
+            var loading = LoadingScreen.Open(transform);
+            loading.SetFill(0.46f);
+            yield return new WaitForSecondsRealtime(0.45f);
+            yield return Shot("loading");
+            yield return new WaitForSecondsRealtime(0.35f);
+            Application.Quit();
+        }
+
+        /// <summary>第一回新手手势：-shots DIR -tut 1。</summary>
+        IEnumerator TutShots()
+        {
+            OpenBattle(0, false);
+            yield return new WaitForSecondsRealtime(0.4f);
+            _battle.ShotPlay();
+            yield return new WaitForSecondsRealtime(0.55f);
+            yield return Shot("tut_recruit");
+            _battle.M.Player.Recruit();
+            yield return new WaitForSecondsRealtime(0.5f);
+            yield return Shot("tut_place_from");
+            yield return new WaitForSecondsRealtime(0.8f);
+            yield return Shot("tut_place");
             Application.Quit();
         }
 
@@ -510,10 +585,8 @@ namespace Rescue
             foreach (var id in Save.D.joined) Save.D.heroes.Add(id);
             Save.D.weapons.AddRange(new[] { (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.WuSong, (int)HeroId.LinChong, (int)HeroId.LiKui, (int)HeroId.LiKui, (int)HeroId.HuaRong,
                 (int)HeroId.LuZhiShen, (int)HeroId.ZhangHeng, (int)HeroId.SunErNiang });
-            Save.D.armWho.Add((int)HeroId.HuaRong);
-            Save.D.armWhat.Add((int)HeroId.WuSong);
-            Save.D.armWho.Add((int)HeroId.LinChong);
-            Save.D.armWhat.Add((int)HeroId.LinChong);
+            Save.D.rack.Add((int)HeroId.WuSong);
+            Save.D.rack.Add((int)HeroId.LinChong);
             ShowHome();
             _home.ShowDaily();
             yield return new WaitForSecondsRealtime(1.2f);
@@ -525,13 +598,13 @@ namespace Rescue
             yield return Shot("home");
             Save.D.claimTaken = false;
 
-            Save.D.region = "";
-            yield return Page(() => _home.ShowBoard(), "board_pick");
             Save.D.region = "山东";
             yield return Page(() => _home.ShowBoard(), "board");
             yield return Page(() => _home.ShowArmory(), "armory");
             yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.WuSong); }, "armory_detail");
             yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.LinChong); }, "armory_move");
+            yield return Page(() => { _home.ShowArmory(); _home.SelectWeapon((int)HeroId.LiKui); }, "armory_off");
+            yield return Page(() => { _home.ShowArmory(); _home.ShowForge(); }, "forge");
             yield return Page(() => _home.ShowCodex(), "codex");
             yield return Page(() => _home.ShowDailyBattle(), "daily_battle");
             yield return Page(() => _home.ShowChapters(), "chapters");

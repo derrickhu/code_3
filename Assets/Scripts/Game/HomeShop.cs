@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Rescue.Sim;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -148,7 +149,7 @@ namespace Rescue
                             rebuild("白送的，客官拿好！");
                         }));
                     }, 40, "ui_video");
-                    adBtn.Find("text").GetComponent<Text>().lineSpacing = 0.9f;
+                    adBtn.Find("body/text").GetComponent<Text>().lineSpacing = 0.9f;
                     AdStub.Badge(adBtn, new Vector2(80, 58), "免费领取");
                     Shine(adBtn);
                     continue;
@@ -315,7 +316,7 @@ namespace Rescue
             bool fifth = !it.Active && !dup && (Save.PassiveFieldCount >= Save.MaxPassiveField || Save.PassiveKinds >= Save.MaxPassiveBag);
             if (full || dup || fifth)
             {
-                int coins = it.Price / 2;
+                int coins = Economy.LottoRefund(it.Price);
                 Save.D.coins += coins;
                 Save.Write();
                 Analytics.ShopBuy(ItemKey(it), "lotto_coin", coins);

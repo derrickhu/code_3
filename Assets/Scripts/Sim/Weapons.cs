@@ -30,6 +30,8 @@ namespace Rescue.Sim
         public const float FirstCutMul = 1.6f;
         public const float HookSlowT = 1.5f;
         public const float HookSlowMul = 0.6f;
+        /// <summary>原主带自己的兵器，伤害再乘这一截。</summary>
+        public const float OwnerMul = 1.1f;
 
         /// <summary>按兵器出自谁认名兵器，不看是谁带着。</summary>
         public static WeaponMove MoveOf(HeroDef weapon)
@@ -177,6 +179,188 @@ namespace Rescue.Sim
             if (into.Count > 0 || pool == null) return;
             foreach (var id in pool)
                 if (joined(id) && !string.IsNullOrEmpty(HeroDef.Get(id).Weapon)) into.Add(id);
+        }
+    }
+
+    /// <summary>
+    /// 难度阶梯：按掉落规则推算「正常进度」玩家此时兵器架上有什么，对手照着带；
+    /// 玩家比阶梯强或弱，对手各跟一半。兵器始终有用，但不会越玩越简单，落后的人也不至于被碾。
+    /// 分量 = 每件兵器的（伤害倍率 - 1）相加。
+    /// </summary>
+    public static class WeaponLadder
+    {
+        public const float Follow = 0.5f;
+        public const int BaseSlots = 3;
+        public const int MaxSlots = 5;
+        /// <summary>每日一战按第几回的进度配兵器。</summary>
+        public const int DailyAs = 10;
+        /// <summary>推算用：每回平均打几局才过、每局缴获的几率（撑过四波再乘掉率）。</summary>
+        public const float BattlesPerChapter = 1.7f;
+        public const float DropPerBattle = 0.65f;
+
+        public struct Slot
+        {
+            public int Grade, Tier;
+            public float Power => SlotPower(Tier, Grade);
+        }
+
+        static List<Slot>[] _story;
+
+        /// <summary>进第 c 回时，正常玩家兵器架上最好的三件（按期望缴获件数推算）。</summary>
+        static List<Slot> StoryRack(int c)
+        {
+            if (_story == null) BuildStory();
+            return _story[Math.Max(0, Math.Min(_story.Length - 1, c))];
+        }
+
+        static void BuildStory()
+        {
+            int n = ChapterDef.StoryCount;
+            _story = new List<Slot>[n + 1];
+            var copies = new Dictionary<HeroId, float>();
+            var joined = new HashSet<HeroId>();
+            void Drop(ChapterDef ch, float drops)
+            {
+                var cands = new List<HeroDef>();
+                foreach (var id in ch.Pool)
+                {
+                    var d = HeroDef.Get(id);
+                    if (joined.Contains(id) && !string.IsNullOrEmpty(d.Weapon)) cands.Add(d);
+                }
+                float total = 0f;
+                foreach (var d in cands) total += Weapons.DropWeight(d.WGrade);
+                foreach (var d in cands)
+                {
+                    copies.TryGetValue(d.Id, out var k);
+                    copies[d.Id] = k + drops * Weapons.DropWeight(d.WGrade) / total;
+                }
+            }
+            for (int c = 0; c <= n; c++)
+            {
+                var rack = new List<Slot>();
+                foreach (var kv in copies)
+                {
+                    if (kv.Value < 0.5f) continue;
+                    var d = HeroDef.Get(kv.Key);
+                    if (d.NoAttack) continue;
+                    rack.Add(new Slot { Grade = d.WGrade, Tier = Math.Max(1, Math.Min(5, (int)Math.Round(kv.Value))) });
+                }
+                rack.Sort((x, y) => y.Power.CompareTo(x.Power));
+                if (rack.Count > BaseSlots) rack.RemoveRange(BaseSlots, rack.Count - BaseSlots);
+                _story[c] = rack;
+                if (c == n) break;
+                var ch = ChapterDef.All[c];
+                Drop(ch, (BattlesPerChapter - 1f) * DropPerBattle);
+                foreach (var id in ch.Joins) joined.Add(id);
+                Drop(ch, DropPerBattle);
+            }
+        }
+
+        /// <summary>这一局正常进度的兵器架。车轮战在通关的底子上，越往后越接近五格满配。</summary>
+        public static List<Slot> Expected(ChapterDef ch)
+        {
+            if (ch.IsEndless)
+            {
+                var end = StoryRack(ChapterDef.StoryCount);
+                int slots = BaseSlots + (ch.Round >= 8 ? 1 : 0) + (ch.Round >= 16 ? 1 : 0);
+                int bonus = Math.Min(4, ch.Round / 5);
+                var list = new List<Slot>();
+                for (int i = 0; i < slots; i++)
+                {
+                    var b = i < end.Count ? end[i] : new Slot { Grade = 3, Tier = 1 };
+                    list.Add(new Slot { Grade = b.Grade, Tier = Math.Min(5, b.Tier + bonus) });
+                }
+                return list;
+            }
+            return new List<Slot>(StoryRack(ch.IsDaily ? DailyAs : ch.Index));
+        }
+
+        public static float SlotPower(int tier, int grade) => HeroDef.ArmedMul(tier, grade) - 1f;
+
+        public static float Power(IList<Slot> rack)
+        {
+            float p = 0f;
+            foreach (var s in rack) p += s.Power;
+            return p;
+        }
+
+        public static float ExpectedPower(ChapterDef ch) => Power(Expected(ch));
+
+        public static float Power(Loadout l)
+        {
+            if (l == null || l.Rack == null) return 0f;
+            float p = 0f;
+            for (int i = 0; i < l.Rack.Count; i++)
+            {
+                int w = l.Rack[i];
+                if (w < 0 || w >= HeroDef.All.Length) continue;
+                int lv = l.RackLv != null && i < l.RackLv.Count ? l.RackLv[i] : 1;
+                p += SlotPower(Math.Max(1, Math.Min(5, lv)), HeroDef.Get((HeroId)w).WGrade);
+            }
+            return p;
+        }
+
+        public static float RivalTarget(ChapterDef ch, float player)
+        {
+            float e = ExpectedPower(ch);
+            return Math.Max(0f, e + Follow * (player - e));
+        }
+
+        /// <summary>对手的兵器架：从阶梯出发，玩家强就一步步加阶、加格、提品级，弱就一步步减，直到贴近目标分量。</summary>
+        public static Loadout ForRival(ChapterDef ch, float playerPower)
+        {
+            float target = RivalTarget(ch, playerPower);
+            var rack = Expected(ch);
+            while (Power(rack) > target + 0.05f && rack.Count > 0)
+            {
+                int i = rack.Count - 1;
+                var s = rack[i];
+                if (s.Tier > 1) { s.Tier--; rack[i] = s; }
+                else rack.RemoveAt(i);
+                rack.Sort((x, y) => y.Power.CompareTo(x.Power));
+            }
+            while (true)
+            {
+                float left = target - Power(rack);
+                int best = -1;
+                Slot bestSlot = default;
+                float gain = 0f;
+                void Try(int at, Slot s)
+                {
+                    float g = s.Power - (at < rack.Count ? rack[at].Power : 0f);
+                    if (g > 0f && g <= left + 0.05f && g > gain) { gain = g; best = at; bestSlot = s; }
+                }
+                for (int i = 0; i < rack.Count; i++)
+                {
+                    var s = rack[i];
+                    if (s.Tier < 5) Try(i, new Slot { Grade = s.Grade, Tier = s.Tier + 1 });
+                    if (s.Grade < 3) Try(i, new Slot { Grade = s.Grade + 1, Tier = s.Tier });
+                }
+                if (rack.Count < MaxSlots) Try(rack.Count, new Slot { Grade = rack.Count > 0 ? rack[0].Grade : 0, Tier = 1 });
+                if (best < 0) break;
+                if (best < rack.Count) rack[best] = bestSlot;
+                else rack.Add(bestSlot);
+            }
+            return Arm(ch, rack);
+        }
+
+        /// <summary>
+        /// 给每一格挑一件具体的兵器：只挑本回不出场的人的普通兵器。
+        /// 这样对手只拼分量，不白拿原主加成和名兵招式，阶梯算出来多少就是多少。
+        /// </summary>
+        public static Loadout Arm(ChapterDef ch, IList<Slot> rack)
+        {
+            var l = new Loadout { Rack = new List<int>(), RackLv = new List<int>() };
+            foreach (var s in rack)
+                foreach (var d in HeroDef.All)
+                {
+                    if (d.WGrade != s.Grade || string.IsNullOrEmpty(d.Weapon) || d.NoAttack || d.Hidden) continue;
+                    if (Array.IndexOf(ch.Pool, d.Id) >= 0 || Weapons.MoveOf(d) != WeaponMove.None || l.Rack.Contains((int)d.Id)) continue;
+                    l.Rack.Add((int)d.Id);
+                    l.RackLv.Add(s.Tier);
+                    break;
+                }
+            return l;
         }
     }
 

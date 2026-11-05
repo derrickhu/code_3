@@ -33,7 +33,7 @@ namespace Rescue.Sim
             Chapter = chapter;
             _waveRng = new Rng(seed * 2654435761u + 17);
             Sides[0] = new Side(0, this, false, seed * 7 + 1, playerItems);
-            Sides[1] = new Side(1, this, true, seed * 13 + 5, null);
+            Sides[1] = new Side(1, this, true, seed * 13 + 5, WeaponLadder.ForRival(chapter, WeaponLadder.Power(playerItems)));
             Sides[1].IncomeMul = chapter.RivalIncome;
         }
 

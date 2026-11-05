@@ -74,8 +74,8 @@ namespace Rescue.Sim
         {
             if (copies <= 0) return 1f;
             int lv = copies > 5 ? 5 : copies;
-            float b = grade <= 0 ? 1.30f : grade == 1 ? 1.40f : grade == 2 ? 1.50f : 1.65f;
-            return b + 0.15f * (lv - 1);
+            float b = grade <= 0 ? 1.25f : grade == 1 ? 1.32f : grade == 2 ? 1.40f : 1.50f;
+            return b + 0.10f * (lv - 1);
         }
 
         /// <summary>御敌千里：远程射程翻倍。全图射程不再放大。</summary>

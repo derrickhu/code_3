@@ -15,7 +15,7 @@ MonoBehaviour:
   ProjectConf:
     projectName: rescue-songjiang
     Appid: wxe1acde0de051578b
-    CDN: 
+    CDN: https://726f-rosa-env-d7grf78r5dbd37323-1414200063.tcb.qcloud.la/songjiang
     assetLoadType: 1
     compressDataPackage: 0
     VideoUrl: 
@@ -27,7 +27,7 @@ MonoBehaviour:
     bundleExcludeExtensions: json;
     AssetsUrl: 
     MemorySize: 256
-    HideAfterCallMain: 1
+    HideAfterCallMain: 0
     preloadFiles: 
     Orientation: 0
     bgImageSrc: Assets/WX-WASM-SDK-V2/Runtime/wechat-default/images/background.jpg
@@ -38,7 +38,7 @@ MonoBehaviour:
     texturesPath: Assets/Textures
     needCacheTextures: 1
     loadingBarWidth: 800
-    needCheckUpdate: 0
+    needCheckUpdate: 1
     disableHighPerformanceFallback: 0
     IOSDevicePixelRatio: 0
   SDKOptions:

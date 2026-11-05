@@ -5,9 +5,10 @@
  *   POST /login
  *   POST /save/pull
  *   POST /save/push
- *   POST /config        服务器时间、公告、广告位和各入口次数
- *   POST /rank/submit   上报座次分
+ *   POST /config        服务器时间、公告、广告位和各入口次数、按 IP 定的省份
+ *   POST /rank/submit   上报座次分（省份由服务器按 IP 定）
  *   POST /rank/list     省榜 / 全国榜
+ *   POST /avatar        把微信头像转回来，真机不用直连头像域名
  *   GET|POST /health
  *
  * 环境变量：GAME_KEY=songjiang，SONGJIANG_JWT_SECRET 必填。
@@ -17,7 +18,7 @@
 
 const { handleLogin } = require('./lib/auth');
 const { handlePull, handlePush } = require('./lib/save');
-const { handleConfig, handleRankSubmit, handleRankList } = require('./lib/live');
+const { handleConfig, handleRankSubmit, handleRankList, handleAvatar } = require('./lib/live');
 const { respond, parseEvent, preflight } = require('./lib/http');
 
 const ROUTES = {
@@ -30,6 +31,7 @@ const ROUTES = {
   'GET /config': handleConfig,
   'POST /rank/submit': handleRankSubmit,
   'POST /rank/list': handleRankList,
+  'POST /avatar': handleAvatar,
 };
 
 exports.main = async (event, context) => {

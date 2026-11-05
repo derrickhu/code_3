@@ -7,8 +7,12 @@ namespace Rescue
     public static class CloudConfig
     {
         public const string GameKey = "songjiang";
-        // 新建路由挂在默认 HTTP 域名上。service 域名要等旧缓存过期，刚建时会间歇 INVALID_PATH。
-        public const string BaseUrl = "https://rosa-env-d7grf78r5dbd37323-1414200063.ap-shanghai.app.tcloudbase.com";
+        // 真机只放行公众平台里配过的 request 域名。这条 service 域名和别的游戏是同一个，后台多半已经加过。
+        public const string BaseUrl = "https://rosa-env-d7grf78r5dbd37323.service.tcloudbase.com";
+        // 默认 HTTP 域名同样挂着 songjiang-api。service 被域名校验拦住时再试这一条。
+        public const string AltUrl = "https://rosa-env-d7grf78r5dbd37323-1414200063.ap-shanghai.app.tcloudbase.com";
+        /// <summary>云存储上的按需资源，域名和别的游戏同一个桶。曲子在 songjiang/StreamingAssets/Music，用到哪首下哪首。</summary>
+        public const string AssetCdn = "https://726f-rosa-env-d7grf78r5dbd37323-1414200063.tcb.qcloud.la/songjiang";
         const string Prefix = "/" + GameKey + "-api";
 
         public const string LoginPath = Prefix + "/login";
@@ -17,6 +21,7 @@ namespace Rescue
         public const string LivePath = Prefix + "/config";
         public const string RankSubmitPath = Prefix + "/rank/submit";
         public const string RankListPath = Prefix + "/rank/list";
+        public const string AvatarPath = Prefix + "/avatar";
         public const string LiveCacheKey = GameKey + "_live";
 
         public const int RequestTimeoutSec = 10;

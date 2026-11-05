@@ -1,5 +1,7 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace Rescue
 {
@@ -10,7 +12,7 @@ namespace Rescue
         UltFire, UltWater, UltWind, UltWhirl, UltMagic, UltSmash, UltThunder, UltCannon, UltHeal, UltDrum, Join, RankUp, CampFull,
     }
 
-    /// <summary>界面音是程序合成的木鱼、锣、鼓、铜钱；兵器和招式音从 Resources/Sfx 读录音，读不到时退回合成音。</summary>
+    /// <summary>按钮音用录音。微信上启动时现造的波形播不出来，而且声卡要等用户点过才开。兵器和招式也读录音，没有文件时退回合成音。</summary>
     public sealed class Sfx : MonoBehaviour
     {
         const int Rate = 22050;
@@ -18,8 +20,12 @@ namespace Rescue
         readonly Dictionary<Snd, AudioClip> _clips = new Dictionary<Snd, AudioClip>();
         readonly Dictionary<Snd, float> _last = new Dictionary<Snd, float>();
         AudioSource[] _src;
+        AudioSource _ui;
         float[] _stopAt;
         int _next;
+        bool _retryUi;
+        Snd _retrySnd;
+        float _retryVol, _retryPitch;
         enum Bed { None, Menu, Story, Battle, Crisis, Epic, Victory, Defeat }
 
         AudioSource _music;
@@ -34,8 +40,9 @@ namespace Rescue
         const float MusicVol = 0.4f;
 
         public static bool On = true;
-        /// <summary>截图等无人听的场合关掉，避免去读那首两分多钟的曲子。</summary>
+        /// <summary>截图等无人听的场合关掉，避免去拉那首曲子。</summary>
         public static bool Music = true;
+        readonly HashSet<Bed> _fetching = new HashSet<Bed>();
 
         public static void Init(GameObject host)
         {
@@ -46,13 +53,24 @@ namespace Rescue
 
         public static void Play(Snd s, float vol = 1f, float pitch = 1f)
         {
-            if (_i == null || !On || _i._dspStill > 0.5f) return;
+            if (_i == null || !On) return;
+            // 声卡还没醒时别把按钮音丢掉。微信要点一下才会开 WebAudio，这一下要真的播出去。
+            bool button = s == Snd.Tap || s == Snd.Deny;
+            if (!button && _i._dspStill > 0.5f) return;
             var clip = _i._clips[s];
-            if (clip.loadState == AudioDataLoadState.Unloaded) clip.LoadAudioData();
-            if (clip.loadState != AudioDataLoadState.Loaded) return;
+            if (!button)
+            {
+                if (clip.loadState == AudioDataLoadState.Unloaded) clip.LoadAudioData();
+                if (clip.loadState != AudioDataLoadState.Loaded) return;
+            }
             float minGap = s == Snd.Hit || s == Snd.Kill ? 0.06f : s >= Snd.Dao && s < Snd.UltFire ? 0.07f : 0.03f;
             if (_i._last.TryGetValue(s, out var t) && Time.unscaledTime - t < minGap) return;
             _i._last[s] = Time.unscaledTime;
+            if (button)
+            {
+                _i.PlayButton(s, clip, vol, pitch);
+                return;
+            }
             int i = _i.Pick();
             var src = _i._src[i];
             // 还在响的声道先停掉。WebGL 上让片段自己播完，FMOD 会先作废句柄，引擎下一帧查 isPlaying 就刷 INVALID_HANDLE。
@@ -66,6 +84,35 @@ namespace Rescue
             float dur = clip.length / pitchAbs;
             float margin = Mathf.Min(0.05f, dur * 0.2f);
             _i._stopAt[i] = Time.unscaledTime + Mathf.Max(0.02f, dur - margin);
+        }
+
+        /// <summary>按钮音走单独声道，用 PlayOneShot。声卡停着时每帧去停别的声道，不能把这一声一起掐掉。</summary>
+        void PlayButton(Snd s, AudioClip clip, float vol, float pitch)
+        {
+            if (clip.loadState == AudioDataLoadState.Unloaded) clip.LoadAudioData();
+            float pitchAbs = Mathf.Max(0.5f, pitch * Random.Range(0.96f, 1.04f));
+            _ui.pitch = pitchAbs;
+            _ui.PlayOneShot(clip, vol);
+            if (clip.loadState == AudioDataLoadState.Loaded) return;
+            _retryUi = true;
+            _retrySnd = s;
+            _retryVol = vol;
+            _retryPitch = pitchAbs;
+        }
+
+        void RetryButton()
+        {
+            if (!_retryUi) return;
+            var clip = _clips[_retrySnd];
+            if (clip.loadState == AudioDataLoadState.Failed)
+            {
+                _retryUi = false;
+                return;
+            }
+            if (clip.loadState != AudioDataLoadState.Loaded) return;
+            _retryUi = false;
+            _ui.pitch = _retryPitch;
+            _ui.PlayOneShot(clip, _retryVol);
         }
 
         /// <summary>挑一条已经停掉的声道；都忙就抢最快结束的那条。不读 isPlaying。</summary>
@@ -132,41 +179,90 @@ namespace Rescue
         void Want(Bed bed)
         {
             if (!Music && bed != Bed.None) return;
-            EnsureMusic();
-            if (bed == Bed.Menu && _menu == null) return;
-            if (bed == Bed.Story && _story == null) return;
-            if (bed == Bed.Battle && _battle == null) return;
-            if (bed == Bed.Crisis && _crisis == null) return;
-            if (bed == Bed.Epic && _epic == null) return;
-            if (bed == Bed.Victory && _victory == null) return;
-            if (bed == Bed.Defeat && _defeat == null) return;
+            EnsureSource();
             _want = bed;
+            if (bed != Bed.None && ClipOf(bed) == null) StartCoroutine(Fetch(bed));
         }
 
-        void EnsureMusic()
+        void EnsureSource()
         {
-            if (_music == null)
+            if (_music != null) return;
+            _music = gameObject.AddComponent<AudioSource>();
+            _music.playOnAwake = false;
+            _music.loop = true;
+            _music.spatialBlend = 0f;
+            _music.volume = 0f;
+            _music.priority = 64;
+        }
+
+        /// <summary>只拉正在用的这一首。地址含 StreamingAssets，微信插件会按这个标识做本地缓存，下次不用再下。</summary>
+        IEnumerator Fetch(Bed bed)
+        {
+            if (!_fetching.Add(bed)) yield break;
+            string name = NameOf(bed);
+            using (var req = UnityWebRequestMultimedia.GetAudioClip(TrackUrl(name), AudioType.MPEG))
             {
-                _music = gameObject.AddComponent<AudioSource>();
-                _music.playOnAwake = false;
-                _music.loop = true;
-                _music.spatialBlend = 0f;
-                _music.volume = 0f;
-                _music.priority = 64;
+                yield return req.SendWebRequest();
+                _fetching.Remove(bed);
+                if (req.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogWarning("[曲子] " + name + " 没拉下来：" + req.error);
+                    yield break;
+                }
+                var clip = DownloadHandlerAudioClip.GetContent(req);
+                if (clip == null) yield break;
+                clip.name = name;
+                SetClip(bed, clip);
             }
-            if (_menu == null) _menu = Resources.Load<AudioClip>("Music/menu");
-            if (_story == null) _story = Resources.Load<AudioClip>("Music/story");
-            if (_battle == null) _battle = Resources.Load<AudioClip>("Music/battle");
-            if (_crisis == null) _crisis = Resources.Load<AudioClip>("Music/crisis");
-            if (_epic == null) _epic = Resources.Load<AudioClip>("Music/epic");
-            if (_victory == null) _victory = Resources.Load<AudioClip>("Music/victory");
-            if (_defeat == null) _defeat = Resources.Load<AudioClip>("Music/defeat");
-            Warm(_menu); Warm(_story); Warm(_battle); Warm(_crisis); Warm(_epic); Warm(_victory); Warm(_defeat);
         }
 
-        static void Warm(AudioClip clip)
+        static string NameOf(Bed bed) => bed switch
         {
-            if (clip != null && clip.loadState == AudioDataLoadState.Unloaded) clip.LoadAudioData();
+            Bed.Menu => "menu",
+            Bed.Story => "story",
+            Bed.Battle => "battle",
+            Bed.Crisis => "crisis",
+            Bed.Epic => "epic",
+            Bed.Victory => "victory",
+            Bed.Defeat => "defeat",
+            _ => "",
+        };
+
+        static string TrackUrl(string name)
+        {
+#if UNITY_EDITOR
+            string root = Application.streamingAssetsPath;
+            if (!root.Contains("://")) root = "file://" + root;
+            return root.TrimEnd('/') + "/Music/" + name + ".mp3";
+#else
+            return CloudConfig.AssetCdn.TrimEnd('/') + "/StreamingAssets/Music/" + name + ".mp3";
+#endif
+        }
+
+        AudioClip ClipOf(Bed bed) => bed switch
+        {
+            Bed.Menu => _menu,
+            Bed.Story => _story,
+            Bed.Battle => _battle,
+            Bed.Crisis => _crisis,
+            Bed.Epic => _epic,
+            Bed.Victory => _victory,
+            Bed.Defeat => _defeat,
+            _ => null,
+        };
+
+        void SetClip(Bed bed, AudioClip clip)
+        {
+            switch (bed)
+            {
+                case Bed.Menu: _menu = clip; break;
+                case Bed.Story: _story = clip; break;
+                case Bed.Battle: _battle = clip; break;
+                case Bed.Crisis: _crisis = clip; break;
+                case Bed.Epic: _epic = clip; break;
+                case Bed.Victory: _victory = clip; break;
+                case Bed.Defeat: _defeat = clip; break;
+            }
         }
 
         AudioClip Wanted => _want switch
@@ -240,6 +336,7 @@ namespace Rescue
         void Update()
         {
             WatchAudio();
+            RetryButton();
             if (_dspStill > 0.5f) return;
             ReleaseVoices();
             if (_music == null) return;
@@ -299,6 +396,9 @@ namespace Rescue
                 _src[i].spatialBlend = 0f;
                 _src[i].loop = false;
             }
+            _ui = gameObject.AddComponent<AudioSource>();
+            _ui.playOnAwake = false;
+            _ui.spatialBlend = 0f;
             _clips[Snd.Tap] = Clip("tap", 0.16f, (t, k) =>
                 (Sine(920, t) + Sine(1460, t) * 0.4f) * Env(t, 0.001f, 0.05f) * 0.85f
                 + Sine(240, t) * Env(t, 0.002f, 0.08f) * 0.4f
@@ -361,6 +461,9 @@ namespace Rescue
             Load(Snd.UltDrum, "ult_drum", Snd.Leak);
             Load(Snd.Join, "join", Snd.Hero);
             Load(Snd.RankUp, "rank_up", Snd.Win);
+            // 盖掉上面的合成音。不在启动时解码，等第一次点按钮再读，微信才给播。
+            Load(Snd.Tap, "ui_tap", Snd.Tap);
+            Load(Snd.Deny, "ui_deny", Snd.Deny);
         }
 
         void Load(Snd s, string file, Snd fallback)

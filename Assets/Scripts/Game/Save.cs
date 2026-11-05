@@ -39,8 +39,12 @@ namespace Rescue
         public List<int> adCount = new List<int>();
         /// <summary>好汉谱里已经领过入伙赏钱的好汉。</summary>
         public List<int> codexPaid = new List<int>();
-        /// <summary>排行榜上报的地区。空串表示还没选，「江湖」表示不分省。</summary>
+        /// <summary>服务器按 IP 定的省份，只用来显示。空串表示还没联网拿到，「江湖」表示查不到省（海外等）。</summary>
         public string region = "";
+        /// <summary>微信昵称。空着时排行榜用「好汉」加四位数。</summary>
+        public string nick = "";
+        /// <summary>微信头像地址。空着时用默认立绘。</summary>
+        public string avatar = "";
         /// <summary>每日一战：今天打过没、赢过没。</summary>
         public string dailyDay = "";
         public bool dailyWon;
@@ -48,12 +52,18 @@ namespace Rescue
         public bool sfx = true;
         public int wins, battles;
         public List<int> weapons = new List<int>();
-        /// <summary>旧档：装备自己成名兵器的好汉。版本 3 起改成 armWho / armWhat。</summary>
+        /// <summary>旧档：装备自己成名兵器的好汉。版本 3 起改成 armWhat，版本 5 起改成兵器架。</summary>
         public List<int> armed = new List<int>();
-        /// <summary>带着兵器的人，和 armWhat 对齐。</summary>
-        public List<int> armWho = new List<int>();
-        /// <summary>兵器出自谁。同一件同时只能出现一次。</summary>
+        /// <summary>旧档 3、4：交给别人带的兵器。版本 5 起挪进兵器架。</summary>
         public List<int> armWhat = new List<int>();
+        /// <summary>兵器架，按顺序发：值是兵器出自谁。局里凑出好汉时依次领走。</summary>
+        public List<int> rack = new List<int>();
+        /// <summary>兵器架有几格。起步三格，花铜钱扩到五格。</summary>
+        public int rackSlots = Save.RackBase;
+        /// <summary>兵器铺：今天摆出的三件、已经打过的。</summary>
+        public string forgeDay = "";
+        public List<int> forgeOffer = new List<int>();
+        public List<int> forgeSold = new List<int>();
         public string claimDay = "";
         public int claimTier, claimStars;
         public bool claimTaken = true;
@@ -76,24 +86,15 @@ namespace Rescue
                 MengHan = Save.FieldCount(4), TianShu = Save.FieldCount(5), Baozi = Save.FieldCount(6),
                 Xuming = xuming && On(7), Shovels = On(8) ? shovels : 0, Fu = Save.FieldCount(9), Trap = Save.FieldCount(11), Far = far && On(10),
                 Stove = stove && On(12), Wine = wine && On(13),
-                Armed = new List<int>(),
-                Gear = new int[HeroDef.All.Length],
-                WeaponLv = new int[HeroDef.All.Length],
+                Rack = new List<int>(),
+                RackLv = new List<int>(),
             };
-            for (int i = 0; i < l.Gear.Length; i++) l.Gear[i] = -1;
-            if (armWho != null && armWhat != null)
-            {
-                int n = armWho.Count < armWhat.Count ? armWho.Count : armWhat.Count;
-                for (int i = 0; i < n; i++)
+            if (rack != null)
+                foreach (var w in rack)
                 {
-                    int who = armWho[i];
-                    int what = armWhat[i];
-                    if (who < 0 || who >= l.Gear.Length) continue;
-                    l.Gear[who] = what;
-                    l.WeaponLv[who] = Save.WeaponCount(what);
-                    l.Armed.Add(who);
+                    l.Rack.Add(w);
+                    l.RackLv.Add(Save.WeaponCount(w));
                 }
-            }
             return l;
         }
 
@@ -115,7 +116,7 @@ namespace Rescue
         const string Key = "rescue_save_v1";
         public static SaveData D { get; private set; }
 
-        public const int Version = 4;
+        public const int Version = 5;
 
         public static string RankName => RankRules.Name(D.tier);
         public static int Major => RankRules.Major(D.tier);
@@ -129,13 +130,25 @@ namespace Rescue
             Normalize();
         }
 
-        /// <summary>用云端原文覆盖本地。失败时保持内存里的当前档。</summary>
+        /// <summary>
+        /// 换成一份新档并标成刚写过。调用方再 CloudSync.FlushNow，云端一起盖掉。
+        /// 只删本地的话，下次启动会把云端旧档拉回来。
+        /// </summary>
+        public static void Wipe()
+        {
+            D = new SaveData();
+            Normalize();
+            Write();
+        }
+
+        /// <summary>用云端原文覆盖本地。失败时保持内存里的当前档。微信头像昵称记在本机，空档盖不掉。</summary>
         public static bool ApplyCloud(string json)
         {
             var next = Parse(json);
             if (next == null) return false;
             D = next;
             Normalize();
+            WxSession.MergeProfileIntoSave();
             Persist();
             return true;
         }
@@ -159,16 +172,16 @@ namespace Rescue
             // 旧规则没过关也会掉兵器，清掉还没入伙的人那几件。
             D.weapons.RemoveAll(id => id < 0 || id >= HeroDef.All.Length || !Joined(id));
             if (D.armed == null) D.armed = new List<int>();
-            if (D.armWho == null) D.armWho = new List<int>();
             if (D.armWhat == null) D.armWhat = new List<int>();
-            if (D.ver < 3 && D.armWho.Count == 0)
-            {
-                foreach (var id in D.armed)
-                {
-                    D.armWho.Add(id);
-                    D.armWhat.Add(id);
-                }
-            }
+            if (D.rack == null) D.rack = new List<int>();
+            if (D.forgeOffer == null) D.forgeOffer = new List<int>();
+            if (D.forgeSold == null) D.forgeSold = new List<int>();
+            D.rackSlots = Mathf.Clamp(D.rackSlots, RackBase, RackMax);
+            // 5 起兵器不再交给某个人，带着的兵器按原顺序挂上兵器架。
+            if (D.ver < 5 && D.rack.Count == 0)
+                D.rack.AddRange(D.ver < 3 ? D.armed : D.armWhat);
+            D.armed.Clear();
+            D.armWhat.Clear();
             if (D.team == null) D.team = new List<int>();
             if (D.ver < Version)
             {
@@ -198,7 +211,7 @@ namespace Rescue
                 D.staminaRule = 1;
             }
             Sfx.On = D.sfx;
-            TidyGear();
+            TidyRack();
             PrepareActiveField();
             PreparePassiveField();
         }
@@ -211,6 +224,13 @@ namespace Rescue
             if (Volatile || D == null) return;
             Persist();
             CloudSync.Touch();
+        }
+
+        /// <summary>只落本地，不往云端推。把头像昵称从本机授权记回存档时用。</summary>
+        public static void Remember()
+        {
+            if (Volatile || D == null) return;
+            Persist();
         }
 
         static void Persist()
@@ -336,7 +356,7 @@ namespace Rescue
             return !D.claimTaken;
         }
 
-        public static int DailyCoins => 8 + RankRules.Major(D.claimTier) * 8 + RankRules.Sub(D.claimTier) * 3 + Mathf.Min(D.claimStars, 10) * 2;
+        public static int DailyCoins => Economy.DailyCoins(D.claimTier, D.claimStars);
 
         public static bool Joined(int id) => D.joined.Contains(id);
         public static bool Joined(HeroId id) => D.joined.Contains((int)id);
@@ -672,84 +692,114 @@ namespace Rescue
             return n;
         }
 
-        public static int ArmedCount => D.armWho == null ? 0 : D.armWho.Count;
+        public const int RackBase = 3;
+        public const int RackMax = 5;
+        public static int RackCount => D.rack == null ? 0 : D.rack.Count;
+        public static bool OnRack(int weapon) => D.rack != null && D.rack.Contains(weapon);
+        /// <summary>扩下一格兵器架的价钱。扩满返回 0。</summary>
+        public static int RackSlotPrice => Economy.RackSlotPrice(D.rackSlots);
 
-        /// <summary>这件兵器现在在谁身上。没有人带时返回 -1。</summary>
-        public static int WearerOf(int weapon)
-        {
-            if (D.armWhat == null) return -1;
-            int i = D.armWhat.IndexOf(weapon);
-            if (i < 0 || i >= D.armWho.Count) return -1;
-            return D.armWho[i];
-        }
-
-        /// <summary>这位好汉带着哪件兵器。空手返回 -1。</summary>
-        public static int WeaponOn(int hero)
-        {
-            if (D.armWho == null) return -1;
-            int i = D.armWho.IndexOf(hero);
-            if (i < 0 || i >= D.armWhat.Count) return -1;
-            return D.armWhat[i];
-        }
-
-        public static void UnequipWeapon(int weapon)
-        {
-            if (D.armWhat == null) return;
-            int i = D.armWhat.IndexOf(weapon);
-            if (i < 0) return;
-            D.armWhat.RemoveAt(i);
-            D.armWho.RemoveAt(i);
-        }
-
-        /// <summary>把兵器交给一位已入伙的好汉。他原来带着的、以及这件原来的主人，都会卸下来。</summary>
-        public static bool Equip(int hero, int weapon, out string err)
+        public static bool BuyRackSlot(out string err)
         {
             err = null;
-            if (WeaponCount(weapon) <= 0) { err = "还没缴获这件兵器"; return false; }
-            if (hero < 0 || hero >= HeroDef.All.Length || !Joined((HeroId)hero)) { err = "这位好汉还没入伙"; return false; }
-            if (string.IsNullOrEmpty(HeroDef.Get((HeroId)weapon).Weapon)) { err = "这件兵器不能带"; return false; }
-            int curWho = WearerOf(weapon);
-            int curWhat = WeaponOn(hero);
-            if (curWho == hero) return true;
-            bool newSlot = curWhat < 0 && curWho < 0;
-            if (newSlot && ArmedCount >= MaxArmed) { err = "最多三位好汉同时带兵器"; return false; }
-            if (curWho >= 0) UnequipWeapon(weapon);
-            int still = WeaponOn(hero);
-            if (still >= 0) UnequipWeapon(still);
-            D.armWho.Add(hero);
-            D.armWhat.Add(weapon);
-            TidyGear();
+            int price = RackSlotPrice;
+            if (price <= 0) { err = "兵器架已经扩满"; return false; }
+            if (D.coins < price) { err = "铜钱不够"; return false; }
+            D.coins -= price;
+            D.rackSlots++;
             Write();
             return true;
         }
 
-        /// <summary>丢掉已经不在背包里、或人还没入伙的搭配。同一件、同一个人只留第一份。</summary>
-        public static void TidyGear()
+        /// <summary>挂到兵器架最后一格。</summary>
+        public static bool PutOnRack(int weapon, out string err)
         {
-            if (D.armWho == null) D.armWho = new List<int>();
-            if (D.armWhat == null) D.armWhat = new List<int>();
-            int n = D.armWho.Count < D.armWhat.Count ? D.armWho.Count : D.armWhat.Count;
-            var who = new List<int>();
-            var what = new List<int>();
-            var seenWho = new HashSet<int>();
-            var seenWhat = new HashSet<int>();
-            for (int i = 0; i < n && who.Count < MaxArmed; i++)
-            {
-                int h = D.armWho[i];
-                int w = D.armWhat[i];
-                if (h < 0 || h >= HeroDef.All.Length || !Joined((HeroId)h)) continue;
-                if (w < 0 || w >= HeroDef.All.Length || WeaponCount(w) <= 0) continue;
-                if (string.IsNullOrEmpty(HeroDef.Get((HeroId)w).Weapon)) continue;
-                if (!seenWho.Add(h) || !seenWhat.Add(w)) continue;
-                who.Add(h);
-                what.Add(w);
-            }
-            D.armWho = who;
-            D.armWhat = what;
+            err = null;
+            if (WeaponCount(weapon) <= 0) { err = "还没缴获这件兵器"; return false; }
+            if (string.IsNullOrEmpty(HeroDef.Get((HeroId)weapon).Weapon)) { err = "这件兵器不能带"; return false; }
+            if (OnRack(weapon)) return true;
+            if (RackCount >= D.rackSlots) { err = "兵器架满了，先取下一件"; return false; }
+            D.rack.Add(weapon);
+            Write();
+            return true;
         }
 
-        public const int MaxArmed = 3;
-        public const int RecycleCoins = 22;
+        public static void TakeOffRack(int weapon)
+        {
+            if (D.rack == null || !D.rack.Remove(weapon)) return;
+            Write();
+        }
+
+        /// <summary>挪到兵器架第一格：局里第一个凑出来的好汉先领它。</summary>
+        public static void RackToFront(int weapon)
+        {
+            if (D.rack == null || !D.rack.Remove(weapon)) return;
+            D.rack.Insert(0, weapon);
+            Write();
+        }
+
+        /// <summary>丢掉已经不在背包里、不能带、重复的；超出格数的取下。</summary>
+        public static void TidyRack()
+        {
+            if (D.rack == null) D.rack = new List<int>();
+            var keep = new List<int>();
+            foreach (var w in D.rack)
+            {
+                if (keep.Count >= D.rackSlots) break;
+                if (w < 0 || w >= HeroDef.All.Length || WeaponCount(w) <= 0) continue;
+                if (string.IsNullOrEmpty(HeroDef.Get((HeroId)w).Weapon) || keep.Contains(w)) continue;
+                keep.Add(w);
+            }
+            D.rack = keep;
+        }
+
+        public const int ForgePerDay = 3;
+        public const int MaxWeaponTier = 5;
+
+        public static int ForgePrice(int weapon) => Economy.ForgePrice(HeroDef.Get((HeroId)weapon).WGrade);
+
+        /// <summary>兵器铺：每天从手里不满五阶的兵器里摆三件，打一次加一阶。当天不换货。</summary>
+        public static List<int> ForgeOffers()
+        {
+            if (D.forgeDay != Today)
+            {
+                D.forgeDay = Today;
+                D.forgeOffer.Clear();
+                D.forgeSold.Clear();
+                var pool = new List<int>();
+                foreach (var w in D.weapons)
+                    if (!pool.Contains(w) && WeaponCount(w) < MaxWeaponTier && !string.IsNullOrEmpty(HeroDef.Get((HeroId)w).Weapon)) pool.Add(w);
+                pool.Sort();
+                var rng = new System.Random(int.Parse(Today) * 131 + 7);
+                while (D.forgeOffer.Count < ForgePerDay && pool.Count > 0)
+                {
+                    int k = rng.Next(pool.Count);
+                    D.forgeOffer.Add(pool[k]);
+                    pool.RemoveAt(k);
+                }
+                Write();
+            }
+            return D.forgeOffer;
+        }
+
+        public static bool BuyForge(int weapon, out string err)
+        {
+            err = null;
+            if (!ForgeOffers().Contains(weapon) || D.forgeSold.Contains(weapon)) { err = "今天这件打过了"; return false; }
+            if (WeaponCount(weapon) >= MaxWeaponTier) { err = "已经五阶了"; return false; }
+            if (D.weapons.Count >= MaxWeapons) { err = "兵器囊满了，先回收几件"; return false; }
+            int price = ForgePrice(weapon);
+            if (D.coins < price) { err = "铜钱不够"; return false; }
+            D.coins -= price;
+            D.weapons.Add(weapon);
+            D.forgeSold.Add(weapon);
+            Write();
+            return true;
+        }
+
+        /// <summary>回收一件给的铜钱：凡器、利器给钱；宝器、神兵只腾地方，免得刷广告抽来的钱越滚越多。</summary>
+        public static int RecycleValue(int weapon) => Economy.RecycleValue(HeroDef.Get((HeroId)weapon).WGrade);
+        public const int RecycleCoins = Economy.RecycleCoins;
 
         public const int MaxWeapons = 60;
 
@@ -786,6 +836,8 @@ namespace Rescue
                 return new WeaponFind("兵器囊已满，换成铜钱 " + RecycleCoins, pick, false);
             }
             D.weapons.Add((int)pick);
+            // 兵器架还有空格就直接挂上，新手不去兵器谱也能用上。
+            if (!OnRack((int)pick) && RackCount < D.rackSlots) D.rack.Add((int)pick);
             var d = HeroDef.Get(pick);
             return new WeaponFind(d.Weapon, pick, true);
         }

@@ -1,0 +1,19 @@
+Portrait mobile game battle screen mockup, 9:16, Water Margin merge tower defense "Rescue Song Jiang".
+
+KEEP THE LAYOUT of the first reference image exactly: same two mirrored board halves (opponent on top, player on bottom) separated by a thin wave divider, same square cell grid on each half, same winding enemy path through the grid, Song Jiang's spot at the end of the path, same bottom bar with 5 reserve slots and one big recruit button, same top bar. Only the CONTENT inside the cells and on the path changes.
+
+ART STYLE from the other reference images (chibi Water Margin heroes, government soldier, Song Jiang on a throne): anime chibi proportions about 3 heads tall, big head, clean dark outline, soft cel shading, bright clean colors.
+
+Changes:
+1. Every occupied cell shows a chibi character instead of a written character. Cells become small rounded wooden plinths/frames, colored by level (wood, bronze, silver, gold rims) with 1-3 tiny stars at the bottom edge instead of a level number.
+   - Basic troops: a chibi sabre soldier, a chibi spearman, a chibi archer, a chibi rider on a pony, all in Liangshan teal-green and brown outfits.
+   - Heroes: when two hero cells are adjacent, one wide golden frame spans the two cells and shows one larger chibi hero (e.g. Wu Song in dark blue with a tiger-skin waist cloth, an archer hero in white and green).
+   - Unpaired hero pieces show a small chibi head portrait in a golden frame.
+2. Enemies on the path are small chibi government soldiers in dark iron armor with red trim and red helmet plumes, walking in a line with small red health bars; one bigger armored captain.
+3. Song Jiang's spot: a chibi Song Jiang head-and-shoulders portrait (black scholar hat, beard, green robe) in a round red lacquered frame, with three small hearts beside it.
+4. Path: dirt road edged with small stones, grass between cells, a few bushes and rocks, light warm paper background like the first reference.
+5. Bottom 5 reserve slots hold small chibi pieces in the same wooden plinths; recruit button stays a big red rounded button with a small coin icon.
+
+Readable, tidy, clearly a board game grid with cute characters on it.
+
+NO TEXT, no labels, no captions, no readable writing, no Chinese characters, no numbers anywhere in the image.

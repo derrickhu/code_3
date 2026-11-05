@@ -4,8 +4,8 @@ using UnityEngine.UI;
 
 namespace Rescue
 {
-    /// <summary>激励视频占位：小游戏版换成 wx.createRewardedVideoAd / tt.createRewardedVideoAd。
-    /// 样子照平台激励视频：顶栏「广告 | N秒后可获得奖励」+ 关闭，看满才发奖励，中途关要二次确认。</summary>
+    /// <summary>激励视频。微信小游戏按入口播对应广告位，看完才发奖，拉不到不发。
+    /// 编辑器和截图仍是演示片：顶栏倒计时，看满才发奖励，中途关要二次确认。</summary>
     public static class AdStub
     {
         public const float Seconds = 3f;
@@ -29,40 +29,58 @@ namespace Rescue
                 onCancel?.Invoke();
                 return;
             }
-            Analytics.AdRequest(scene);
             void Reward()
             {
                 Save.NoteAd(scene);
                 onReward?.Invoke();
             }
-            if (WxAd.Available && !Save.Volatile)
+            if (Save.Volatile || !WxAd.Available)
             {
-                var block = Ui.Fill(Ui.Root, Color.black.A(0.35f), true, "adWait");
-                bool wasPaused = AudioListener.pause;
-                AudioListener.pause = true;
-                Analytics.AdShow(scene);
-                WxAd.Show(ended =>
+                Analytics.AdRequest(scene);
+                Demo(reason, scene, Reward, onCancel);
+                return;
+            }
+            string unit = WxAd.UnitOf(scene);
+            Analytics.AdRequest(scene, unit);
+            if (string.IsNullOrEmpty(unit) || WxAd.Busy)
+            {
+                Ui.Nope(WxAd.Busy ? "广告还在播" : "暂时没有广告，稍后再试");
+                onCancel?.Invoke();
+                return;
+            }
+            var block = Ui.Fill(Ui.Root, Color.black.A(0.35f), true, "adWait");
+            bool wasPaused = AudioListener.pause;
+            AudioListener.pause = true;
+            bool shown = false;
+            void EndWait()
+            {
+                AudioListener.pause = wasPaused;
+                if (block) UnityEngine.Object.Destroy(block.gameObject);
+            }
+            WxAd.Show(scene,
+                () =>
                 {
-                    AudioListener.pause = wasPaused;
-                    if (block) UnityEngine.Object.Destroy(block.gameObject);
-                    Analytics.AdClose(scene, ended);
+                    shown = true;
+                    Analytics.AdShow(scene, unit);
+                },
+                ended =>
+                {
+                    EndWait();
+                    if (shown) Analytics.AdClose(scene, ended, unit);
                     if (ended) Reward();
                     else
                     {
                         Ui.Nope("没看完，这次没有奖励");
                         onCancel?.Invoke();
                     }
-                }, () =>
+                },
+                () =>
                 {
-                    AudioListener.pause = wasPaused;
-                    if (block) UnityEngine.Object.Destroy(block.gameObject);
-                    Analytics.AdClose(scene, false);
+                    EndWait();
+                    if (shown) Analytics.AdClose(scene, false, unit);
                     Ui.Nope("暂时没有广告，稍后再试");
                     onCancel?.Invoke();
                 });
-                return;
-            }
-            Demo(reason, scene, Reward, onCancel);
         }
 
         /// <summary>广告按钮右上角的小红签「剩N」。不限次数的入口不显示，用完变灰。</summary>

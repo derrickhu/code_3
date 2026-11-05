@@ -623,7 +623,7 @@ namespace Rescue
             var n = dir.sqrMagnitude > 1e-4f ? dir.normalized : Vector2.up;
             bool mine = ev.Side == 0;
             var hd = HeroDef.Get(id);
-            var gear = mine ? M.Player.GearOf(hd) : null;
+            var gear = M.Sides[ev.Side].GearOf(hd);
             var kit = gear ?? hd;
             var look = gear == null ? hd.Look : LookOfWeapon(gear.WKind, hd.Look);
             var gold = Pal.GoldBright;

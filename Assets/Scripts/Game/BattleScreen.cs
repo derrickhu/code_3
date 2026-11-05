@@ -46,10 +46,13 @@ namespace Rescue
         float _calm;
         Tut? _tut;
         float _tutT;
-        float _ringT;
         float _bossSay;
-        Vector2 _ringPos;
         bool _tutorialRun;
+        enum Aim { None, Recruit, Place, Merge, Gold, Rescue, Dismiss }
+        Aim _aim;
+        float _handT;
+        RectTransform _handRoot;
+        Image _handImg, _handRing;
 
         public static BattleScreen Open(Transform host, ChapterDef ch, Camera cam, Loadout items, bool autoplay, Action<BattleResult> done)
         {
@@ -167,10 +170,18 @@ namespace Rescue
             }
         }
 
+        /// <summary>截图用：跳过开场，直接进第一回引导。</summary>
+        public void ShotPlay()
+        {
+            if (_intro) Destroy(_intro.gameObject);
+            _intro = null;
+            if (!_started) Begin();
+        }
+
         void Update()
         {
             TickHint();
-            if (!_started || M.Over || _ending) { UpdateBanners(); return; }
+            if (!_started || M.Over || _ending) { HideHand(); UpdateBanners(); return; }
             if (!View.Paused && !M.Hold)
             {
                 float dt = Mathf.Min(Time.deltaTime, 0.1f) * View.Speed;
@@ -178,6 +189,7 @@ namespace Rescue
                 _auto?.Tick(dt);
             }
             UpdateTutorial();
+            TickHand();
             UpdateBanners();
             UpdateMusic();
         }
@@ -244,7 +256,10 @@ namespace Rescue
             if (items != null && ItemSummary(items).Length > 0)
                 Ui.Label(card.transform, "随身：" + ItemSummary(items), 32, Pal.Willow, new Vector2(0, -320), new Vector2(800, 56));
             if (items != null && GearSummary(items).Length > 0)
-                Ui.Label(card.transform, "带着：" + GearSummary(items), 32, Pal.Willow, new Vector2(0, -378), new Vector2(800, 48));
+            {
+                string rack = "兵器架：" + GearSummary(items) + "（凑出好汉就自动发）";
+                Ui.Label(card.transform, rack, rack.Length > 24 ? 28 : 32, Pal.Willow, new Vector2(0, -378), new Vector2(860, 48));
+            }
 
             Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Ui.BtnRed, () =>
             {
@@ -273,7 +288,7 @@ namespace Rescue
             if (l.Baozi > 0) actives.Add("baozi");
             if (l.Fu > 0) actives.Add("fu");
             if (l.Trap > 0) actives.Add("trap");
-            Analytics.Loadout(string.Join(",", passives), string.Join(",", actives), l.Armed != null ? l.Armed.Count : 0);
+            Analytics.Loadout(string.Join(",", passives), string.Join(",", actives), l.Rack != null ? l.Rack.Count : 0);
         }
 
         public static string ItemSummary(Loadout l)
@@ -296,19 +311,17 @@ namespace Rescue
             return string.Join("、", parts);
         }
 
-        /// <summary>这一局谁带着哪件兵器。长名字只留最后两字，跟棋盘角标一样。</summary>
+        /// <summary>兵器架上按顺序的兵器名。长名字只留最后两字，跟棋盘角标一样。</summary>
         public static string GearSummary(Loadout l)
         {
-            if (l == null || l.Gear == null) return "";
+            if (l == null || l.Rack == null) return "";
             var parts = new List<string>();
-            for (int i = 0; i < l.Gear.Length; i++)
+            foreach (var w in l.Rack)
             {
-                int w = l.Gear[i];
                 if (w < 0 || w >= HeroDef.All.Length) continue;
                 var weapon = HeroDef.Get((HeroId)w);
                 if (string.IsNullOrEmpty(weapon.Weapon)) continue;
-                string name = weapon.Weapon.Length <= 4 ? weapon.Weapon : weapon.Weapon.Substring(weapon.Weapon.Length - 2);
-                parts.Add(HeroDef.Get((HeroId)i).Name + "带" + name);
+                parts.Add(weapon.Weapon.Length <= 4 ? weapon.Weapon : weapon.Weapon.Substring(weapon.Weapon.Length - 2));
             }
             return string.Join("、", parts);
         }
@@ -494,6 +507,7 @@ namespace Rescue
         {
             _hintWant = false;
             if (now) _hint.gameObject.SetActive(false);
+            if (_aim == Aim.Rescue || _aim == Aim.Dismiss) SetAim(Aim.None);
         }
 
         void PlaceHint()
@@ -521,20 +535,22 @@ namespace Rescue
             {
                 case Tut.Recruit:
                     ShowHint("军师吴用：哥哥被押在路尽头了！\n点下面的「聚义」，花炊饼招好汉。", 999);
-                    _ringPos = View.RecruitButtonPos;
+                    SetAim(Aim.Recruit);
                     break;
                 case Tut.Place:
                     ShowHint("把山寨里的字拖到路边的白地上，\n他们会自动打路上的官兵。", 999);
-                    _ringPos = BattleView.CampWorld(0);
+                    SetAim(Aim.Place);
                     break;
                 case Tut.Merge:
                     ShowHint("两个一样、同级的兵拖到一起，\n就能合成升级，更猛！", 7f);
+                    SetAim(Aim.Merge);
                     break;
                 case Tut.Gold:
                 {
                     var names = new List<string>();
                     foreach (var h in M.Player.Pool) if (!h.Hidden) names.Add(h.Name);
                     ShowHint("金字是好汉的名字！按顺序摆在一起\n（左→右或上→下）就能召唤：" + string.Join("、", names), 9f);
+                    SetAim(Aim.Gold);
                     break;
                 }
             }
@@ -546,6 +562,7 @@ namespace Rescue
             Save.SetTut((int)_tut.Value);
             if (_tut == Tut.Place) M.Hold = false;
             _tut = null;
+            SetAim(Aim.None);
             HideHint();
         }
 
@@ -555,16 +572,6 @@ namespace Rescue
             {
                 _tutT -= Time.deltaTime;
                 if (_tutT <= 0) CompleteTut();
-                if (_tut == Tut.Recruit || _tut == Tut.Place)
-                {
-                    _ringT -= Time.deltaTime;
-                    if (_ringT <= 0)
-                    {
-                        _ringT = 0.9f;
-                        View.FloatText(_ringPos + new Vector2(0, 0.75f), "点这", Pal.Red, 0.4f, 0.8f);
-                        if (_tut == Tut.Place && View.TryFindEmptyCell(out var cell)) View.FloatText(cell, "放这", Pal.Red, 0.32f, 0.8f);
-                    }
-                }
             }
             else if (_hint.gameObject.activeSelf)
             {
@@ -578,12 +585,14 @@ namespace Rescue
             {
                 Save.SetTut((int)Tut.Danger);
                 ShowHint("宋江危险！点山寨右边的「救」，\n看段广告把官兵推回路口。", 4f);
+                SetAim(Aim.Rescue);
                 return;
             }
             if (!Save.Tut((int)Tut.Dismiss) && Save.Tut((int)Tut.Place) && p.EmptyCampSlots == 0 && p.Buns >= p.RecruitCost)
             {
                 Save.SetTut((int)Tut.Dismiss);
                 ShowHint("再点聚义，底下这一排全部换新。\n不想花炊饼，就把字拖到按钮上遣散。", 5f);
+                SetAim(Aim.Dismiss);
                 return;
             }
             if (!_tutorialRun) return;
@@ -605,6 +614,152 @@ namespace Rescue
         static bool HasGoldInCamp(Side p)
         {
             foreach (var c in p.Camp) if (c != null && c.Type == PieceType.HeroChar) return true;
+            return false;
+        }
+
+        // ─────────────────────────── 白手套（抄 code_2） ───────────────────────────
+
+        void SetAim(Aim a)
+        {
+            if (_aim == a) return;
+            _aim = a;
+            _handT = 0f;
+        }
+
+        void HideHand()
+        {
+            if (_handRoot) _handRoot.gameObject.SetActive(false);
+        }
+
+        /// <summary>指尖对准目标。点按：按下、缩一下、松开时冒白圈。拖拽：沿两点来回，玩家自己在拖时先躲开。</summary>
+        void TickHand()
+        {
+            if (_aim == Aim.None || View.Dragging || View.Paused)
+            {
+                HideHand();
+                return;
+            }
+            bool drag = false;
+            Vector2 from = default, to = default;
+            switch (_aim)
+            {
+                case Aim.Recruit: from = View.RecruitButtonPos; break;
+                case Aim.Rescue: from = View.RescueWorld; break;
+                case Aim.Place:
+                    drag = true;
+                    if (!CampAt(null, true, out from) || !View.TryFindEmptyCell(from, out to)) { HideHand(); return; }
+                    break;
+                case Aim.Gold:
+                    drag = true;
+                    if (!CampAt(PieceType.HeroChar, false, out from) || !View.TryFindEmptyCell(from, out to)) { HideHand(); return; }
+                    break;
+                case Aim.Merge:
+                    drag = true;
+                    if (!MergeEnds(out from, out to)) { HideHand(); return; }
+                    break;
+                case Aim.Dismiss:
+                    drag = true;
+                    if (!CampAt(null, false, out from)) { HideHand(); return; }
+                    to = View.RecruitButtonPos;
+                    break;
+            }
+            if (!View.OverlayOf(_overlay, from, out var a)) { HideHand(); return; }
+            var b = a;
+            if (drag && !View.OverlayOf(_overlay, to, out b)) { HideHand(); return; }
+
+            if (_handRoot == null)
+            {
+                _handRoot = Ui.Rect(_overlay, "guideHand");
+                _handRoot.anchorMin = Vector2.zero;
+                _handRoot.anchorMax = Vector2.one;
+                _handRoot.offsetMin = _handRoot.offsetMax = Vector2.zero;
+                var cg = _handRoot.gameObject.AddComponent<CanvasGroup>();
+                cg.blocksRaycasts = false;
+                cg.interactable = false;
+                _handRing = Ui.Box(_handRoot, new Vector2(170, 170), Vector2.zero, Color.white.A(0), Art.Ring, "ripple");
+                _handRing.raycastTarget = false;
+                _handImg = Ui.Icon(_handRoot, "ic_hand", 150, Vector2.zero, "hand");
+                _handImg.raycastTarget = false;
+                _handImg.rectTransform.pivot = new Vector2(0.13f, 0.93f);
+            }
+            _handRoot.gameObject.SetActive(true);
+            _handRoot.SetAsLastSibling();
+            _handT += Time.unscaledDeltaTime;
+            if (drag) PlayDrag(a, b);
+            else PlayTap(a);
+        }
+
+        void PlayTap(Vector2 at)
+        {
+            float t = Mathf.Repeat(_handT, 1.2f) / 1.2f;
+            float press = t < 0.35f ? Tween.OutCubic(t / 0.35f) : t < 0.6f ? 1f : 1f - Tween.OutCubic((t - 0.6f) / 0.4f);
+            var rt = _handImg.rectTransform;
+            rt.anchoredPosition = at + new Vector2(50, -50) * (1 - press);
+            rt.localScale = Vector3.one * (t > 0.35f && t < 0.6f ? 0.9f : 1f);
+            _handImg.color = Color.white;
+            float rr = t < 0.35f ? 0f : (t - 0.35f) / 0.65f;
+            var rp = _handRing.rectTransform;
+            rp.anchoredPosition = at;
+            rp.localScale = Vector3.one * (0.25f + 0.9f * rr);
+            _handRing.color = Color.white.A(t < 0.35f ? 0 : (1 - rr) * 0.9f);
+        }
+
+        void PlayDrag(Vector2 a, Vector2 b)
+        {
+            float k = Mathf.Repeat(_handT, 1.8f);
+            float move = Mathf.Clamp01((k - 0.35f) / 0.9f);
+            float alpha = k < 0.25f ? k / 0.25f : k > 1.45f ? 1f - (k - 1.45f) / 0.35f : 1f;
+            var p = Vector2.Lerp(a, b, Tween.OutCubic(move));
+            var rt = _handImg.rectTransform;
+            rt.anchoredPosition = p + new Vector2(8, -8);
+            rt.localScale = Vector3.one * 0.92f;
+            _handImg.color = Color.white.A(Mathf.Clamp01(alpha));
+            _handRing.color = Color.white.A(0);
+        }
+
+        bool CampAt(PieceType? only, bool skipShovel, out Vector2 pos)
+        {
+            var camp = M.Player.Camp;
+            for (int i = 0; i < camp.Length; i++)
+            {
+                var c = camp[i];
+                if (c == null) continue;
+                if (only != null && c.Type != only.Value) continue;
+                if (only == null && skipShovel && c.Type == PieceType.Shovel) continue;
+                pos = BattleView.CampWorld(i);
+                return true;
+            }
+            if (only == null && skipShovel)
+            {
+                for (int i = 0; i < camp.Length; i++)
+                    if (camp[i] != null) { pos = BattleView.CampWorld(i); return true; }
+            }
+            pos = default;
+            return false;
+        }
+
+        bool MergeEnds(out Vector2 a, out Vector2 b)
+        {
+            var found = new List<(Piece p, Vector2 w)>();
+            var side = M.Player;
+            for (int i = 0; i < side.Camp.Length; i++)
+                if (side.Camp[i] != null && side.Camp[i].Type == PieceType.Unit)
+                    found.Add((side.Camp[i], BattleView.CampWorld(i)));
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var pc = side.Board.Pieces[c, r];
+                    if (pc != null && pc.Type == PieceType.Unit) found.Add((pc, BattleView.CellWorld(0, c, r)));
+                }
+            for (int i = 0; i < found.Count; i++)
+                for (int j = i + 1; j < found.Count; j++)
+                    if (Side.CanMerge(found[i].p, found[j].p))
+                    {
+                        a = found[i].w;
+                        b = found[j].w;
+                        return true;
+                    }
+            a = b = default;
             return false;
         }
 
@@ -632,7 +787,7 @@ namespace Rescue
             string mine = ItemSummary(M.Player.Items);
             string worn = GearSummary(M.Player.Items);
             string yours = mine.Length > 0 ? "你身上的：" + mine : "无";
-            if (worn.Length > 0) yours = (mine.Length > 0 ? yours + "\n" : "") + "带着：" + worn;
+            if (worn.Length > 0) yours = (mine.Length > 0 ? yours + "\n" : "") + "兵器架：" + worn;
             int winCoins = M.Chapter.IsDaily ? ResultPanel.DailyWinCoins : ResultPanel.WinCoins(M.Chapter);
             SpoilBox(card, new Vector2(0, 205), "对手战利品：", yours);
             SpoilBox(card, new Vector2(0, -45), "战利品：", M.Chapter.IsDaily && !Save.DailyWonToday
@@ -694,6 +849,7 @@ namespace Rescue
             if (_ending) return;
             _ending = true;
             HideHint(true);
+            HideHand();
             if (win) Sfx.PlayVictory();
             else Sfx.PlayDefeat();
             var r = new BattleResult

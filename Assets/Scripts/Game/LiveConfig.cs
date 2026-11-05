@@ -29,6 +29,7 @@ namespace Rescue
             public int noticeVer;
             public string adUnitId;
             public AdCapRow[] adCaps;
+            public string region;
         }
 
         [Serializable]
@@ -42,6 +43,7 @@ namespace Rescue
         public sealed class RankRow
         {
             public string name;
+            public string avatar;
             public string region;
             public int score;
             public int tier;
@@ -53,6 +55,7 @@ namespace Rescue
         public sealed class RankList
         {
             public string region;
+            public string myRegion;
             public RankRow[] top;
             public int rank;
             public int total;
@@ -69,7 +72,7 @@ namespace Rescue
         sealed class RankSubmit
         {
             public string name;
-            public string region;
+            public string avatar;
             public int score;
             public int tier;
             public int stars;
@@ -92,7 +95,6 @@ namespace Rescue
         static LiveData _data;
         static float _fetchedAt = -999f;
         static int _lastScore = -1;
-        static string _lastRegion;
 
         public static bool Synced { get; private set; }
 
@@ -169,6 +171,7 @@ namespace Rescue
                 if (reply != null && reply.ok && reply.data != null)
                 {
                     _data = reply.data;
+                    NoteRegion(reply.data.region);
                     if (reply.data.serverNow > 0)
                     {
                         _offsetMs = reply.data.serverNow - (sent + back) / 2;
@@ -192,23 +195,32 @@ namespace Rescue
 
         // ─────────────────────────── 排行榜 ───────────────────────────
 
-        public static readonly string[] Regions =
-        {
-            "北京", "天津", "河北", "山西", "内蒙古", "辽宁", "吉林", "黑龙江", "上海", "江苏", "浙江", "安徽",
-            "福建", "江西", "山东", "河南", "湖北", "湖南", "广东", "广西", "海南", "重庆", "四川", "贵州",
-            "云南", "西藏", "陕西", "甘肃", "青海", "宁夏", "新疆", "台湾", "香港", "澳门", "江湖",
-        };
-
         /// <summary>座次分：大阶小阶加星，再加一点胜场（封顶三十），和以前的假榜同一口径。</summary>
         public static int MyScore => RankRules.Score(Save.D.tier, Save.D.stars) + Mathf.Min(Save.D.wins, 30);
 
-        public static string MyRegion => string.IsNullOrEmpty(Save.D.region) ? "江湖" : Save.D.region;
+        /// <summary>省份由服务器按 IP 定，玩家不能改。还没联网拿到时是空串。</summary>
+        public static bool RegionKnown => !string.IsNullOrEmpty(Save.D.region);
 
-        /// <summary>榜上的名字：好汉加四位数，从账号算出来，换机不变。</summary>
+        public static string MyRegion => RegionKnown ? Save.D.region : "江湖";
+
+        /// <summary>服务器说的省份。和存档里不一样才写，返回是否变了。</summary>
+        static bool NoteRegion(string region)
+        {
+            if (string.IsNullOrEmpty(region) || region == Save.D.region) return false;
+            Save.D.region = region;
+            Save.Write();
+            return true;
+        }
+
+        /// <summary>同意过微信头像昵称，榜上就用这个名字。记在本机，不跟存档一起被旧档盖掉。</summary>
+        public static bool HasNick => WxSession.HasProfile;
+
+        /// <summary>榜上的名字。授权前是好汉加四位数，从账号算出来，换机不变。</summary>
         public static string MyName
         {
             get
             {
+                if (HasNick) return WxSession.Nick;
                 string id = Backend.UserId;
                 if (string.IsNullOrEmpty(id)) id = SystemInfo.deviceUniqueIdentifier ?? "local";
                 uint h = 2166136261;
@@ -217,34 +229,37 @@ namespace Rescue
             }
         }
 
-        /// <summary>分数或地区变了才上报。断网就算了，下回再报。</summary>
+        /// <summary>分数变了才上报。断网就算了，下回再报。</summary>
         public static void SubmitRank(bool force = false)
         {
             if (Save.Volatile || Application.isBatchMode) return;
             int score = MyScore;
-            string region = MyRegion;
-            if (!force && score == _lastScore && region == _lastRegion) return;
-            It.StartCoroutine(It.Submit(score, region));
+            if (!force && score == _lastScore) return;
+            It.StartCoroutine(It.Submit(score));
         }
 
-        IEnumerator Submit(int score, string region)
+        IEnumerator Submit(int score)
         {
-            var body = new RankSubmit { name = MyName, region = region, score = score, tier = Save.D.tier, stars = Save.D.stars, wins = Save.D.wins };
+            var body = new RankSubmit
+            {
+                name = MyName,
+                avatar = HasNick ? WxSession.Avatar : "",
+                score = score,
+                tier = Save.D.tier,
+                stars = Save.D.stars,
+                wins = Save.D.wins,
+            };
             long status = 0;
             yield return Backend.CallText(CloudConfig.RankSubmitPath, JsonUtility.ToJson(body), (s, t, e) => status = s);
-            if (status == 200)
-            {
-                _lastScore = score;
-                _lastRegion = region;
-            }
+            if (status == 200) _lastScore = score;
         }
 
-        /// <summary>region 传「全国」拿总榜，传省名拿省榜。失败时 done(null)。</summary>
-        public static void LoadRank(string region, Action<RankList> done)
+        /// <summary>all 为真拿总榜，否则拿自己所在省的榜。失败时 done(null)。</summary>
+        public static void LoadRank(bool all, Action<RankList> done)
         {
-            if (Save.Volatile) { done(ShotSample(region)); return; }
+            if (Save.Volatile) { done(ShotSample(all ? "全国" : MyRegion)); return; }
             if (Application.isBatchMode) { done(null); return; }
-            It.StartCoroutine(It.List(region, done));
+            It.StartCoroutine(It.List(all ? "全国" : "本省", done));
         }
 
         /// <summary>验收截图不联网，用一份固定的榜单看排版。</summary>
@@ -272,7 +287,7 @@ namespace Rescue
 
         IEnumerator List(string region, Action<RankList> done)
         {
-            if (_lastScore != MyScore || _lastRegion != MyRegion) yield return Submit(MyScore, MyRegion);
+            if (_lastScore != MyScore) yield return Submit(MyScore);
             long status = 0;
             string text = null;
             yield return Backend.CallText(CloudConfig.RankListPath, JsonUtility.ToJson(new RankQuery { region = region }), (s, t, e) => { status = s; text = t; });
@@ -286,6 +301,7 @@ namespace Rescue
                 }
                 catch (Exception) { list = null; }
             }
+            if (list != null) NoteRegion(list.myRegion);
             done(list);
         }
     }

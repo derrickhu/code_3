@@ -9,6 +9,8 @@ namespace Rescue.Sim
         BossHex,
         /// <summary>头目血量过半，狂暴。</summary>
         BossRage,
+        /// <summary>好汉从兵器架领到兵器：A 是好汉实例，B 是兵器出自谁。</summary>
+        GearUp,
     }
 
     /// <summary>A 通常是棋子 / 敌人 / 好汉的 Id；P、Q 是所在半区自己的格子坐标。</summary>

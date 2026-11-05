@@ -49,12 +49,10 @@ namespace Rescue.Sim
         public bool Stove;
         /// <summary>招贤酒：聚义时好汉字更常出现。</summary>
         public bool Wine;
-        /// <summary>这一局带着兵器的好汉。</summary>
-        public List<int> Armed;
-        /// <summary>下标是好汉。值是他带着的兵器（兵器出自谁），-1 表示空手。</summary>
-        public int[] Gear;
-        /// <summary>下标是带着兵器的好汉，值是那件兵器的阶数。</summary>
-        public int[] WeaponLv;
+        /// <summary>兵器架，按顺序发：值是兵器出自谁。局里凑出好汉时自动领一件。</summary>
+        public List<int> Rack;
+        /// <summary>和 Rack 对齐，每件兵器的阶数。</summary>
+        public List<int> RackLv;
     }
 
     public sealed class Side
@@ -103,6 +101,8 @@ namespace Rescue.Sim
         int _sinceGold;
         readonly List<HeroInstance> _bunsHeroes = new List<HeroInstance>();
         readonly Dictionary<HeroId, float> _bondDmg = new Dictionary<HeroId, float>();
+        /// <summary>谁领了兵器架上的第几件。</summary>
+        readonly Dictionary<HeroId, int> _wear = new Dictionary<HeroId, int>();
         /// <summary>当前凑齐的羁绊。</summary>
         public readonly List<Bond> ActiveBonds = new List<Bond>();
         public readonly HashSet<string> BondsEver = new HashSet<string>();
@@ -551,22 +551,75 @@ namespace Rescue.Sim
         /// <summary>这名好汉身上的兵器。空手时返回 null。品级、特性、图都读这件兵器，不读人自己的成名兵器。</summary>
         public HeroDef GearOf(HeroDef wearer)
         {
-            if (wearer == null || Index != 0 || Items.Gear == null) return null;
-            int i = (int)wearer.Id;
-            if (i < 0 || i >= Items.Gear.Length) return null;
-            int w = Items.Gear[i];
-            if (w < 0 || w >= HeroDef.All.Length) return null;
-            var def = HeroDef.Get((HeroId)w);
-            return string.IsNullOrEmpty(def.Weapon) ? null : def;
+            int i = RackSlotOf(wearer);
+            return i < 0 ? null : HeroDef.Get((HeroId)Items.Rack[i]);
+        }
+
+        int RackSlotOf(HeroDef wearer)
+        {
+            if (wearer == null || Items.Rack == null || !_wear.TryGetValue(wearer.Id, out var i)) return -1;
+            return i >= 0 && i < Items.Rack.Count ? i : -1;
         }
 
         public int GearRank(HeroDef wearer)
         {
-            if (GearOf(wearer) == null || Items.WeaponLv == null) return 1;
-            int i = (int)wearer.Id;
-            if (i < 0 || i >= Items.WeaponLv.Length || Items.WeaponLv[i] <= 0) return 1;
-            int lv = Items.WeaponLv[i];
+            int i = RackSlotOf(wearer);
+            if (i < 0 || Items.RackLv == null || i >= Items.RackLv.Count || Items.RackLv[i] <= 0) return 1;
+            int lv = Items.RackLv[i];
             return lv > 5 ? 5 : lv;
+        }
+
+        /// <summary>
+        /// 兵器架按顺序发兵器：场上空手的好汉领架上第一件空着的；原主凑出来，自己那件一定归他，原来拿着的人改领下一件。
+        /// 拆掉的人把兵器放回架上，空手的人接着领。不出手的好汉只领自己那件。
+        /// </summary>
+        void AssignGear(HashSet<int> before)
+        {
+            if (Items.Rack == null || Items.Rack.Count == 0) { _wear.Clear(); return; }
+            var on = new HashSet<HeroId>();
+            foreach (var h in Heroes) on.Add(h.Def.Id);
+            var gone = new List<HeroId>();
+            foreach (var kv in _wear) if (!on.Contains(kv.Key)) gone.Add(kv.Key);
+            foreach (var id in gone) _wear.Remove(id);
+
+            var taken = new HashSet<int>(_wear.Values);
+            var waiting = new List<HeroDef>();
+            foreach (var h in Heroes)
+            {
+                var d = h.Def;
+                if (_wear.ContainsKey(d.Id)) continue;
+                int own = Items.Rack.IndexOf((int)d.Id);
+                if (own >= 0)
+                {
+                    HeroId? holder = null;
+                    foreach (var kv in _wear) if (kv.Value == own) { holder = kv.Key; break; }
+                    if (holder is HeroId other)
+                    {
+                        _wear.Remove(other);
+                        waiting.Add(HeroDef.Get(other));
+                    }
+                    _wear[d.Id] = own;
+                    taken.Add(own);
+                    if (!before.Contains(h.Id)) EmitGear(h, own);
+                    continue;
+                }
+                if (!d.NoAttack && !waiting.Contains(d)) waiting.Add(d);
+            }
+            foreach (var d in waiting)
+            {
+                int slot = -1;
+                for (int i = 0; i < Items.Rack.Count; i++) if (!taken.Contains(i)) { slot = i; break; }
+                if (slot < 0) break;
+                _wear[d.Id] = slot;
+                taken.Add(slot);
+                foreach (var h in Heroes) if (h.Def == d) { EmitGear(h, slot); break; }
+            }
+        }
+
+        void EmitGear(HeroInstance h, int slot)
+        {
+            var w = HeroDef.Get((HeroId)Items.Rack[slot]);
+            Emit(new SimEvent { Type = Ev.GearUp, A = h.Id, B = (int)w.Id, P = h.Pos, Text = h.Def.Name + "领" + w.Weapon });
         }
 
         public bool Armed(HeroDef def) => GearOf(def) != null;
@@ -584,7 +637,7 @@ namespace Rescue.Sim
         {
             var w = GearOf(wearer);
             if (w == null) return 1f;
-            return HeroDef.ArmedMul(GearRank(wearer), w.WGrade);
+            return HeroDef.ArmedMul(GearRank(wearer), w.WGrade) * (w.Id == wearer.Id ? Weapons.OwnerMul : 1f);
         }
 
         public float GearMul(HeroDef wearer) => WeaponMul(wearer);
@@ -664,6 +717,7 @@ namespace Rescue.Sim
             var before = new HashSet<int>();
             foreach (var h in Heroes) before.Add(h.Id);
             Heroes = NameMatcher.Match(Board, Pool, Mirrored, Heroes);
+            AssignGear(before);
 
             _aura = NewAura();
             _teamCd = 1f;

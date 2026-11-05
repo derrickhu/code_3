@@ -12,8 +12,7 @@ namespace Rescue
 
         public static int WinCoins(ChapterDef ch) => WinCoins(ch.Index, ch.Round);
 
-        public static int WinCoins(int chapter, int round) =>
-            round > 0 ? 40 + 5 * Mathf.Min(round, 30) : 30 + 4 * Mathf.Min(chapter, 45);
+        public static int WinCoins(int chapter, int round) => Economy.WinCoins(chapter, round);
 
         /// <summary>每日一战：当天首胜给大头，之后再赢只给一点。</summary>
         public static int DailyWinCoins => Save.DailyWonToday ? 15 : Save.DailyCoinsReward;
@@ -25,12 +24,12 @@ namespace Rescue
             int coins;
             if (r.Daily)
             {
-                coins = r.Quit ? 0 : r.Win ? (Save.DailyWonToday ? 15 : 0) : 8 + r.Wave;
+                coins = r.Quit ? 0 : r.Win ? (Save.DailyWonToday ? 15 : 0) : Economy.LoseCoins(r.Wave);
                 if (r.Win) dailyFirst = Save.WinDaily();
                 if (dailyFirst) r.SureDrop = true;
                 if (!r.Quit) Analytics.DailyBattle(r.Win, dailyFirst);
             }
-            else coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : 8 + r.Wave);
+            else coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : Economy.LoseCoins(r.Wave));
             var rank = r.Quit || r.Daily
                 ? new Save.RankDelta { OldTier = Save.D.tier, OldStars = Save.D.stars }
                 : Save.ApplyResult(r.Win);
@@ -209,7 +208,7 @@ namespace Rescue
             var affix = Ui.Label(page, affixText, move != WeaponMove.None ? 32 : 36, Pal.Ink, new Vector2(0, -590), new Vector2(940, 100));
             affix.supportRichText = true;
             affix.transform.localScale = Vector3.zero;
-            var give = Ui.Label(page, "可交给任意已入伙的好汉", 32, Pal.InkSoft, new Vector2(0, -670), new Vector2(860, 48));
+            var give = Ui.Label(page, "挂上兵器架，凑出好汉就自动领", 32, Pal.InkSoft, new Vector2(0, -670), new Vector2(860, 48));
             give.transform.localScale = Vector3.zero;
 
             Ui.CartoonBtn(page, "收入囊中", new Vector2(460, 128), new Vector2(0, -820), relic ? Ui.BtnOrange : Ui.BtnRed, () =>

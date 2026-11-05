@@ -217,7 +217,18 @@ namespace Rescue
 
         static IEnumerator PostText(string path, string json, string token, Action<long, string> done)
         {
-            using (var req = new UnityWebRequest(CloudConfig.BaseUrl + path, "POST"))
+            long status = 0;
+            string text = null;
+            yield return PostOnce(CloudConfig.BaseUrl + path, json, token, (s, t) => { status = s; text = t; });
+            // 没发出去（域名校验、握手失败）才换另一条。已经拿到 HTTP 状态就别再打第二枪。
+            if (status == 0)
+                yield return PostOnce(CloudConfig.AltUrl + path, json, token, (s, t) => { status = s; text = t; });
+            done(status, text);
+        }
+
+        static IEnumerator PostOnce(string url, string json, string token, Action<long, string> done)
+        {
+            using (var req = new UnityWebRequest(url, "POST"))
             {
                 req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json ?? "{}"));
                 req.downloadHandler = new DownloadHandlerBuffer();

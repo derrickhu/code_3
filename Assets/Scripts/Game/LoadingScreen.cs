@@ -13,9 +13,14 @@ namespace Rescue
         const string Advice =
             "抵制不良游戏，拒绝盗版游戏。\n注意自我保护，谨防受骗上当。\n适度游戏益脑，沉迷游戏伤身。\n合理安排时间，享受健康生活。";
 
+        const float BarW = 480f;
+        const float BarH = 18f;
+
         RectTransform _root;
         CanvasGroup _group;
+        RectTransform _fill;
         float _born;
+        bool _hold;
 
         public static LoadingScreen Open(Transform host)
         {
@@ -58,7 +63,57 @@ namespace Rescue
             body.lineSpacing = 1.08f;
             DockBottom(title.rectTransform, 248, 52);
             DockBottom(body.rectTransform, 52, 176);
+            BuildBar();
+            AgeBadge();
             _root.SetAsLastSibling();
+        }
+
+        /// <summary>细一条朱红，停在健康忠告上面。Mac 上这就是唯一的启动页。</summary>
+        void BuildBar()
+        {
+            var track = Ui.Box(_root, new Vector2(BarW, BarH), Vector2.zero, Pal.Hex("CDBFA8"), Art.White, "barTrack");
+            DockBottom(track.rectTransform, 348, BarH);
+            var fill = Ui.Box(track.transform, new Vector2(8, BarH), Vector2.zero, Pal.Hex("8E3A30"), Art.White, "barFill");
+            _fill = fill.rectTransform;
+            _fill.anchorMin = _fill.anchorMax = new Vector2(0f, 0.5f);
+            _fill.pivot = new Vector2(0f, 0.5f);
+            _fill.anchoredPosition = Vector2.zero;
+            _fill.sizeDelta = new Vector2(8f, BarH);
+        }
+
+        public void SetFill(float p)
+        {
+            _hold = true;
+            ApplyFill(p);
+        }
+
+        void ApplyFill(float p)
+        {
+            if (_fill == null) return;
+            _fill.sizeDelta = new Vector2(Mathf.Lerp(8f, BarW, Mathf.Clamp01(p)), BarH);
+        }
+
+        /// <summary>12+ 适龄标，和后台适龄一致。图还没导入时用一块蓝底代替。</summary>
+        void AgeBadge()
+        {
+            var badge = Ui.Rect(_root, "age");
+            badge.anchorMin = badge.anchorMax = new Vector2(0f, 1f);
+            badge.pivot = new Vector2(0f, 1f);
+            badge.sizeDelta = new Vector2(108, 108);
+            badge.anchoredPosition = new Vector2(36, -48);
+            var img = badge.gameObject.AddComponent<Image>();
+            img.raycastTarget = false;
+            img.preserveAspect = true;
+            var sprite = Resources.Load<Sprite>("Art/age12");
+            if (sprite != null)
+            {
+                img.sprite = sprite;
+                img.color = Color.white;
+                return;
+            }
+            img.sprite = Art.Rounded;
+            img.color = Pal.Hex("1F5FD6");
+            Ui.Label(badge, "12+", 52, Color.white, Vector2.zero, new Vector2(120, 80), TextAnchor.MiddleCenter, Fonts.Brush);
         }
 
         /// <summary>手写的 meta 若没导成 Sprite，退回整张贴图，避免铺成一块白圆角。</summary>
@@ -77,6 +132,13 @@ namespace Rescue
             rt.pivot = new Vector2(0.5f, 0f);
             rt.sizeDelta = new Vector2(rt.sizeDelta.x, h);
             rt.anchoredPosition = new Vector2(0f, y);
+        }
+
+        void Update()
+        {
+            if (_hold || _fill == null) return;
+            float p = Mathf.Clamp01((Time.realtimeSinceStartup - _born) / MinSeconds);
+            ApplyFill(Mathf.Lerp(0.06f, 0.9f, p));
         }
 
         public void BringToFront()

@@ -45,20 +45,20 @@ namespace Rescue
 
         public static readonly ShopItem[] All =
         {
-            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +30，抢先聚义", Rarity = "卓越", Icon = "it_gang", Price = 40, Count = () => B(Save.D.gang), Give = () => { Save.D.gang = true; Save.NotePassive(0); }, Take = () => { Save.D.gang = false; Save.NotePassive(0); } },
-            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +22%，全局生效", Rarity = "史诗", Icon = "it_flag", Price = 80, Count = () => B(Save.D.flag), Give = () => { Save.D.flag = true; Save.NotePassive(1); }, Take = () => { Save.D.flag = false; Save.NotePassive(1); } },
-            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -25%，全局生效", Rarity = "史诗", Icon = "it_marsh", Price = 70, Count = () => B(Save.D.marsh), Give = () => { Save.D.marsh = true; Save.NotePassive(2); }, Take = () => { Save.D.marsh = false; Save.NotePassive(2); } },
-            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时，天降石碣砸下", Rarity = "传说", Icon = "it_stele", Price = 120, Count = () => B(Save.D.stele), Give = () => { Save.D.stele = true; Save.NotePassive(3); }, Take = () => { Save.D.stele = false; Save.NotePassive(3); } },
-            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = 60, Count = () => Save.D.menghan, Give = () => { Save.D.menghan++; Save.NoteActive(4); }, Take = () => { Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1); Save.NoteActive(4); } },
-            new ShopItem { Id = 5, Name = "天书", Desc = "拖到哪个兵身上，哪个升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = 150, Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
-            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "五成半回一颗心，否则掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = 50, Count = () => Save.D.baozi, Give = () => { Save.D.baozi++; Save.NoteActive(6); }, Take = () => { Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1); Save.NoteActive(6); } },
-            new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江多八颗心，能硬吃第一波", Rarity = "传说", Icon = "it_xuming", Price = 150, Count = () => B(Save.D.xuming), Give = () => { Save.D.xuming = true; Save.NotePassive(7); }, Take = () => { Save.D.xuming = false; Save.NotePassive(7); } },
-            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子，多开两块地", Rarity = "稀有", Icon = "shovel", Price = 50, Count = () => Save.D.shovels, Give = () => { Save.D.shovels = 2; Save.NotePassive(8); }, Take = () => { Save.D.shovels = 0; Save.NotePassive(8); } },
-            new ShopItem { Id = 9, Name = "攻速符", Desc = "单位攻速 +40%，持续十二秒", Rarity = "史诗", Icon = "it_fu", Active = true, Price = 80, Count = () => Save.D.fu, Give = () => { Save.D.fu++; Save.NoteActive(9); }, Take = () => { Save.D.fu = Mathf.Max(0, Save.D.fu - 1); Save.NoteActive(9); } },
-            new ShopItem { Id = 10, Name = "御敌千里", Desc = "远程单位攻击范围翻倍，全局生效", Rarity = "稀有", Icon = "it_far", Price = 90, Count = () => B(Save.D.far), Give = () => { Save.D.far = true; Save.NotePassive(10); }, Take = () => { Save.D.far = false; Save.NotePassive(10); } },
-            new ShopItem { Id = 11, Name = "陷阱", Desc = "敌人掉下去一时会爬不出来", Rarity = "稀有", Icon = "it_trap", Active = true, Price = 35, Count = () => Save.D.trap, Give = () => { Save.D.trap++; Save.NoteActive(11); }, Take = () => { Save.D.trap = Mathf.Max(0, Save.D.trap - 1); Save.NoteActive(11); } },
-            new ShopItem { Id = 12, Name = "十字坡灶", Desc = "占一格，慢慢出炊饼；天书能升灶", Rarity = "卓越", Icon = "it_stove", Price = 70, Count = () => B(Save.D.stove), Give = () => { Save.D.stove = true; Save.NotePassive(12); }, Take = () => { Save.D.stove = false; Save.NotePassive(12); } },
-            new ShopItem { Id = 13, Name = "招贤酒", Desc = "聚义时更常出好汉的字", Rarity = "史诗", Icon = "it_wine", Price = 90, Count = () => B(Save.D.wine), Give = () => { Save.D.wine = true; Save.NotePassive(13); }, Take = () => { Save.D.wine = false; Save.NotePassive(13); } },
+            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +30，抢先聚义", Rarity = "卓越", Icon = "it_gang", Price = Economy.ItemPrices[0], Count = () => B(Save.D.gang), Give = () => { Save.D.gang = true; Save.NotePassive(0); }, Take = () => { Save.D.gang = false; Save.NotePassive(0); } },
+            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +22%，全局生效", Rarity = "史诗", Icon = "it_flag", Price = Economy.ItemPrices[1], Count = () => B(Save.D.flag), Give = () => { Save.D.flag = true; Save.NotePassive(1); }, Take = () => { Save.D.flag = false; Save.NotePassive(1); } },
+            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -25%，全局生效", Rarity = "史诗", Icon = "it_marsh", Price = Economy.ItemPrices[2], Count = () => B(Save.D.marsh), Give = () => { Save.D.marsh = true; Save.NotePassive(2); }, Take = () => { Save.D.marsh = false; Save.NotePassive(2); } },
+            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时，天降石碣砸下", Rarity = "传说", Icon = "it_stele", Price = Economy.ItemPrices[3], Count = () => B(Save.D.stele), Give = () => { Save.D.stele = true; Save.NotePassive(3); }, Take = () => { Save.D.stele = false; Save.NotePassive(3); } },
+            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = Economy.ItemPrices[4], Count = () => Save.D.menghan, Give = () => { Save.D.menghan++; Save.NoteActive(4); }, Take = () => { Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1); Save.NoteActive(4); } },
+            new ShopItem { Id = 5, Name = "天书", Desc = "拖到哪个兵身上，哪个升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = Economy.ItemPrices[5], Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
+            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "五成半回一颗心，否则掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = Economy.ItemPrices[6], Count = () => Save.D.baozi, Give = () => { Save.D.baozi++; Save.NoteActive(6); }, Take = () => { Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1); Save.NoteActive(6); } },
+            new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江多八颗心，能硬吃第一波", Rarity = "传说", Icon = "it_xuming", Price = Economy.ItemPrices[7], Count = () => B(Save.D.xuming), Give = () => { Save.D.xuming = true; Save.NotePassive(7); }, Take = () => { Save.D.xuming = false; Save.NotePassive(7); } },
+            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子，多开两块地", Rarity = "稀有", Icon = "shovel", Price = Economy.ItemPrices[8], Count = () => Save.D.shovels, Give = () => { Save.D.shovels = 2; Save.NotePassive(8); }, Take = () => { Save.D.shovels = 0; Save.NotePassive(8); } },
+            new ShopItem { Id = 9, Name = "攻速符", Desc = "单位攻速 +40%，持续十二秒", Rarity = "史诗", Icon = "it_fu", Active = true, Price = Economy.ItemPrices[9], Count = () => Save.D.fu, Give = () => { Save.D.fu++; Save.NoteActive(9); }, Take = () => { Save.D.fu = Mathf.Max(0, Save.D.fu - 1); Save.NoteActive(9); } },
+            new ShopItem { Id = 10, Name = "御敌千里", Desc = "远程单位攻击范围翻倍，全局生效", Rarity = "稀有", Icon = "it_far", Price = Economy.ItemPrices[10], Count = () => B(Save.D.far), Give = () => { Save.D.far = true; Save.NotePassive(10); }, Take = () => { Save.D.far = false; Save.NotePassive(10); } },
+            new ShopItem { Id = 11, Name = "陷阱", Desc = "敌人掉下去一时会爬不出来", Rarity = "稀有", Icon = "it_trap", Active = true, Price = Economy.ItemPrices[11], Count = () => Save.D.trap, Give = () => { Save.D.trap++; Save.NoteActive(11); }, Take = () => { Save.D.trap = Mathf.Max(0, Save.D.trap - 1); Save.NoteActive(11); } },
+            new ShopItem { Id = 12, Name = "十字坡灶", Desc = "占一格，慢慢出炊饼；天书能升灶", Rarity = "卓越", Icon = "it_stove", Price = Economy.ItemPrices[12], Count = () => B(Save.D.stove), Give = () => { Save.D.stove = true; Save.NotePassive(12); }, Take = () => { Save.D.stove = false; Save.NotePassive(12); } },
+            new ShopItem { Id = 13, Name = "招贤酒", Desc = "聚义时更常出好汉的字", Rarity = "史诗", Icon = "it_wine", Price = Economy.ItemPrices[13], Count = () => B(Save.D.wine), Give = () => { Save.D.wine = true; Save.NotePassive(13); }, Take = () => { Save.D.wine = false; Save.NotePassive(13); } },
         };
     }
 
@@ -74,6 +74,12 @@ namespace Rescue
         RectTransform _shop;
         Text _shopCoins, _shopStamina;
         Action<int> _onFight;
+        Image _hudFace, _profileBar;
+        Text _profileHint;
+        RectTransform _avatarHit, _authHit;
+        bool _homeArmed, _boardOwns;
+        float _armAt;
+        Action _reloadBoard;
 
         public static HomeScreen Open(Transform host, Action<int> onFight)
         {
@@ -87,6 +93,9 @@ namespace Rescue
 
         void OnDestroy()
         {
+            _reloadBoard = null;
+            _authHit = null;
+            WxSession.HideProfileButton();
             if (_root) Destroy(_root.gameObject);
         }
 
@@ -126,12 +135,12 @@ namespace Rescue
             SideSign(tl, "ui_notice", "回目", new Vector2(80, -602), ShowChapters);
             _dailyDot = SideSign(tl, "ui_notice", "每日\n一战", new Vector2(80, -728), ShowDailyBattle);
             if (!Save.DailyOpen) _dailyDot.transform.parent.GetComponent<Image>().color = new Color(0.62f, 0.6f, 0.58f);
-            BuildGm(tl);
 
             var tr = Corner(1f, 1f, "topRight");
             var shopFace = Ui.Icon(tr, "merchant_bust", 150, new Vector2(-92, -238));
             Ui.Tap(shopFace, ShowShop);
             Ui.Stroke(Ui.Label(tr, "神秘商人", 34, Pal.Paper, new Vector2(-92, -328), new Vector2(200, 50), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2.5f);
+            BuildGm(tr);
 
             var top = Corner(0.5f, 1f, "title");
             var title = Ui.Label(top, "营救宋江", 168, Pal.Hex("C0392B"), new Vector2(0, -296), new Vector2(900, 190), TextAnchor.MiddleCenter, Fonts.Brush);
@@ -191,8 +200,24 @@ namespace Rescue
         {
             if (avatar)
             {
-                var face = Ui.Icon(tl, "ui_avatar", 124, new Vector2(80, HudY));
-                Ui.Tap(face, () => Toast($"{Save.RankName} · 胜 {Save.D.wins} / 战 {Save.D.battles}"));
+                var face = CirclePortrait(tl, WxSession.Avatar, new Vector2(80, HudY), 118f, out var hit);
+                if (tl.name == "topLeft")
+                {
+                    _hudFace = face;
+                    _avatarHit = hit;
+                    var mask = hit.Find("avatarMask");
+                    _profileBar = Ui.Box(mask, new Vector2(118, 36), new Vector2(0, -40), new Color(0.12f, 0.07f, 0.04f, 0.82f), null, "nameBar");
+                    var hint = Ui.Label(mask, "点我授权", 22, Pal.Hex("FFE7A8"), new Vector2(0, -40), new Vector2(110, 32));
+                    hint.resizeTextForBestFit = true;
+                    hint.resizeTextMinSize = 14;
+                    hint.resizeTextMaxSize = 22;
+                    hint.horizontalOverflow = HorizontalWrapMode.Overflow;
+                    hint.verticalOverflow = VerticalWrapMode.Truncate;
+                    Ui.Stroke(hint, Edge, 1.5f);
+                    _profileHint = hint;
+                    Ui.Tap(face, OnHomeAvatar);
+                }
+                else Ui.Tap(face, () => Toast(ProfileLine()));
             }
             float x = avatar ? 186 : 40;
             HudPill(tl, x, 250, "coinBar");
@@ -321,20 +346,20 @@ namespace Rescue
             holder.anchoredPosition = new Vector2(0, 480);
             holder.sizeDelta = new Vector2(600, 170);
             Ui.Box(holder, new Vector2(620, 172), new Vector2(0, -10), Pal.Shadow.A(0.6f), null, "shadow");
-            Ui.Box(holder, new Vector2(620, 172), Vector2.zero, Edge, null, "edge");
-            var face = Ui.Box(holder, new Vector2(600, 152), Vector2.zero, Pal.Hex("B8342A"), null, "face");
-            Ui.Box(holder, new Vector2(560, 116), Vector2.zero, Pal.Hex("D2493A"), null, "inner");
-            Ui.Box(holder, new Vector2(540, 20), new Vector2(0, 42), Color.white.A(0.16f), null, "gloss");
-            var label = Ui.Label(holder, "开始游戏", 64, Pal.Paper, new Vector2(-30, 0), new Vector2(400, 120), TextAnchor.MiddleCenter, Fonts.Brush);
+            var body = Ui.Rect(holder, "body");
+            body.sizeDelta = holder.sizeDelta;
+            Ui.Box(body, new Vector2(620, 172), Vector2.zero, Edge, null, "edge");
+            Ui.Box(body, new Vector2(600, 152), Vector2.zero, Pal.Hex("B8342A"), null, "face");
+            Ui.Box(body, new Vector2(560, 116), Vector2.zero, Pal.Hex("D2493A"), null, "inner");
+            Ui.Box(body, new Vector2(540, 20), new Vector2(0, 42), Color.white.A(0.16f), null, "gloss");
+            var label = Ui.Label(body, "开始游戏", 64, Pal.Paper, new Vector2(-30, 0), new Vector2(400, 120), TextAnchor.MiddleCenter, Fonts.Brush);
             Ui.Stroke(label, Pal.Hex("6B1A12"), 3f);
-            Ui.Icon(holder, "ui_bolt", 64, new Vector2(190, 0));
-            Ui.Label(holder, "-" + Stamina.Cost, 28, Pal.Hex("FFE7A8"), new Vector2(226, -30), new Vector2(60, 40));
-            var swords = Ui.Icon(holder, "ui_swords", 120, new Vector2(0, 112));
+            Ui.Icon(body, "ui_bolt", 64, new Vector2(190, 0));
+            Ui.Label(body, "-" + Stamina.Cost, 28, Pal.Hex("FFE7A8"), new Vector2(226, -30), new Vector2(60, 40));
+            var swords = Ui.Icon(body, "ui_swords", 120, new Vector2(0, 112));
             Bob(swords.transform, 0.3f);
-            face.raycastTarget = true;
-            var b = face.gameObject.AddComponent<Button>();
-            b.transition = Selectable.Transition.None;
-            b.onClick.AddListener(() => { Sfx.Play(Snd.Tap); Tween.Punch(holder, 0.12f); Fight(); });
+            var hit = Ui.Box(holder, new Vector2(600, 170), Vector2.zero, new Color(0, 0, 0, 0), null, "hit");
+            Ui.Tap(hit, () => Fight(), body, 10f);
             Breathe(holder);
         }
 
@@ -349,6 +374,81 @@ namespace Rescue
         {
             Tween.Run(t, 1.4f, k => { if (t) t.localScale = Vector3.one * (1f + Mathf.Sin(k * Mathf.PI * 2) * 0.03f); }, () => { if (t) Breathe(t); });
         }
+
+        void OnHomeAvatar()
+        {
+            if (WxSession.CanAskProfile && !LiveConfig.HasNick)
+            {
+                _homeArmed = false;
+                WxSession.AllowPrivacyRetry();
+                if (WxSession.PrivacyAgreed) ArmHome();
+                else WxSession.ShowPrivacy(ok => { if (ok) ArmHome(); }, true);
+                return;
+            }
+            Toast(ProfileLine());
+        }
+
+        void ArmHome()
+        {
+            if (_homeArmed || _boardOwns || !_avatarHit) return;
+            if (!WxSession.CanAskProfile || !WxSession.PrivacyAgreed || LiveConfig.HasNick) return;
+            if (WxSession.PrivacyShowing || AvatarBlocked()) return;
+            _homeArmed = true;
+            _armAt = Time.unscaledTime;
+            WxSession.Cover(this, _avatarHit, OnProfile);
+        }
+
+        void SyncProfileButton()
+        {
+            if (_boardOwns) return;
+            if (!WxSession.CanAskProfile || LiveConfig.HasNick)
+            {
+                if (_homeArmed)
+                {
+                    _homeArmed = false;
+                    WxSession.HideProfileButton();
+                }
+                return;
+            }
+            if (WxSession.PrivacyShowing || AvatarBlocked())
+            {
+                if (_homeArmed)
+                {
+                    _homeArmed = false;
+                    WxSession.HideProfileButton();
+                }
+                return;
+            }
+            if (_homeArmed)
+            {
+                if (!WxSession.ProfileButtonVisible && Time.unscaledTime - _armAt > 2f) _homeArmed = false;
+                else return;
+            }
+            ArmHome();
+        }
+
+        bool AvatarBlocked()
+        {
+            if (!_root) return false;
+            for (int i = 0; i < _root.childCount; i++)
+            {
+                var child = _root.GetChild(i);
+                if (!child.gameObject.activeInHierarchy) continue;
+                switch (child.name)
+                {
+                    case "panel":
+                    case "confirm":
+                    case "shop":
+                    case "daily":
+                    case "armory":
+                    case "forge":
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        static string ProfileLine() => $"{LiveConfig.MyName} · {Save.RankName} · 胜 {Save.D.wins} / 战 {Save.D.battles}";
 
         void ToggleSound()
         {
@@ -374,7 +474,7 @@ namespace Rescue
                 "· 好汉谱收齐一百单八将，忠义堂排座次；之后聚义厅自选五将车轮战\n" +
                 "· 座次：喽啰→小校→都头→提辖→步/水/马军头领→八骠骑→五虎将→地煞→天罡→天魁星，每阶分叁贰壹\n" +
                 "· 胜加星，满五星升一小阶；败掉星，没星再败降一小阶，不跌出大阶\n" +
-                "· 兵器分凡、利、宝、神四品，可交给任意已入伙的好汉，特性跟着兵器走；六把名兵器各有一招；有渊源的好汉同场触发羁绊\n" +
+                "· 兵器分凡、利、宝、神四品，挂上兵器架，凑出好汉按顺序领；兵器铺每天能升阶；六把名兵器各有一招；有渊源的好汉同场触发羁绊\n" +
                 "· 一场最多带两个主动、四个被动道具，在商店背包里点选\n" +
                 "· 打过第五回开放每日一战：人人同一阵，当天首胜得铜钱和兵器",
                 36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 900), TextAnchor.MiddleLeft);
@@ -401,11 +501,13 @@ namespace Rescue
         }
 
         float _refreshT;
+        string _avatarSeen;
 
         void Update()
         {
             _refreshT -= Time.unscaledDeltaTime;
             if (_refreshT <= 0) { _refreshT = 1f; Refresh(); }
+            SyncProfileButton();
         }
 
         void Refresh()
@@ -419,9 +521,28 @@ namespace Rescue
             var next = Save.D.PeekLoadout();
             string carried = BattleScreen.ItemSummary(next);
             string worn = BattleScreen.GearSummary(next);
+            if (worn.Length > 0) worn = "兵器架（" + worn + "）";
             string line = carried;
             if (worn.Length > 0) line = carried.Length > 0 ? worn + "　" + carried : worn;
             _loadout.text = line.Length > 0 ? "下一战随身：" + line : "";
+            WxSession.EnsureAvatar();
+            string avatar = WxSession.Avatar;
+            if (_hudFace) Portraits.Set(_hudFace, avatar, true);
+            if (_avatarSeen != null && avatar != _avatarSeen && avatar.Length > 0)
+                _reloadBoard?.Invoke();
+            _avatarSeen = avatar;
+            bool showName = LiveConfig.HasNick || (WxSession.CanAskProfile && !LiveConfig.HasNick);
+            if (_profileHint)
+            {
+                _profileHint.gameObject.SetActive(showName);
+                if (LiveConfig.HasNick)
+                {
+                    _profileHint.text = WxSession.Nick;
+                    WxSession.ApplyNickFont(_profileHint);
+                }
+                else _profileHint.text = "点我授权";
+            }
+            if (_profileBar) _profileBar.gameObject.SetActive(showName);
             _rankName.text = Save.RankName;
             _stars.text = StarRich(Save.D.stars);
             if (_badgeTier != Save.D.tier)

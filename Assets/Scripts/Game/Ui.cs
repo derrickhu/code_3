@@ -381,17 +381,9 @@ namespace Rescue
             holder.anchoredPosition = pos;
             Box(holder, size, new Vector2(0, -8), Pal.Shadow, Art.Rounded, "shadow");
             var img = Box(holder, size, Vector2.zero, bg, Art.Rounded, "face");
-            img.raycastTarget = true;
-            var b = img.gameObject.AddComponent<Button>();
-            b.transition = Selectable.Transition.None;
             Label(img.transform, text, fontSize, fg ?? Color.white, Vector2.zero, size, TextAnchor.MiddleCenter, font, "text");
-            b.onClick.AddListener(() =>
-            {
-                Sfx.Play(Snd.Tap);
-                Tween.Punch(holder, 0.12f);
-                onClick?.Invoke();
-            });
-            return b;
+            Tap(img, onClick, img.rectTransform, 7f);
+            return img.GetComponent<Button>();
         }
 
         public static void SetText(Button b, string s) => b.transform.Find("text").GetComponent<Text>().text = s;
@@ -425,17 +417,18 @@ namespace Rescue
             return i;
         }
 
-        /// <summary>给任意一块加点击，带按压回弹。</summary>
-        public static void Tap(Graphic g, Action onClick)
+        /// <summary>给任意一块加点击。按下就下沉变暗，松手弹回。move 是跟着动的那一层，热区自己不动，手指才不会因为按钮挪走而丢失。</summary>
+        public static void Tap(Graphic g, Action onClick, Transform move = null, float sink = 0f)
         {
             g.raycastTarget = true;
-            var b = g.gameObject.AddComponent<Button>();
+            var b = g.gameObject.GetComponent<Button>() ?? g.gameObject.AddComponent<Button>();
             b.transition = Selectable.Transition.None;
-            var t = g.transform.parent != null && g.transform.parent.name.StartsWith("framed") ? g.transform.parent : g.transform;
+            var t = move != null ? move : g.transform;
+            var fx = g.gameObject.GetComponent<PressFx>() ?? g.gameObject.AddComponent<PressFx>();
+            fx.Setup(t, sink);
             b.onClick.AddListener(() =>
             {
                 Sfx.Play(Snd.Tap);
-                Tween.Punch(t, 0.12f);
                 onClick?.Invoke();
             });
         }
@@ -461,12 +454,14 @@ namespace Rescue
             holder.sizeDelta = size;
             holder.anchoredPosition = pos;
             Box(holder, size + new Vector2(12, 12), new Vector2(0, -10), Pal.Shadow.A(0.5f), null, "shadow");
-            Box(holder, size + new Vector2(12, 12), Vector2.zero, Edge, null, "edge");
-            var f = Box(holder, size, Vector2.zero, face, null, "face");
-            Box(holder, new Vector2(size.x - 16, size.y * 0.42f), new Vector2(0, -size.y * 0.25f + 4), Color.Lerp(face, Color.black, 0.12f), null, "under");
-            Box(holder, new Vector2(size.x - 36, Mathf.Max(10, size.y * 0.13f)), new Vector2(0, size.y * 0.32f), Color.white.A(0.3f), null, "gloss");
+            var body = Rect(holder, "body");
+            body.sizeDelta = size;
+            Box(body, size + new Vector2(12, 12), Vector2.zero, Edge, null, "edge");
+            Box(body, size, Vector2.zero, face, null, "face");
+            Box(body, new Vector2(size.x - 16, size.y * 0.42f), new Vector2(0, -size.y * 0.25f + 4), Color.Lerp(face, Color.black, 0.12f), null, "under");
+            Box(body, new Vector2(size.x - 36, Mathf.Max(10, size.y * 0.13f)), new Vector2(0, size.y * 0.32f), Color.white.A(0.3f), null, "gloss");
             float iconW = icon != null ? size.y * 0.62f : 0f;
-            var label = Label(holder, text, fontSize, fg ?? Pal.Paper, new Vector2(iconW * 0.55f, 2), new Vector2(size.x - iconW - 20, size.y),
+            var label = Label(body, text, fontSize, fg ?? Pal.Paper, new Vector2(iconW * 0.55f, 2), new Vector2(size.x - iconW - 20, size.y),
                 TextAnchor.MiddleCenter, font ?? Fonts.Brush, "text");
             var ink = fg ?? Pal.Paper;
             if (ink.grayscale < 0.45f) Stroke(label, Color.Lerp(face, Color.white, 0.55f).A(0.9f), 1.5f);
@@ -474,18 +469,19 @@ namespace Rescue
             if (icon != null)
             {
                 float textW = Mathf.Min(size.x - iconW - 20, label.preferredWidth);
-                Icon(holder, icon, iconW, new Vector2(iconW * 0.55f - textW * 0.5f - iconW * 0.62f, 2), "btnIcon");
+                Icon(body, icon, iconW, new Vector2(iconW * 0.55f - textW * 0.5f - iconW * 0.62f, 2), "btnIcon");
             }
-            Tap(f, onClick);
+            var hit = Box(holder, size, Vector2.zero, new Color(0, 0, 0, 0), null, "hit");
+            Tap(hit, onClick, body, Mathf.Clamp(size.y * 0.07f, 6f, 11f));
             return holder;
         }
 
-        public static void SetBtnText(RectTransform btn, string s) => btn.Find("text").GetComponent<Text>().text = s;
+        public static void SetBtnText(RectTransform btn, string s) => btn.Find("body/text").GetComponent<Text>().text = s;
 
         public static void SetBtnFace(RectTransform btn, Color c)
         {
-            btn.Find("face").GetComponent<Image>().color = c;
-            btn.Find("under").GetComponent<Image>().color = Color.Lerp(c, Color.black, 0.12f);
+            btn.Find("body/face").GetComponent<Image>().color = c;
+            btn.Find("body/under").GetComponent<Image>().color = Color.Lerp(c, Color.black, 0.12f);
         }
 
         /// <summary>竖向内容高 needH，屏幕矮（平板、横向留白多的机型）放不下时整体等比缩小。返回缩放层。</summary>
@@ -751,5 +747,152 @@ namespace Rescue
             g.alpha = from;
             Run(g, dur, k => g.alpha = Mathf.Lerp(from, to, k), done, delay);
         }
+    }
+
+    /// <summary>按下时盖子下沉、颜色变暗，松手弹回。全屏遮罩不缩，免得一点就把整页按扁。</summary>
+    public sealed class PressFx : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler, IPointerEnterHandler
+    {
+        struct Tint { public Graphic G; public Color C; }
+
+        Transform _t;
+        RectTransform _rt;
+        float _sink;
+        Vector3 _scale;
+        Vector2 _pos;
+        readonly List<Tint> _tints = new List<Tint>();
+        bool _have, _down, _over, _sunk;
+        int _gen;
+
+        public void Setup(Transform target, float sink)
+        {
+            _t = target;
+            _rt = target as RectTransform;
+            _sink = sink;
+        }
+
+        bool TooBig => _rt != null && _rt.rect.width > 800f && _rt.rect.height > 800f;
+
+        public void OnPointerDown(PointerEventData e)
+        {
+            _down = _over = true;
+            _gen++;
+            if (TooBig || _t == null) return;
+            if (!_sunk)
+            {
+                _have = true;
+                _scale = _t.localScale;
+                if (_rt != null) _pos = _rt.anchoredPosition;
+                _tints.Clear();
+                foreach (var g in _t.GetComponentsInChildren<Graphic>(false))
+                {
+                    if (g.color.a < 0.2f) continue;
+                    var n = g.gameObject.name;
+                    if (n == "glow" || n == "hit" || n == "lip" || n == "shadow") continue;
+                    _tints.Add(new Tint { G = g, C = g.color });
+                }
+            }
+            Apply(true);
+        }
+
+        public void OnPointerEnter(PointerEventData e)
+        {
+            _over = true;
+            if (_down) Apply(true);
+        }
+
+        public void OnPointerExit(PointerEventData e)
+        {
+            _over = false;
+            if (_sunk) Release(false);
+        }
+
+        public void OnPointerUp(PointerEventData e)
+        {
+            bool back = _down && _over;
+            _down = false;
+            if (_sunk) Release(back);
+        }
+
+        void LateUpdate()
+        {
+            if (!_down) return;
+            if (Input.GetMouseButton(0) || Input.touchCount > 0) return;
+            _down = false;
+            if (_sunk) Release(false);
+        }
+
+        void OnDisable()
+        {
+            _down = false;
+            if (_sunk && _t != null) Restore();
+            _sunk = false;
+        }
+
+        void Apply(bool sunk)
+        {
+            if (_t == null || TooBig || !_have) return;
+            _sunk = sunk;
+            float k = sunk ? (_sink > 0f ? 0.985f : 0.92f) : 1f;
+            _t.localScale = new Vector3(_scale.x * k, _scale.y * k, _scale.z);
+            if (_rt != null && _sink > 0f)
+                _rt.anchoredPosition = _pos + (sunk ? new Vector2(0f, -_sink) : Vector2.zero);
+            foreach (var tn in _tints)
+                if (tn.G) tn.G.color = sunk ? tn.C * 0.82f : tn.C;
+        }
+
+        void Release(bool spring)
+        {
+            _sunk = false;
+            RestoreColors();
+            if (_t == null || !spring)
+            {
+                RestoreTransform();
+                return;
+            }
+            int gen = _gen;
+            var fromS = _t.localScale;
+            var fromP = _rt != null ? _rt.anchoredPosition : Vector2.zero;
+            Tween.Run(_t, 0.14f, k =>
+            {
+                if (gen != _gen || _t == null) return;
+                float e = Tween.OutBack(Mathf.Clamp01(k));
+                _t.localScale = Vector3.LerpUnclamped(fromS, _scale, e);
+                if (_rt != null) _rt.anchoredPosition = Vector2.LerpUnclamped(fromP, _pos, e);
+            }, () =>
+            {
+                if (gen != _gen || _t == null) return;
+                RestoreTransform();
+            });
+        }
+
+        void Restore()
+        {
+            RestoreTransform();
+            RestoreColors();
+            _sunk = false;
+        }
+
+        void RestoreTransform()
+        {
+            if (_t == null || !_have) return;
+            _t.localScale = _scale;
+            if (_rt != null) _rt.anchoredPosition = _pos;
+        }
+
+        /// <summary>只把还停在按下色上的图恢复。点击回调如果已经换了面色，就别盖回去。</summary>
+        void RestoreColors()
+        {
+            foreach (var tn in _tints)
+            {
+                if (!tn.G) continue;
+                var pressed = tn.C * 0.82f;
+                if (Near(tn.G.color, pressed) || Near(tn.G.color, tn.C)) tn.G.color = tn.C;
+            }
+            _tints.Clear();
+        }
+
+        static bool Near(Color a, Color b) =>
+            Mathf.Abs(a.r - b.r) < 0.02f && Mathf.Abs(a.g - b.g) < 0.02f
+            && Mathf.Abs(a.b - b.b) < 0.02f && Mathf.Abs(a.a - b.a) < 0.02f;
     }
 }

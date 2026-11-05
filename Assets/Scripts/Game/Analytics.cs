@@ -112,10 +112,10 @@ namespace Rescue
             Track("daily_battle", Param.Of("win", win).Bool("first_win", first));
         }
 
-        public static void AdRequest(string scene) => Ad("ad_request", scene, null);
-        public static void AdShow(string scene) => Ad("ad_show", scene, null);
+        public static void AdRequest(string scene, string unit = null) => Ad("ad_request", scene, null, unit);
+        public static void AdShow(string scene, string unit = null) => Ad("ad_show", scene, null, unit);
 
-        public static void AdClose(string scene, bool ended) => Ad("ad_close", scene, ended);
+        public static void AdClose(string scene, bool ended, string unit = null) => Ad("ad_close", scene, ended, unit);
 
         public static string Scene(string reason)
         {
@@ -131,10 +131,10 @@ namespace Rescue
             return "unknown";
         }
 
-        static void Ad(string name, string scene, bool? ended)
+        static void Ad(string name, string scene, bool? ended, string unit)
         {
             if (!_sessionStarted) return;
-            Param p = Param.Of("ad_unit_id", "reward")
+            Param p = Param.Of("ad_unit_id", string.IsNullOrEmpty(unit) ? "reward" : unit)
                 .Str("ad_type", "reward")
                 .Str("scene", string.IsNullOrEmpty(scene) ? "unknown" : scene);
             if (_levelOpen) p.Num("level_id", _levelId);

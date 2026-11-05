@@ -478,10 +478,75 @@ namespace Rescue.Tests
         }
 
         /// <summary>代打玩家打一局。ads 为真时：白地剩两格就看铲子广告，官兵压到家门口就看公孙胜作法。</summary>
-        static bool PlayerWins(int chapter, float skill, bool ads, uint seed)
+        static bool PlayerWins(int chapter, float skill, bool ads, uint seed) =>
+            PlayerWins(ChapterDef.All[chapter], skill, ads, seed, LadderRack(ChapterDef.All[chapter]));
+
+        /// <summary>按难度阶梯配的兵器架：正常进度的玩家手里大概有这些。挑本回不出场的人的兵器，不吃原主加成。</summary>
+        static Loadout LadderRack(ChapterDef ch) => Generic(ch, WeaponLadder.Expected(ch));
+
+        static Loadout Rack(ChapterDef ch, int slots, int grade, int tier)
         {
-            var ch = ChapterDef.All[chapter];
-            var m = new Match(ch, seed);
+            var list = new List<WeaponLadder.Slot>();
+            for (int i = 0; i < slots; i++) list.Add(new WeaponLadder.Slot { Grade = grade, Tier = tier });
+            return Generic(ch, list);
+        }
+
+        static Loadout Generic(ChapterDef ch, IList<WeaponLadder.Slot> slots)
+        {
+            var l = new Loadout { Rack = new List<int>(), RackLv = new List<int>() };
+            foreach (var s in slots)
+                foreach (var d in HeroDef.All)
+                {
+                    if (string.IsNullOrEmpty(d.Weapon) || d.Hidden || d.NoAttack || d.WGrade != s.Grade || System.Array.IndexOf(ch.Pool, d.Id) >= 0) continue;
+                    if (Weapons.MoveOf(d) != WeaponMove.None || l.Rack.Contains((int)d.Id)) continue;
+                    l.Rack.Add((int)d.Id);
+                    l.RackLv.Add(s.Tier);
+                    break;
+                }
+            Assert.AreEqual(slots.Count, l.Rack.Count, "同品级的兵器不够配");
+            return l;
+        }
+
+        /// <summary>
+        /// 强行在棋盘上拼出一位还没凑出的好汉（能出手的），摆不下就先开地。
+        /// 代打 AI 很少凑名字，兵器平衡要靠这个把好汉逼出来才量得到。
+        /// </summary>
+        static bool ForceHero(Side s)
+        {
+            NameMatcher.ReadDirs(s.Mirrored, out var dh, out _);
+            foreach (var d in s.Pool)
+            {
+                if (d.NoAttack || d.Hidden || s.FormedEver.Contains(d.Id)) continue;
+                int len = d.Name.Length;
+                for (int r = 0; r < Board.Rows; r++)
+                    for (int c = 0; c < Board.Cols; c++)
+                    {
+                        bool fits = true;
+                        for (int i = 0; i < len && fits; i++)
+                        {
+                            int cc = c + dh.c * i, rr = r + dh.r * i;
+                            fits = Board.InBounds(cc, rr) && s.Board.Pieces[cc, rr] == null && !s.Board.Blocked(cc, rr) &&
+                                   (s.Board.Open(cc, rr) || s.Board.Diggable(cc, rr));
+                        }
+                        if (!fits) continue;
+                        for (int i = 0; i < len; i++)
+                        {
+                            int cc = c + dh.c * i, rr = r + dh.r * i;
+                            if (s.Board.Diggable(cc, rr)) s.Board.Cells[cc, rr] = Cell.Tile;
+                            s.Board.Pieces[cc, rr] = Piece.Hero(d.Name[i]);
+                        }
+                        s.RecomputeHeroes();
+                        return true;
+                    }
+            }
+            return false;
+        }
+
+        static bool PlayerWins(ChapterDef ch, float skill, bool ads, uint seed, Loadout items, bool bareRival = false, int forceHeroes = 0)
+        {
+            var m = new Match(ch, seed, items);
+            if (bareRival) { m.Rival.Items.Rack?.Clear(); m.Rival.Items.RackLv?.Clear(); }
+            int forced = 0;
             var player = new RivalAI(m.Player, skill, seed * 3);
             var rival = new RivalAI(m.Rival, ch.RivalSkill, seed * 5);
             bool shovelAd = false;
@@ -490,6 +555,12 @@ namespace Rescue.Tests
             {
                 player.Tick(dt);
                 rival.Tick(dt);
+                if (forced < forceHeroes && m.Time >= 40f * (forced + 1))
+                {
+                    forced++;
+                    ForceHero(m.Player);
+                    ForceHero(m.Rival);
+                }
                 var p = m.Player;
                 if (ads)
                 {
@@ -802,7 +873,8 @@ namespace Rescue.Tests
         public void ArmedWeaponScalesAndNeverWeakerThanBare()
         {
             Assert.AreEqual(1f, HeroDef.ArmedMul(0), 0.001f);
-            Assert.Greater(HeroDef.ArmedMul(1), 1.35f);
+            Assert.Greater(HeroDef.ArmedMul(1), 1.25f);
+            Assert.LessOrEqual(HeroDef.ArmedMul(5, 3), 1.9f, "神兵五阶封顶，别让兵器一家独大");
             Assert.Greater(HeroDef.ArmedMul(5), HeroDef.ArmedMul(4));
             Assert.AreEqual(HeroDef.ArmedMul(5), HeroDef.ArmedMul(9), 0.001f);
             for (int g = 1; g < Weapons.Grades.Length; g++)
@@ -817,32 +889,177 @@ namespace Rescue.Tests
             }
         }
 
-        [Test]
-        public void BorrowedWeaponUsesTheWeaponsGradeNotTheWearer()
+        static void Spell(Side s, HeroId id, int row)
         {
-            var m = NewMatch();
+            var name = HeroDef.Get(id).Name;
+            for (int i = 0; i < name.Length; i++) s.Board.Pieces[1 + i, row] = Piece.Hero(name[i]);
+        }
+
+        static void Unspell(Side s, int row)
+        {
+            for (int c = 0; c < Board.Cols; c++) s.Board.Pieces[c, row] = null;
+        }
+
+        [Test]
+        public void RackHandsWeaponsOutInOrderAndOwnerTakesHisBack()
+        {
+            var m = PoolMatch(HeroId.HuaRong, HeroId.WuSong, HeroId.LinChong);
             var s = m.Player;
-            int n = HeroDef.All.Length;
-            s.Items.Gear = new int[n];
-            s.Items.WeaponLv = new int[n];
-            for (int i = 0; i < n; i++) s.Items.Gear[i] = -1;
-            var wearer = HeroDef.Get(HeroId.HuaRong);
+            Clear(s);
+            OpenAll(s);
             var blade = HeroDef.Get(HeroId.WuSong);
-            s.Items.Gear[(int)wearer.Id] = (int)blade.Id;
-            s.Items.WeaponLv[(int)wearer.Id] = 2;
-
-            Assert.AreEqual(blade, s.GearOf(wearer));
-            Assert.IsTrue(s.Armed(wearer));
-            Assert.IsFalse(s.Armed(blade));
-            Assert.AreEqual(HeroDef.ArmedMul(2, blade.WGrade), s.GearMul(wearer), 0.001f);
-            Assert.AreEqual(1.1f, Weapons.Affix(blade, wearer).Dmg, 0.001f);
-            Assert.AreEqual(1f, s.GearMul(blade), 0.001f);
-
-            var song = HeroDef.Get(HeroId.WuSong);
             var spear = HeroDef.Get(HeroId.LinChong);
-            s.Items.Gear[(int)song.Id] = (int)spear.Id;
-            s.Items.WeaponLv[(int)song.Id] = 1;
-            Assert.AreEqual(song.RangeWith(s.Items.Far) + 0.3f, s.ShownRange(song), 0.001f);
+            s.Items.Rack = new List<int> { (int)blade.Id, (int)spear.Id };
+            s.Items.RackLv = new List<int> { 2, 1 };
+            var hua = HeroDef.Get(HeroId.HuaRong);
+            var song = HeroDef.Get(HeroId.WuSong);
+
+            Spell(s, HeroId.HuaRong, 1);
+            s.RecomputeHeroes();
+            Assert.AreEqual(blade, s.GearOf(hua), "先凑出来的领架上第一件");
+            Assert.AreEqual(2, s.GearRank(hua));
+            Assert.AreEqual(HeroDef.ArmedMul(2, blade.WGrade), s.GearMul(hua), 0.001f, "别人的兵器不吃原主加成");
+            Assert.AreEqual(1.1f, Weapons.Affix(blade, hua).Dmg, 0.001f);
+            bool told = false;
+            foreach (var ev in m.Events) if (ev.Type == Ev.GearUp && ev.Text == "花荣领" + blade.Weapon) told = true;
+            Assert.IsTrue(told, "领兵器要飘字");
+            m.Events.Clear();
+
+            Spell(s, HeroId.WuSong, 3);
+            s.RecomputeHeroes();
+            Assert.AreEqual(blade, s.GearOf(song), "原主凑出来，自己的兵器一定归他");
+            Assert.AreEqual(spear, s.GearOf(hua), "被要走的人改领下一件");
+            Assert.AreEqual(HeroDef.ArmedMul(2, blade.WGrade) * Weapons.OwnerMul, s.GearMul(song), 0.001f);
+            Unspell(s, 3);
+            s.RecomputeHeroes();
+            Assert.IsNull(s.GearOf(song));
+            Assert.AreEqual(spear, s.GearOf(hua), "拿着的人不换手");
+
+            Unspell(s, 1);
+            s.RecomputeHeroes();
+            Spell(s, HeroId.LinChong, 1);
+            s.RecomputeHeroes();
+            Assert.AreEqual(spear, s.GearOf(HeroDef.Get(HeroId.LinChong)), "拆掉的人把兵器放回架上");
+            Assert.AreEqual(spear.RangeWith(s.Items.Far) + Weapons.Affix(spear, spear).Range, s.ShownRange(spear), 0.001f, "射程照兵器特性算");
+        }
+
+        [Test]
+        public void RackLeftoverGoesToBareHeroAndFullRackLeavesOthersBare()
+        {
+            var m = PoolMatch(HeroId.HuaRong, HeroId.WuSong, HeroId.LinChong);
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            s.Items.Rack = new List<int> { (int)HeroId.LiKui };
+            s.Items.RackLv = new List<int> { 1 };
+            Spell(s, HeroId.HuaRong, 1);
+            Spell(s, HeroId.WuSong, 3);
+            s.RecomputeHeroes();
+            int armed = 0;
+            foreach (var h in s.Heroes) if (s.GearOf(h.Def) != null) armed++;
+            Assert.AreEqual(1, armed, "一件兵器只给一个人");
+            var holder = s.GearOf(HeroDef.Get(HeroId.HuaRong)) != null ? 1 : 3;
+            var other = holder == 1 ? HeroId.WuSong : HeroId.HuaRong;
+            Unspell(s, holder);
+            s.RecomputeHeroes();
+            Assert.IsNotNull(s.GearOf(HeroDef.Get(other)), "空手的人接过放回架上的兵器");
+        }
+
+        static string RackText(IList<WeaponLadder.Slot> rack)
+        {
+            if (rack.Count == 0) return "空";
+            var parts = new List<string>();
+            foreach (var x in rack) parts.Add(Weapons.Grades[x.Grade].Substring(0, 1) + x.Tier);
+            return string.Join(" ", parts);
+        }
+
+        [Test]
+        public void RivalFollowsHalfwayBetweenTheLadderAndThePlayer()
+        {
+            var lines = new System.Text.StringBuilder("[难度阶梯] 回目 | 正常玩家兵器架(品级+阶) | 阶梯分量 | 对手(正常/空手/满配)\n");
+            float maxed = WeaponLadder.Power(Rack(ChapterDef.All[0], WeaponLadder.MaxSlots, 3, 5));
+            float last = -1f;
+            for (int c = 0; c < ChapterDef.StoryCount; c++)
+            {
+                var ch = ChapterDef.All[c];
+                var exp = WeaponLadder.Expected(ch);
+                float e = WeaponLadder.Power(exp);
+                Assert.GreaterOrEqual(e, last - 0.001f, "阶梯只升不降");
+                Assert.LessOrEqual(exp.Count, WeaponLadder.BaseSlots);
+                last = e;
+                float pn = WeaponLadder.Power(WeaponLadder.ForRival(ch, WeaponLadder.Power(LadderRack(ch))));
+                float pb = WeaponLadder.Power(WeaponLadder.ForRival(ch, 0f));
+                var richRack = WeaponLadder.ForRival(ch, maxed);
+                float pr = WeaponLadder.Power(richRack);
+                Assert.LessOrEqual(richRack.Rack.Count, WeaponLadder.MaxSlots);
+                Assert.AreEqual(e, pn, 0.06f, ch.Name + " 正常玩家，对手照阶梯带");
+                Assert.AreEqual(e / 2, pb, 0.16f, ch.Name + " 玩家空手，对手只带一半");
+                Assert.AreEqual(WeaponLadder.RivalTarget(ch, maxed), pr, 0.16f, ch.Name + " 玩家满配，对手跟一半");
+                Assert.Less(pr, maxed, "对手永远比满配玩家弱");
+                if (c % 4 == 0 || c == ChapterDef.StoryCount - 1)
+                    lines.Append($"第{c + 1}回 | {RackText(exp)} | {e:0.00} | {pn:0.00}/{pb:0.00}/{pr:0.00}\n");
+            }
+            var daily = ChapterDef.Daily(20261104);
+            Assert.AreEqual(WeaponLadder.ExpectedPower(ChapterDef.All[WeaponLadder.DailyAs]), WeaponLadder.ExpectedPower(daily), 0.001f);
+            var team = new[] { HeroId.WuSong, HeroId.LinChong, HeroId.HuaRong, HeroId.LiKui, HeroId.LuZhiShen };
+            var endless = ChapterDef.Endless(20, team, 7);
+            Assert.AreEqual(WeaponLadder.MaxSlots, WeaponLadder.Expected(endless).Count);
+            Assert.Greater(WeaponLadder.ExpectedPower(endless), WeaponLadder.ExpectedPower(ChapterDef.Endless(1, team, 7)));
+            lines.Append($"每日一战 {WeaponLadder.ExpectedPower(daily):0.00}　车轮战第1阵 {WeaponLadder.ExpectedPower(ChapterDef.Endless(1, team, 7)):0.00}　第20阵 {WeaponLadder.ExpectedPower(endless):0.00}　满配 {maxed:0.00}");
+            UnityEngine.Debug.Log(lines.ToString());
+        }
+
+        /// <summary>
+        /// 两边每局都凑出三位好汉（40、80、120 秒各逼出一位），兵器每局都生效时量胜率：
+        /// 按进度带兵器不能比以前两边空手好打；多练的兵器有用，但满配也赢不到闭眼；落后于进度的更难。
+        /// </summary>
+        [Test]
+        public void WeaponsDoNotMakeTheStoryEasier([Values(6, 12, 24, 40, 56)] int chapter)
+        {
+            const int runs = 40, heroes = 3;
+            var ch = ChapterDef.All[chapter];
+            int bare = 0, normal = 0, maxed = 0, under = 0;
+            var full = Rack(ch, WeaponLadder.MaxSlots, 3, 5);
+            for (uint s = 2001; s < 2001 + runs; s++)
+            {
+                if (PlayerWins(ch, 0.5f, false, s, new Loadout(), true, heroes)) bare++;
+                if (PlayerWins(ch, 0.5f, false, s, LadderRack(ch), false, heroes)) normal++;
+                if (PlayerWins(ch, 0.5f, false, s, full, false, heroes)) maxed++;
+                if (PlayerWins(ch, 0.5f, false, s, new Loadout(), false, heroes)) under++;
+            }
+            UnityEngine.Debug.Log($"[难度阶梯] {ch.Name}（第{chapter + 1}回，两边各凑三位好汉）普通玩家胜率：两边空手 {bare}/{runs}，按阶梯 {normal}/{runs}，" +
+                $"满配(5格神兵五阶) {maxed}/{runs}，自己空手 {under}/{runs}");
+            Assert.LessOrEqual(normal, bare + runs / 6, "按阶梯带兵器，不能比以前两边空手明显好打");
+            Assert.GreaterOrEqual(normal, bare - runs / 6, "也不能明显更难");
+            Assert.LessOrEqual(maxed, runs * 4 / 5, "满配也不能闭眼赢");
+            Assert.LessOrEqual(under, normal + runs / 10, "落后于进度的玩家不会更好打");
+        }
+
+        [Test]
+        public void OneDayOfCoinsBuysTheCoreAndAdsFundTheForge()
+        {
+            // 中期：第三十回上下，座次马军头领·贰，四胜两负。入伙赏钱按每胜一人二十文估。
+            int ch = 30, tier = 6 * RankRules.SubPerMajor + 1;
+            int daily = Economy.DailyCoins(tier, 3);
+            int casual = 4 * (Economy.WinCoins(ch, 0) + 20) + 2 * Economy.LoseCoins(9) + daily;
+            // 常看广告：十四局十胜，十局双倍铜钱，俸禄双倍。
+            int heavy = 10 * Economy.WinCoins(ch, 0) * 2 + 10 * 20 + 4 * Economy.LoseCoins(9) + daily * 2;
+            int spend = Economy.CoreCost + Economy.ItemPrices[5] + Economy.ItemPrices[1];
+            int spare = heavy - spend;
+            UnityEngine.Debug.Log($"[经济] 一天：普通 {casual}，核心四件 {Economy.CoreCost}；常看广告 {heavy}，买齐核心加天书、大旗后剩 {spare}，" +
+                $"够兵器铺利器 {spare / Economy.ForgePrice(1)} 阶、宝器 {spare / Economy.ForgePrice(2)} 阶");
+            Assert.GreaterOrEqual(casual, Economy.CoreCost, "不看广告打六局，买得起核心四件");
+            Assert.Less(casual, Economy.CoreCost + Economy.ItemPrices[5], "但再加一件天书就不够");
+            Assert.GreaterOrEqual(spare, 2 * Economy.ForgePrice(1), "常看广告的人，多出来的钱够升两阶");
+            Assert.Less(spare, 3 * Economy.ForgePrice(3), "但也就两三阶，不会再越攒越多");
+            Assert.LessOrEqual(Economy.DailyCoins(RankRules.Top, 10), 62, "俸禄顶格约六十");
+            Assert.Greater(Economy.DailyCoins(RankRules.Top, 10), Economy.DailyCoins(0, 0), "座次越高俸禄越多");
+            Assert.AreEqual(Economy.ItemPrices[5] / 5, Economy.LottoRefund(Economy.ItemPrices[5]), "抽奖重复退两成");
+            Assert.AreEqual(0, Economy.RecycleValue(2));
+            Assert.AreEqual(0, Economy.RecycleValue(3));
+            Assert.AreEqual(Economy.RecycleCoins, Economy.RecycleValue(0));
+            Assert.Less(Economy.RackSlotPrice(3), Economy.RackSlotPrice(4));
+            Assert.AreEqual(0, Economy.RackSlotPrice(WeaponLadder.MaxSlots));
         }
 
         [Test]
@@ -1118,12 +1335,8 @@ namespace Rescue.Tests
             var s = m.Player;
             Clear(s);
             OpenAll(s);
-            int n = HeroDef.All.Length;
-            s.Items.Gear = new int[n];
-            s.Items.WeaponLv = new int[n];
-            for (int i = 0; i < n; i++) s.Items.Gear[i] = -1;
-            s.Items.Gear[(int)wearer] = (int)weapon;
-            s.Items.WeaponLv[(int)wearer] = 1;
+            s.Items.Rack = new List<int> { (int)weapon };
+            s.Items.RackLv = new List<int> { 1 };
             var name = HeroDef.Get(wearer).Name;
             for (int i = 0; i < name.Length; i++) s.Board.Pieces[1 + i, 1] = Piece.Hero(name[i]);
             s.RecomputeHeroes();

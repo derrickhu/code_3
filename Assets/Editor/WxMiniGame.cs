@@ -48,12 +48,25 @@ namespace Rescue.EditorTools
             var so = new SerializedObject(config);
             Set(so, "ProjectConf.projectName", "rescue-songjiang");
             Set(so, "ProjectConf.Appid", AppId);
+            Set(so, "ProjectConf.CDN", CloudConfig.AssetCdn);
             Set(so, "ProjectConf.relativeDST", "wechat-minigame");
             Set(so, "ProjectConf.DST", Path.Combine(ProjectRoot, "wechat-minigame"));
             Set(so, "ProjectConf.assetLoadType", 1);
             // 压缩的首包资源启动时会被插件解压后整份写进用户文件缓存，开发者工具 10MB 的上限装不下。
             Set(so, "ProjectConf.compressDataPackage", false);
             Set(so, "ProjectConf.Orientation", 0);
+            var hideCover = so.FindProperty("ProjectConf")?.FindPropertyRelative("HideAfterCallMain");
+            if (hideCover != null)
+            {
+                if (hideCover.propertyType == SerializedPropertyType.Boolean) hideCover.boolValue = false;
+                else if (hideCover.propertyType == SerializedPropertyType.Integer) hideCover.intValue = 0;
+            }
+            var update = so.FindProperty("ProjectConf")?.FindPropertyRelative("needCheckUpdate");
+            if (update != null)
+            {
+                if (update.propertyType == SerializedPropertyType.Boolean) update.boolValue = true;
+                else if (update.propertyType == SerializedPropertyType.Integer) update.intValue = 1;
+            }
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
@@ -83,15 +96,17 @@ namespace Rescue.EditorTools
             }
         }
 
-        /// <summary>包体超 30MB 时转换器会悄悄改回 CDN 加载，而我们没有 CDN，必须拦下来。</summary>
+        /// <summary>首包（画面、字体、音效）留在小游戏分包里，打开就能画。曲子在 CDN，不进这个包。</summary>
         static bool CheckGameJs()
         {
             string js = File.ReadAllText(Path.Combine(ProjectRoot, "wechat-minigame", "minigame", "game.js"));
             bool sub = js.Contains("loadDataPackageFromSubpackage: true");
             bool raw = js.Contains("compressDataPackage: false");
-            Debug.Log($"[微信] 分包加载首包={sub}，不压缩首包={raw}");
-            if (!sub || !raw) Debug.LogError("[微信] 首包资源没走未压缩的小游戏分包，检查包体是否超限。");
-            return sub && raw;
+            bool cdn = js.Contains(CloudConfig.AssetCdn);
+            Debug.Log($"[微信] 分包加载首包={sub}，不压缩首包={raw}，资源 CDN={cdn}");
+            if (!sub || !raw) Debug.LogError("[微信] 首包被改成整包 CDN 下载了。曲子应该已经移出首包，不该再超 30MB。");
+            if (!cdn) Debug.LogError("[微信] game.js 里没有资源 CDN 地址，曲子会拉不到。");
+            return sub && raw && cdn;
         }
 
         static void ActivateWeChat()

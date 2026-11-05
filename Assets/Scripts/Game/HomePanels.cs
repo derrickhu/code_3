@@ -11,21 +11,15 @@ namespace Rescue
     {
         // ─────────────────────────── 排行榜 ───────────────────────────
 
-        static readonly string[] BoardGlyph = { "燕", "王", "郑", "石", "杜", "宋", "朱", "李", "焦", "邹", "孟", "汤", "曹", "侯" };
         static readonly Color[] RowColors = { Pal.Hex("E8664A"), Pal.Hex("F08A3C"), Pal.Hex("F5B868"), Pal.Hex("C9C6C0") };
         const float RowPitch = 146f;
         bool _boardProvince = true;
 
-        static string GlyphOf(string name)
-        {
-            uint h = 2166136261;
-            foreach (var ch in name ?? "") h = (h ^ ch) * 16777619;
-            return BoardGlyph[h % (uint)BoardGlyph.Length];
-        }
-
         /// <summary>省榜 / 总榜：真实数据，从云端拉前五十名；连不上时只显示自己这一行。</summary>
         public void ShowBoard()
         {
+            _boardOwns = true;
+            _homeArmed = false;
             var layer = Ui.Fill(_root, new Color(0, 0, 0, 0.55f), true, "board");
             var b = Ui.Rect(Ui.Fit(layer, 1880), "b");
             b.anchoredPosition = new Vector2(0, -20);
@@ -37,26 +31,37 @@ namespace Rescue
             pagoda.rectTransform.sizeDelta = new Vector2(1060, 1060f * 291f / 1208f);
             var title = Ui.Label(b, "排行榜", 80, Pal.Hex("3B2A20"), new Vector2(0, 640), new Vector2(400, 110), TextAnchor.MiddleCenter, Fonts.Brush);
             Ui.Stroke(title, Pal.Hex("FFF6E2"), 2f);
-            Ui.CloseX(b, new Vector2(-450, 850), () => Destroy(layer.gameObject));
+            Ui.CloseX(b, new Vector2(-450, 850), () =>
+            {
+                _reloadBoard = null;
+                _authHit = null;
+                _boardOwns = false;
+                _homeArmed = false;
+                WxSession.HideProfileButton();
+                Destroy(layer.gameObject);
+            });
 
             var list = Ui.Rect(b, "list");
             int ticket = 0;
             void Fill()
             {
                 int mine = ++ticket;
+                _authHit = null;
+                WxSession.HideProfileButton();
                 for (int i = list.childCount - 1; i >= 0; i--) Destroy(list.GetChild(i).gameObject);
                 string region = LiveConfig.MyRegion;
-                BoardTab(list, region + "榜", -200, 260, _boardProvince, () => { _boardProvince = true; Fill(); });
-                BoardTab(list, "总榜", 80, 260, !_boardProvince, () => { _boardProvince = false; Fill(); });
-                var pick = Ui.Framed(list, new Vector2(150, 84), new Vector2(345, 470), Pal.Hex("33403F"), Pal.Hex("B8913C"), 4f, "regionPick");
-                Ui.Stroke(Ui.Label(pick.transform, "换地区", 32, Pal.Paper, new Vector2(0, 2), new Vector2(150, 84), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 1.5f);
-                Ui.Tap(pick, () => ShowRegionPicker(layer, Fill));
+                BoardTab(list, LiveConfig.RegionKnown ? region + "榜" : "本省榜", -140, 260, _boardProvince, () => { _boardProvince = true; Fill(); });
+                BoardTab(list, "总榜", 140, 260, !_boardProvince, () => { _boardProvince = false; Fill(); });
+                if (WxSession.CanAskProfile && !LiveConfig.HasNick) AuthButton(list);
 
                 var status = Ui.Label(list, "正在打听各路好汉……", 38, Pal.Paper.A(0.8f), new Vector2(0, 0), new Vector2(800, 60));
                 MyRowAt(list, -552, 0, LiveConfig.MyScore, false);
-                LiveConfig.LoadRank(_boardProvince ? region : "全国", data =>
+                ArmBoard();
+                LiveConfig.LoadRank(!_boardProvince, data =>
                 {
                     if (!list || mine != ticket) return;
+                    if (LiveConfig.MyRegion != region) { Fill(); return; }
+                    WxSession.HideProfileButton();
                     for (int i = list.childCount - 1; i >= 0; i--)
                     {
                         var child = list.GetChild(i);
@@ -73,21 +78,45 @@ namespace Rescue
                         Ui.Label(list, _boardProvince ? $"{region}还没人上榜，你就是头一个" : "还没人上榜", 36, Pal.Paper.A(0.8f), new Vector2(0, 120), new Vector2(800, 60));
                     else BoardRows(list, top);
                     MyRowAt(list, -552, data != null ? data.rank : 0, LiveConfig.MyScore, data != null);
+                    _authHit = list.Find("authBtn") as RectTransform;
+                    ArmBoard();
                     if (data != null && data.total > 0)
                         Ui.Label(list, $"共 {data.total} 位好汉", 26, Pal.Paper.A(0.6f), new Vector2(330, -640), new Vector2(240, 36), TextAnchor.MiddleRight);
                 });
             }
+            _reloadBoard = Fill;
             Fill();
-            if (string.IsNullOrEmpty(Save.D.region)) ShowRegionPicker(layer, Fill);
+            if (WxSession.CanAskProfile && !LiveConfig.HasNick && !WxSession.PrivacyAgreed)
+                WxSession.ShowPrivacy(ok => { if (ok && _authHit) ArmBoard(); }, true);
 
             BuildClaimStrip(b);
             Tween.Pop(b, 0.28f);
         }
 
+        void AuthButton(RectTransform list)
+        {
+            var btn = Ui.CartoonBtn(list, "使用微信昵称头像上榜", new Vector2(720, 78), new Vector2(0, 368), Ui.BtnYellow, OnAuthTap, 32, null, Edge);
+            btn.name = "authBtn";
+            var label = btn.Find("body/text").GetComponent<Text>();
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 22;
+            label.resizeTextMaxSize = 32;
+            _authHit = btn;
+        }
+
+        void OnAuthTap()
+        {
+            WxSession.AllowPrivacyRetry();
+            if (WxSession.PrivacyAgreed) ArmBoard();
+            else WxSession.ShowPrivacy(ok => { if (ok && _authHit) ArmBoard(); }, true);
+        }
+
         void BoardRows(RectTransform list, LiveConfig.RankRow[] top)
         {
-            const float viewH = 6 * RowPitch - 16f;
-            var content = Ui.Scroll(list, new Vector2(860, viewH), new Vector2(0, 405 - viewH * 0.5f), top.Length * RowPitch, "rows");
+            bool ask = WxSession.CanAskProfile && !LiveConfig.HasNick;
+            float viewH = (ask ? 5 : 6) * RowPitch - 16f;
+            float topY = ask ? 300f : 405f;
+            var content = Ui.Scroll(list, new Vector2(860, viewH), new Vector2(0, topY - viewH * 0.5f), top.Length * RowPitch, "rows");
             for (int i = 0; i < top.Length; i++)
             {
                 var r = top[i];
@@ -100,8 +129,8 @@ namespace Rescue
                 var face = Ui.Framed(content, new Vector2(840, 130), pos, RowColors[Mathf.Min(i, 3)], Edge, 5f, "row");
                 var t = face.transform;
                 RankBadge(t, i);
-                Avatar(t, new Vector2(-236, 0), GlyphOf(r.name), Pal.Tile);
-                Ui.Label(t, r.name, 30, Pal.Ink, new Vector2(-60, 26), new Vector2(220, 40), TextAnchor.MiddleLeft);
+                Portrait(t, r.avatar, new Vector2(-236, 0));
+                NickLabel(t, r.name, 30, Pal.Ink, new Vector2(-60, 26), new Vector2(240, 40), TextAnchor.MiddleLeft);
                 Ui.Label(t, r.region, 40, Pal.Ink, new Vector2(-60, -20), new Vector2(220, 56), TextAnchor.MiddleLeft, Fonts.Brush);
                 Ui.Stroke(Ui.Label(t, RankRules.Name(RankRules.Clamp(r.tier)), 38, Pal.Hex("FFE36A"), new Vector2(270, 26), new Vector2(300, 50), TextAnchor.MiddleRight, Fonts.Brush), Edge, 2.5f);
                 var st = Ui.Label(t, Ui.RankStars(RankRules.Clamp(r.tier), r.stars, "FFD84A", "6B5D4A"), 34, Pal.Paper, new Vector2(290, -24), new Vector2(260, 50), TextAnchor.MiddleRight);
@@ -116,47 +145,6 @@ namespace Rescue
             Ui.Stroke(Ui.Label(face.transform, text, text.Length > 3 ? 42 : 50, on ? Edge : Pal.Paper, new Vector2(0, 2), new Vector2(w, 84), TextAnchor.MiddleCenter, Fonts.Brush),
                 on ? Pal.Hex("FFF2B8") : Edge, 1.5f);
             if (!on) Ui.Tap(face, onClick);
-        }
-
-        /// <summary>选省份：三十四个省级地区加「江湖」。微信不再给地区，只能玩家自己选。</summary>
-        void ShowRegionPicker(RectTransform host, Action done)
-        {
-            var shade = Ui.Fill(host, new Color(0, 0, 0, 0.6f), true, "regions");
-            var card = Ui.WoodPanel(Ui.Fit(shade, 1500), new Vector2(940, 1000), new Vector2(0, 0), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
-            Ui.Title(card, "选地区", new Vector2(0, 480), 80);
-            Ui.Label(card, "和同乡比座次。选「江湖」就只上总榜", 32, Pal.InkSoft, new Vector2(0, 385), new Vector2(860, 50));
-            Ui.CloseX(card, new Vector2(-464, 490), () => Destroy(shade.gameObject));
-            const int cols = 5;
-            const float cw = 168f, rh = 112f;
-            var regions = LiveConfig.Regions;
-            for (int i = 0; i < regions.Length; i++)
-            {
-                string r = regions[i];
-                bool on = r == LiveConfig.MyRegion && !string.IsNullOrEmpty(Save.D.region);
-                bool jianghu = r == "江湖";
-                var pos = new Vector2(-336 + (i % cols) * cw, 295 - (i / cols) * rh);
-                var face = Ui.Framed(card, new Vector2(150, 92), pos, on ? Ui.BtnYellow : jianghu ? Pal.Hex("D9C29A") : Pal.Hex("FFF6E2"), on ? Pal.Hex("B5651D") : Edge, on ? 6f : 4f, "framedRegion");
-                var lb = Ui.Label(face.transform, r, r.Length > 2 ? 34 : 40, Pal.Ink, new Vector2(0, 2), new Vector2(150, 92), TextAnchor.MiddleCenter, Fonts.Brush);
-                if (on) lb.color = Pal.RedDeep;
-                Ui.Tap(face, () =>
-                {
-                    Save.D.region = r;
-                    Save.Write();
-                    LiveConfig.SubmitRank(true);
-                    Destroy(shade.gameObject);
-                    Toast(jianghu ? "就在江湖上闯荡" : "已选 " + r);
-                    _boardProvince = !jianghu;
-                    done?.Invoke();
-                });
-            }
-            Tween.Pop(card, 0.22f);
-        }
-
-        static void Avatar(Transform parent, Vector2 pos, string glyph, Color bg)
-        {
-            var a = Ui.Framed(parent, new Vector2(108, 108), pos, bg, Edge, 4f, "avatar");
-            a.pixelsPerUnitMultiplier = 1.4f;
-            Ui.Label(a.transform, glyph, 76, Pal.Ink, new Vector2(0, 4), new Vector2(108, 108), TextAnchor.MiddleCenter, Fonts.Brush);
         }
 
         static void RankBadge(Transform t, int i)
@@ -181,14 +169,69 @@ namespace Rescue
             var t = face.transform;
             if (rank > 0) RankBadge(t, rank - 1);
             else Ui.Stroke(Ui.Label(t, online ? "未上榜" : "离线", 30, Pal.Paper, new Vector2(-352, 0), new Vector2(110, 60)), Edge, 2f).fontStyle = FontStyle.Bold;
-            var av = Ui.Icon(t, "ui_avatar", 112, new Vector2(-236, 0));
-            av.preserveAspect = true;
-            Ui.Label(t, "我 · " + LiveConfig.MyName, 30, Pal.Paper, new Vector2(-50, 26), new Vector2(240, 40), TextAnchor.MiddleLeft);
+            Portrait(t, WxSession.Avatar, new Vector2(-236, 0));
+            NickLabel(t, "我 · " + LiveConfig.MyName, 30, Pal.Paper, new Vector2(-50, 26), new Vector2(250, 40), TextAnchor.MiddleLeft);
             Ui.Stroke(Ui.Label(t, LiveConfig.MyRegion, 40, Pal.Paper, new Vector2(-60, -20), new Vector2(220, 56), TextAnchor.MiddleLeft, Fonts.Brush), Edge, 2f);
             Ui.Stroke(Ui.Label(t, Save.RankName, 38, Pal.Hex("FFE36A"), new Vector2(270, 26), new Vector2(300, 50), TextAnchor.MiddleRight, Fonts.Brush), Edge, 2.5f);
             var st = Ui.Label(t, Ui.RankStars(Save.D.tier, Save.D.stars, "FFD84A", "6B2A20"), 38, Pal.Paper, new Vector2(290, -24), new Vector2(260, 50), TextAnchor.MiddleRight);
             st.supportRichText = true;
             Ui.Stroke(st, Edge, 1.5f);
+        }
+
+        void ArmBoard()
+        {
+            if (!_authHit || !WxSession.CanAskProfile || !WxSession.PrivacyAgreed || LiveConfig.HasNick) return;
+            WxSession.Cover(this, _authHit, OnProfile);
+        }
+
+        void OnProfile(string nick, string avatar, string err)
+        {
+            _homeArmed = false;
+            if (!WxSession.TakeProfile(nick, avatar, err, () =>
+            {
+                if (_boardOwns && _authHit) ArmBoard();
+                else ArmHome();
+            })) return;
+            Refresh();
+            _reloadBoard?.Invoke();
+        }
+
+        static void Portrait(Transform parent, string url, Vector2 pos) => CirclePortrait(parent, url, pos, 96f, out _);
+
+        /// <summary>圆头像。微信照片铺满圆，没有地址时用默认立绘。</summary>
+        static Image CirclePortrait(Transform parent, string url, Vector2 pos, float size, out RectTransform hit)
+        {
+            var ring = Ui.Box(parent, Vector2.one * (size + 10f), pos, Pal.Hex("F6E7C1"), Art.Circle, "avatarRing");
+            ring.type = Image.Type.Simple;
+            ring.raycastTarget = false;
+            var maskGo = new GameObject("avatarMask", typeof(RectTransform), typeof(Image), typeof(Mask));
+            var rt = (RectTransform)maskGo.transform;
+            rt.SetParent(ring.transform, false);
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = Vector2.one * size;
+            rt.anchoredPosition = Vector2.zero;
+            var maskImg = maskGo.GetComponent<Image>();
+            maskImg.sprite = Art.Circle;
+            maskImg.type = Image.Type.Simple;
+            maskImg.color = Color.white;
+            maskImg.raycastTarget = false;
+            maskGo.GetComponent<Mask>().showMaskGraphic = false;
+            var face = Ui.Icon(rt, "ui_avatar", size, Vector2.zero, "avatar");
+            face.raycastTarget = true;
+            Portraits.Set(face, url, true);
+            hit = ring.rectTransform;
+            return face;
+        }
+
+        static Text NickLabel(Transform parent, string text, int size, Color c, Vector2 pos, Vector2 box, TextAnchor align)
+        {
+            var label = Ui.Label(parent, text, size, c, pos, box, align);
+            label.resizeTextForBestFit = true;
+            label.resizeTextMinSize = 22;
+            label.resizeTextMaxSize = size;
+            WxSession.ApplyNickFont(label);
+            return label;
         }
 
         /// <summary>榜单下方：昨日座次发的俸禄，没领就亮着。</summary>
@@ -318,40 +361,73 @@ namespace Rescue
 
             if (_armSel >= 0 && string.IsNullOrEmpty(HeroDef.Get((HeroId)_armSel).Weapon)) _armSel = -1;
 
-            // 三个装备槽
-            for (int i = 0; i < Save.MaxArmed; i++)
+            // 兵器架：局里凑出好汉就按顺序领。起步三格，后两格花铜钱扩。
+            for (int i = 0; i < Save.RackMax; i++)
             {
-                var pos = new Vector2(-320 + i * 320, -375);
-                bool has = i < Save.D.armWho.Count && i < Save.D.armWhat.Count;
-                var wpn = has ? HeroDef.Get((HeroId)Save.D.armWhat[i]) : null;
-                var wearer = has ? HeroDef.Get((HeroId)Save.D.armWho[i]) : null;
+                var pos = new Vector2(-400 + i * 200, -372);
+                bool open = i < Save.D.rackSlots;
+                bool has = open && i < Save.D.rack.Count;
+                var wpn = has ? HeroDef.Get((HeroId)Save.D.rack[i]) : null;
                 var g = has ? Ui.GradeColor(wpn.WGrade) : Pal.Hex("8C8478");
-                var face = Ui.Framed(top, new Vector2(290, 170), pos, has ? Pal.Hex("F6EEDA") : Pal.Hex("5E5246"), g, has ? 7f : 4f, "framedSlot");
+                var face = Ui.Framed(top, new Vector2(184, 176), pos, has ? Pal.Hex("F6EEDA") : open ? Pal.Hex("5E5246") : Pal.Hex("3F352C"), g, has ? 6f : 4f, "framedSlot");
                 var t = face.transform;
+                if (open)
+                {
+                    var num = Ui.Box(t, new Vector2(40, 40), new Vector2(-66, 62), has ? g : Pal.Hex("8C8478"), Art.Circle, "num");
+                    num.type = Image.Type.Simple;
+                    Ui.Label(num.transform, (i + 1).ToString(), 26, Pal.Paper, Vector2.zero, new Vector2(40, 40)).fontStyle = FontStyle.Bold;
+                }
                 if (has)
                 {
-                    Ui.Box(t, new Vector2(118, 118), new Vector2(-80, 0), g.A(0.22f), Art.Circle, "halo").type = Image.Type.Simple;
-                    Ui.Icon(t, Weapons.Icon(wpn.WKind), 104, new Vector2(-80, 0));
-                    Ui.Label(t, wpn.Weapon, wpn.Weapon.Length > 4 ? 26 : 32, Pal.Ink, new Vector2(50, 30), new Vector2(170, 44), TextAnchor.MiddleCenter, Fonts.Brush);
-                    Ui.Label(t, wearer.Name + "带着", 28, Pal.InkSoft, new Vector2(50, -12), new Vector2(170, 40));
-                    Ui.Label(t, Weapons.Grades[wpn.WGrade] + " · " + Mathf.Min(5, Save.WeaponCount((int)wpn.Id)) + "阶", 24, g, new Vector2(50, -50), new Vector2(170, 34)).fontStyle = FontStyle.Bold;
+                    Ui.Box(t, new Vector2(96, 96), new Vector2(0, 24), g.A(0.22f), Art.Circle, "halo").type = Image.Type.Simple;
+                    Ui.Icon(t, Weapons.Icon(wpn.WKind), 88, new Vector2(0, 24));
+                    Ui.Label(t, wpn.Weapon, wpn.Weapon.Length > 3 ? 24 : 30, Pal.Ink, new Vector2(0, -38), new Vector2(178, 40), TextAnchor.MiddleCenter, Fonts.Brush);
+                    Ui.Label(t, Weapons.Grades[wpn.WGrade] + "·" + Mathf.Min(5, Save.WeaponCount((int)wpn.Id)) + "阶", 22, g, new Vector2(0, -68), new Vector2(178, 30)).fontStyle = FontStyle.Bold;
                     int id = (int)wpn.Id;
                     Ui.Tap(face, () => { _armSel = id; ShowArmory(); });
                 }
+                else if (open)
+                {
+                    Ui.Label(t, "＋", 64, Pal.Paper.A(0.5f), new Vector2(0, 14), new Vector2(160, 80));
+                    Ui.Label(t, "点兵器挂上", 24, Pal.Paper.A(0.7f), new Vector2(0, -56), new Vector2(178, 36));
+                }
+                else if (i == Save.D.rackSlots)
+                {
+                    int price = Save.RackSlotPrice;
+                    Ui.Label(t, "扩一格", 30, Pal.Paper, new Vector2(0, 40), new Vector2(178, 44), TextAnchor.MiddleCenter, Fonts.Brush);
+                    var btn = Ui.Framed(t, new Vector2(156, 62), new Vector2(0, -36), Ui.BtnYellow, Edge, 4f, "framedBuy");
+                    Ui.Icon(btn.transform, "coin", 46, new Vector2(-46, 0));
+                    var pl = Ui.Label(btn.transform, price.ToString(), 30, Edge, new Vector2(22, 0), new Vector2(100, 60));
+                    pl.fontStyle = FontStyle.Bold;
+                    if (Save.D.coins < price) pl.color = Pal.Hex("A33A2A");
+                    Ui.Tap(face, () =>
+                    {
+                        if (Save.D.coins < price) { Nope("铜钱不够，扩这一格要 " + price); return; }
+                        Confirm("扩兵器架", $"花 {price} 铜钱，兵器架多一格\n局里多一位好汉能领兵器", "扩一格", () =>
+                        {
+                            if (!Save.BuyRackSlot(out var err)) { Nope(err); return; }
+                            Sfx.Play(Snd.Merge);
+                            Toast("兵器架扩到 " + Save.D.rackSlots + " 格");
+                            Refresh();
+                            ShowArmory();
+                        });
+                    });
+                }
                 else
                 {
-                    Ui.Label(t, "＋", 70, Pal.Paper.A(0.5f), new Vector2(0, 16), new Vector2(200, 90));
-                    Ui.Label(t, "空着 · 点兵器交人", 24, Pal.Paper.A(0.7f), new Vector2(0, -50), new Vector2(270, 40));
+                    Ui.Label(t, "先扩前一格", 24, Pal.Paper.A(0.5f), new Vector2(0, 0), new Vector2(178, 40));
                 }
             }
-            Ui.Stroke(Ui.Label(top, $"带着 {Save.ArmedCount}/{Save.MaxArmed}　已缴获 {Save.D.weapons.Count}/{Save.MaxWeapons} 件", 30, Pal.Paper,
-                new Vector2(-130, -508), new Vector2(680, 50), TextAnchor.MiddleLeft), Edge, 2f);
-            Ui.CartoonBtn(top, "一键回收", new Vector2(240, 80), new Vector2(370, -508), Ui.BtnYellow, () =>
+            Ui.Stroke(Ui.Label(top, "凑出好汉按顺序领，原主必领自己那件", 26, Pal.Paper,
+                new Vector2(-235, -488), new Vector2(530, 40), TextAnchor.MiddleLeft), Edge, 2f);
+            Ui.Stroke(Ui.Label(top, $"架上 {Save.RackCount}/{Save.D.rackSlots}　已缴获 {Save.D.weapons.Count}/{Save.MaxWeapons} 件", 26, Pal.Paper,
+                new Vector2(-235, -528), new Vector2(530, 40), TextAnchor.MiddleLeft), Edge, 2f);
+            Ui.CartoonBtn(top, "兵器铺", new Vector2(200, 80), new Vector2(170, -508), Ui.BtnRed, ShowForge, 38);
+            Ui.CartoonBtn(top, "一键回收", new Vector2(200, 80), new Vector2(400, -508), Ui.BtnYellow, () =>
             {
-                int got = RecycleSpare();
-                if (got <= 0) { Nope("没有多余的兵器可回收"); return; }
+                if (!RecycleSpare()) { Nope("没有多余的兵器可回收"); return; }
                 ShowArmory();
-            }, 38, null, Edge);
+            }, 34, null, Edge);
 
             for (int i = 0; i < ArmTabs.Length; i++)
             {
@@ -388,8 +464,8 @@ namespace Rescue
             int k = (int)d.Id;
             int n = Mathf.Min(5, Save.WeaponCount(k));
             bool own = n > 0;
-            int who = Save.WearerOf(k);
-            bool on = who >= 0;
+            int slot = Save.D.rack.IndexOf(k);
+            bool on = slot >= 0;
             var g = Ui.GradeColor(d.WGrade);
             var face = Ui.Framed(parent, new Vector2(222, 214), pos, own ? Pal.Hex("F6EEDA") : Pal.Hex("8F8577"), own ? g : Edge, own ? 6f : 4f, "framedWeapon");
             var t = face.transform;
@@ -399,13 +475,13 @@ namespace Rescue
             var icon = Ui.Icon(t, Weapons.Icon(d.WKind), 100, new Vector2(0, 22));
             if (!own) icon.color = new Color(0.2f, 0.18f, 0.15f, 0.55f);
             Ui.Label(t, d.Weapon, d.Weapon.Length > 4 ? 24 : 30, own ? Pal.Ink : Pal.Paper.A(0.8f), new Vector2(0, -50), new Vector2(214, 40), TextAnchor.MiddleCenter, Fonts.Brush);
-            string sub = !own ? d.Name + " · 未缴获" : on ? HeroDef.Get((HeroId)who).Name + "带着 · " + n + "阶" : "还没人带 · " + n + "阶";
+            string sub = !own ? d.Name + " · 未缴获" : on ? "架上第" + (slot + 1) + "格 · " + n + "阶" : d.Name + " · " + n + "阶";
             Ui.Label(t, sub, 22, own ? Pal.InkSoft : Pal.Paper.A(0.7f), new Vector2(0, -84), new Vector2(214, 30));
             if (on)
             {
                 var dot = Ui.Box(t, new Vector2(46, 46), new Vector2(86, 62), Pal.Hex("D7362B"), Art.Circle, "on");
                 dot.type = Image.Type.Simple;
-                Ui.Label(dot.transform, "装", 26, Pal.Paper, Vector2.zero, new Vector2(46, 46), TextAnchor.MiddleCenter, Fonts.Brush);
+                Ui.Label(dot.transform, "架", 26, Pal.Paper, Vector2.zero, new Vector2(46, 46), TextAnchor.MiddleCenter, Fonts.Brush);
             }
             Ui.Tap(face, () => { _armSel = k; ShowArmory(); });
         }
@@ -421,7 +497,7 @@ namespace Rescue
             int k = (int)d.Id;
             int n = Mathf.Min(5, Save.WeaponCount(k));
             bool own = n > 0;
-            int who = Save.WearerOf(k);
+            int slot = Save.D.rack.IndexOf(k);
             var g = Ui.GradeColor(d.WGrade);
             var shade = Ui.Fill(a, new Color(0, 0, 0, 0.55f), true, "detail");
             var holder = Ui.Rect(Ui.Fit(shade, 1160), "holder");
@@ -443,7 +519,7 @@ namespace Rescue
             Tween.Pop(icon.transform, 0.35f, 0.05f);
             Ui.Tag(t, Weapons.Grades[d.WGrade], g, new Vector2(300, 440), 140, 32);
             Ui.Stroke(Ui.Label(t, d.Weapon, 76, Pal.Hex("B23A22"), new Vector2(0, 130), new Vector2(760, 100), TextAnchor.MiddleCenter, Fonts.Brush), Pal.Hex("FFF6E2"), 2.5f);
-            string carry = who < 0 ? "还没有人带" : HeroDef.Get((HeroId)who).Name + "带着";
+            string carry = !own ? "还没缴获" : slot < 0 ? "没挂上兵器架" : "挂在兵器架第" + (slot + 1) + "格";
             Ui.Label(t, "出自" + d.Name + "　" + carry, 34, Pal.InkSoft, new Vector2(0, 60), new Vector2(760, 50));
 
             var box = Ui.Box(t, new Vector2(740, 330), new Vector2(0, -130), Pal.Hex("E6D9BC"), null, "statBox");
@@ -461,9 +537,9 @@ namespace Rescue
             int next = Mathf.RoundToInt((HeroDef.ArmedMul(Mathf.Min(5, n + 1), d.WGrade) - 1f) * 100f);
             var val = Ui.Label(t, "+" + pct + "%", 52, Pal.Hex("C0392B"), new Vector2(-50, -165), new Vector2(200, 70), TextAnchor.MiddleLeft);
             val.fontStyle = FontStyle.Bold;
-            Ui.Label(t, n >= 5 ? "已满阶" : own ? $"再缴获一件 → +{next}%" : "未缴获", 28, Pal.InkSoft, new Vector2(200, -165), new Vector2(320, 50), TextAnchor.MiddleLeft);
-            Ui.Label(t, "品级越高底子越厚：凡器 +30%　利器 +40%　宝器 +50%　神兵 +65%，每多一阶 +15%", 24, Pal.InkSoft,
-                new Vector2(0, -255), new Vector2(720, 60));
+            Ui.Label(t, n >= 5 ? "已满阶" : own ? $"再升一阶 → +{next}%" : "未缴获", 28, Pal.InkSoft, new Vector2(200, -165), new Vector2(320, 50), TextAnchor.MiddleLeft);
+            Ui.Label(t, "凡器+25%　利器+32%　宝器+40%　神兵+50%，每阶再+10%", 24, Pal.InkSoft, new Vector2(0, -232), new Vector2(720, 34));
+            Ui.Label(t, d.Name + "自己领到，伤害再多一成", 24, Pal.RedDeep, new Vector2(0, -266), new Vector2(720, 34));
 
             if (move != WeaponMove.None)
             {
@@ -474,73 +550,43 @@ namespace Rescue
             }
 
             string tip = !own ? "入伙之后，凑出他的名字或在他出场的回目里撑过四波，才有机会缴获"
-                : move != WeaponMove.None ? "特性和招式都跟兵器走。同一件同时只能一个人带。"
-                : "特性跟兵器走。同一件同时只能一个人带。";
+                : move != WeaponMove.None ? "特性和招式都跟兵器走，谁领到谁使。"
+                : "特性跟兵器走，谁领到谁使。";
             Ui.Label(t, tip, 28, Pal.Willow, new Vector2(0, -330 + dy), new Vector2(760, 50));
             if (own)
             {
-                Ui.CartoonBtn(t, who < 0 ? "交给好汉" : "换人带", new Vector2(260, 100), new Vector2(-150, -420 + dy), Ui.BtnRed, () => ShowWearPicker(k), 46);
-                Ui.CartoonBtn(t, "回收+" + Save.RecycleCoins, new Vector2(260, 100), new Vector2(150, -420 + dy), Ui.BtnYellow, () => { Recycle(d.Id); ShowArmory(); }, 38, null, Edge);
+                int value = Save.RecycleValue(k);
+                string sell = value > 0 ? "回收+" + value : "回收";
+                if (slot < 0)
+                {
+                    Ui.CartoonBtn(t, "挂上兵器架", new Vector2(300, 100), new Vector2(-150, -420 + dy), Ui.BtnRed, () =>
+                    {
+                        if (!Save.PutOnRack(k, out var err)) { Nope(err); return; }
+                        Sfx.Play(Snd.Merge);
+                        _armSel = -1;
+                        ShowArmory();
+                    }, 42);
+                    Ui.CartoonBtn(t, sell, new Vector2(240, 100), new Vector2(160, -420 + dy), Ui.BtnYellow, () => { Recycle(d.Id); ShowArmory(); }, 38, null, Edge);
+                }
+                else
+                {
+                    Ui.CartoonBtn(t, "取下", new Vector2(220, 100), new Vector2(-250, -420 + dy), Ui.BtnDark, () =>
+                    {
+                        Save.TakeOffRack(k);
+                        _armSel = -1;
+                        ShowArmory();
+                    }, 42);
+                    Ui.CartoonBtn(t, slot == 0 ? "已在第一格" : "放第一格", new Vector2(220, 100), new Vector2(0, -420 + dy), slot == 0 ? Ui.BtnDark : Ui.BtnRed, () =>
+                    {
+                        if (slot == 0) return;
+                        Save.RackToFront(k);
+                        Sfx.Play(Snd.Merge);
+                        ShowArmory();
+                    }, slot == 0 ? 32 : 40);
+                    Ui.CartoonBtn(t, sell, new Vector2(220, 100), new Vector2(250, -420 + dy), Ui.BtnYellow, () => { Recycle(d.Id); ShowArmory(); }, 36, null, Edge);
+                }
             }
             Tween.Pop(holder, 0.22f);
-        }
-
-        void ShowWearPicker(int weaponId)
-        {
-            var weapon = HeroDef.Get((HeroId)weaponId);
-            var host = _armory ? _armory : _root;
-            var layer = Ui.Fill(host, new Color(0, 0, 0, 0.5f), true, "wear");
-            var page = Ui.Rect(Ui.Fit(layer, 1500), "page");
-            Ui.Framed(page, new Vector2(860, 1280), Vector2.zero, Pal.Hex("F6EEDA"), Ui.GradeColor(weapon.WGrade), 8f, "sheet");
-            Ui.CloseX(page, new Vector2(-400, 600), () => Destroy(layer.gameObject), 90);
-            Ui.Stroke(Ui.Label(page, weapon.Weapon, 64, Pal.Ink, new Vector2(0, 540), new Vector2(700, 90), TextAnchor.MiddleCenter, Fonts.Brush), Pal.Hex("FFF6E2"), 2f);
-            Ui.Label(page, "交给哪位已入伙的好汉", 32, Pal.InkSoft, new Vector2(0, 470), new Vector2(760, 50));
-
-            var ids = new List<int>();
-            if (Save.D.joined != null) foreach (var id in Save.D.joined) ids.Add(id);
-            ids.Sort((a, b) =>
-            {
-                int ra = HeroDef.Get((HeroId)a).Rank; if (ra <= 0) ra = 999;
-                int rb = HeroDef.Get((HeroId)b).Rank; if (rb <= 0) rb = 999;
-                return ra.CompareTo(rb);
-            });
-            const float row = 108f;
-            float h = Mathf.Max(200f, ids.Count * row + 24f);
-            var content = Ui.Scroll(page, new Vector2(780, 980), new Vector2(0, -80), h, "who");
-            if (ids.Count == 0)
-            {
-                Ui.Label(content, "还没有入伙的好汉", 36, Pal.InkSoft, Ui.Top(content, 0, 120), new Vector2(700, 80));
-                return;
-            }
-            for (int i = 0; i < ids.Count; i++)
-            {
-                int hero = ids[i];
-                var hd = HeroDef.Get((HeroId)hero);
-                var pos = Ui.Top(content, 0, 16 + i * row + row * 0.5f);
-                var face = Ui.Framed(content, new Vector2(740, 96), pos, Pal.Hex("FBF6EA"), Pal.Hex("C9B89A"), 4f, "framedWho");
-                var rt = face.transform;
-                Ui.Label(rt, hd.Name, 36, Pal.Ink, new Vector2(-250, 16), new Vector2(220, 46), TextAnchor.MiddleLeft, Fonts.Brush);
-                Ui.Label(rt, string.IsNullOrEmpty(hd.Nick) ? "" : hd.Nick, 24, Pal.InkSoft, new Vector2(-250, -24), new Vector2(220, 36), TextAnchor.MiddleLeft);
-                int wearing = Save.WeaponOn(hero);
-                string state = wearing == weaponId ? "正带着这件" : wearing >= 0 ? "带着" + HeroDef.Get((HeroId)wearing).Weapon : "空手";
-                Ui.Label(rt, state, 26, Pal.InkSoft, new Vector2(20, 0), new Vector2(280, 80), TextAnchor.MiddleLeft);
-                bool mine = wearing == weaponId;
-                Ui.CartoonBtn(rt, mine ? "卸下" : "带上", new Vector2(150, 72), new Vector2(270, 0), mine ? Ui.BtnDark : Ui.BtnRed, () =>
-                {
-                    if (mine)
-                    {
-                        Save.UnequipWeapon(weaponId);
-                        Save.Write();
-                    }
-                    else if (!Save.Equip(hero, weaponId, out var err))
-                    {
-                        Nope(err);
-                        return;
-                    }
-                    else Sfx.Play(Snd.Merge);
-                    ShowArmory();
-                }, 32);
-            }
         }
 
         void Recycle(HeroId id)
@@ -548,46 +594,111 @@ namespace Rescue
             int k = (int)id;
             int at = Save.D.weapons.IndexOf(k);
             if (at < 0) return;
+            int value = Save.RecycleValue(k);
             Save.D.weapons.RemoveAt(at);
-            Save.TidyGear();
-            Save.D.coins += Save.RecycleCoins;
+            Save.TidyRack();
+            Save.D.coins += value;
             Save.Write();
             Refresh();
             Sfx.Play(Snd.Merge);
-            Toast("回收得铜钱 " + Save.RecycleCoins);
+            Toast(value > 0 ? "回收得铜钱 " + value : "回收了，腾出一格");
         }
 
-        /// <summary>超过五阶的多余件、和装备中兵器以外的凡器卖掉。返回拿到的铜钱。</summary>
-        int RecycleSpare()
+        /// <summary>超过五阶的多余件、和兵器架以外的凡器回收掉。返回有没有回收。</summary>
+        bool RecycleSpare()
         {
-            int gained = 0;
+            int gained = 0, removed = 0;
             var list = Save.D.weapons;
             var seen = new Dictionary<int, int>();
-            for (int i = 0; i < list.Count; i++)
+            foreach (var id in list)
             {
-                int id = list[i];
                 seen.TryGetValue(id, out var c);
                 seen[id] = c + 1;
             }
             for (int i = list.Count - 1; i >= 0; i--)
             {
                 int id = list[i];
-                bool armed = Save.WearerOf(id) >= 0;
-                bool extra = seen[id] > 5;
-                bool common = !armed && HeroDef.Get((HeroId)id).WGrade == 0;
+                bool extra = seen[id] > Save.MaxWeaponTier;
+                bool common = !Save.OnRack(id) && HeroDef.Get((HeroId)id).WGrade == 0;
                 if (!extra && !common) continue;
                 list.RemoveAt(i);
                 seen[id]--;
-                gained += Save.RecycleCoins;
+                removed++;
+                gained += Save.RecycleValue(id);
             }
-            Save.TidyGear();
-            if (gained <= 0) return 0;
+            Save.TidyRack();
+            if (removed <= 0) return false;
             Save.D.coins += gained;
             Save.Write();
             Refresh();
             Sfx.Play(Snd.Merge);
-            Toast("一键回收得铜钱 " + gained);
-            return gained;
+            Toast(gained > 0 ? "一键回收得铜钱 " + gained : "回收了 " + removed + " 件");
+            return true;
+        }
+
+        // ─────────────────────────── 兵器铺 ───────────────────────────
+
+        public void ShowForge()
+        {
+            var old = _root.Find("forge");
+            if (old) Destroy(old.gameObject);
+            var layer = Panel("兵器铺", out var card, new Vector2(900, 1080));
+            layer.name = "forge";
+            Ui.Label(card, "今天随机三件，打一件升一阶", 32, Pal.InkSoft, new Vector2(0, 410), new Vector2(820, 50));
+            var offers = Save.ForgeOffers();
+            if (offers.Count == 0)
+            {
+                Ui.Label(card, Save.D.weapons.Count == 0 ? "还没缴获兵器\n打仗撑过四波，就有机会缴获" : "手里的兵器都满五阶了", 38, Pal.Ink, new Vector2(0, 40), new Vector2(800, 200));
+                return;
+            }
+            for (int i = 0; i < offers.Count; i++)
+            {
+                int k = offers[i];
+                var d = HeroDef.Get((HeroId)k);
+                var g = Ui.GradeColor(d.WGrade);
+                int n = Mathf.Min(Save.MaxWeaponTier, Save.WeaponCount(k));
+                bool done = Save.D.forgeSold.Contains(k);
+                float y = 250 - i * 250;
+                var row = Ui.Framed(card, new Vector2(820, 226), new Vector2(0, y), Pal.Hex("F2E7CA"), g, 6f, "offer");
+                var t = row.transform;
+                Ui.Box(t, new Vector2(160, 160), new Vector2(-312, 6), g.A(0.22f), Art.Circle, "halo").type = Image.Type.Simple;
+                Ui.Icon(t, Weapons.Icon(d.WKind), 140, new Vector2(-312, 6));
+                Ui.Tag(t, Weapons.Grades[d.WGrade], g, new Vector2(-312, -84), 120, 26);
+                Ui.Label(t, d.Weapon, d.Weapon.Length > 4 ? 40 : 48, Pal.Ink, new Vector2(-30, 60), new Vector2(380, 64), TextAnchor.MiddleLeft, Fonts.Brush);
+                Ui.Label(t, "出自" + d.Name + (Save.OnRack(k) ? "　在兵器架上" : ""), 26, Pal.InkSoft, new Vector2(-30, 16), new Vector2(380, 40), TextAnchor.MiddleLeft);
+                int now = Mathf.RoundToInt((HeroDef.ArmedMul(Mathf.Max(1, n), d.WGrade) - 1f) * 100f);
+                int next = Mathf.RoundToInt((HeroDef.ArmedMul(Mathf.Min(Save.MaxWeaponTier, n + (done ? 0 : 1)), d.WGrade) - 1f) * 100f);
+                string line = done ? $"{n}阶　伤害+{now}%" : $"{n}阶→{n + 1}阶　伤害+{now}%→+{next}%";
+                Ui.Label(t, line, 26, Pal.RedDeep, new Vector2(-30, -30), new Vector2(380, 40), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
+                for (int s = 0; s < Save.MaxWeaponTier; s++)
+                {
+                    var seg = Ui.Box(t, new Vector2(56, 22), new Vector2(-192 + s * 62, -78), g.A(s < n ? 1f : 0.22f), null, "seg");
+                    seg.pixelsPerUnitMultiplier = 2f;
+                }
+                if (done)
+                {
+                    var gone = Ui.Framed(t, new Vector2(212, 104), new Vector2(286, 0), Pal.Hex("4D4642"), Edge, 5f, "framedSold");
+                    Ui.Label(gone.transform, "已打造", 42, Pal.Paper, Vector2.zero, new Vector2(200, 100)).fontStyle = FontStyle.Bold;
+                    continue;
+                }
+                int price = Save.ForgePrice(k);
+                var btn = Ui.Framed(t, new Vector2(212, 104), new Vector2(286, 0), Ui.BtnYellow, Edge, 5f, "framedBuy");
+                Ui.Box(btn.transform, new Vector2(196, 14), new Vector2(0, 34), Color.white.A(0.35f), null, "gloss");
+                Ui.Icon(btn.transform, "coin", 64, new Vector2(-60, 0));
+                var pl = Ui.Label(btn.transform, price.ToString(), 42, Edge, new Vector2(28, 0), new Vector2(130, 100));
+                pl.fontStyle = FontStyle.Bold;
+                if (Save.D.coins < price) pl.color = Pal.Hex("A33A2A");
+                Ui.Tap(btn, () =>
+                {
+                    if (!Save.BuyForge(k, out var err)) { Nope(err); return; }
+                    Sfx.Play(Snd.Merge);
+                    Toast(d.Weapon + "升到 " + Save.WeaponCount(k) + " 阶");
+                    Refresh();
+                    if (_armory) ShowArmory();
+                    ShowForge();
+                });
+            }
+            Ui.Stroke(Ui.Label(card, "铜钱 " + Save.D.coins, 34, Pal.Paper, new Vector2(0, -470), new Vector2(600, 50)), Edge, 2f);
         }
 
         // ─────────────────────────── 好汉谱 ───────────────────────────

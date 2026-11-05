@@ -38,31 +38,52 @@ namespace Rescue
     {
         Text _gmStatus;
 
-        void BuildGm(RectTransform tl)
+        void BuildGm(RectTransform tr)
         {
             if (!Gm.Allowed) return;
-            var btn = Ui.CartoonBtn(tl, "GM", new Vector2(112, 60), new Vector2(80, -760), Ui.BtnRed, ShowGm, 34);
+            var btn = Ui.CartoonBtn(tr, "GM", new Vector2(112, 60), new Vector2(-92, -560), Ui.BtnRed, ShowGm, 34);
             btn.SetAsLastSibling();
         }
 
         public void ShowGm()
         {
-            Panel("GM", out var card, new Vector2(820, 880));
-            _gmStatus = Ui.Label(card, GmFrontier(), 40, Pal.Ink, new Vector2(0, 250), new Vector2(720, 70), TextAnchor.MiddleCenter, Fonts.Brush);
+            Panel("GM", out var card, new Vector2(820, 960));
+            _gmStatus = Ui.Label(card, GmFrontier(), 40, Pal.Ink, new Vector2(0, 330), new Vector2(720, 70), TextAnchor.MiddleCenter, Fonts.Brush);
             _gmStatus.resizeTextForBestFit = true;
             _gmStatus.resizeTextMinSize = 28;
             _gmStatus.resizeTextMaxSize = 40;
-            Ui.Label(card, "只在开发工具里出现。\n跳过按赢下这一回计，好汉照常入伙。", 30, Pal.InkSoft, new Vector2(0, 145), new Vector2(700, 100));
-            Ui.CartoonBtn(card, "跳过本回", new Vector2(560, 116), new Vector2(0, -10), Ui.BtnRed, () => GmSkip(1), 46);
-            Ui.CartoonBtn(card, "连跳五回", new Vector2(560, 116), new Vector2(0, -160), Ui.BtnOrange, () => GmSkip(5), 46);
-            Ui.CartoonBtn(card, "关卡全开", new Vector2(560, 116), new Vector2(0, -310), Ui.BtnGreen, () => GmSkip(ChapterDef.StoryCount), 46, null, Pal.Ink);
+            bool hall = Save.StoryDone;
+            Ui.Label(card, hall
+                ? "只在开发工具里出现。\n聚义厅按赢下一阵计。关卡全开跳到第二十一阵。"
+                : "只在开发工具里出现。\n跳过按赢下这一回计，好汉照常入伙。", 30, Pal.InkSoft, new Vector2(0, 215), new Vector2(700, 100));
+            Ui.CartoonBtn(card, hall ? "跳过本阵" : "跳过本回", new Vector2(560, 110), new Vector2(0, 70), Ui.BtnRed, () => GmSkip(1), 46);
+            Ui.CartoonBtn(card, hall ? "连跳五阵" : "连跳五回", new Vector2(560, 110), new Vector2(0, -64), Ui.BtnOrange, () => GmSkip(5), 46);
+            Ui.CartoonBtn(card, "关卡全开", new Vector2(560, 110), new Vector2(0, -198), Ui.BtnGreen, () => GmSkip(ChapterDef.StoryCount), 46, null, Pal.Ink);
+            Ui.CartoonBtn(card, "清档", new Vector2(560, 110), new Vector2(0, -332), Ui.BtnDark, () =>
+            {
+                Confirm("清档", "本地和云端都换成新档\n铜钱、进度、兵器都没了，不能恢复", "清档", WipeAll);
+            }, 46);
         }
+
+        void WipeAll()
+        {
+            Save.Wipe();
+            CloudSync.FlushNow("wipe");
+            LiveConfig.SubmitRank(true);
+            _selected = 0;
+            Refresh();
+            if (_gmStatus) _gmStatus.text = GmFrontier();
+            Ui.Toast("已换成新档，云端一起盖掉", -640f);
+        }
+
+        /// <summary>聚义厅难度到第二十一阵封顶，再往后只是阵数变大。</summary>
+        const int EndlessCap = 21;
 
         public void GmSkip(int count)
         {
             if (Save.StoryDone)
             {
-                Toast("蓼儿洼已过，聚义厅开着");
+                SkipHall(count);
                 return;
             }
             int before = Save.JoinedCount;
@@ -78,9 +99,30 @@ namespace Rescue
             Ui.Toast(fresh > 0 ? $"跳过 {n} 回，{fresh} 人入伙，{where}" : $"跳过 {n} 回，{where}", -640f);
         }
 
+        void SkipHall(int count)
+        {
+            int n = count;
+            if (count >= ChapterDef.StoryCount)
+            {
+                if (Save.D.endlessRound >= EndlessCap)
+                {
+                    Toast("已经是最难的一阵");
+                    return;
+                }
+                n = EndlessCap - Save.D.endlessRound;
+            }
+            Save.D.endlessBest = Mathf.Max(Save.D.endlessBest, Save.D.endlessRound + n - 1);
+            Save.D.endlessRound += n;
+            Save.Write();
+            _selected = ChapterDef.StoryCount;
+            Refresh();
+            if (_gmStatus) _gmStatus.text = GmFrontier();
+            Ui.Toast($"跳过 {n} 阵，现在第{BattleView.ToCn(Save.D.endlessRound)}阵", -640f);
+        }
+
         static string GmFrontier()
         {
-            if (Save.StoryDone) return "剧情已通 · 聚义厅已开";
+            if (Save.StoryDone) return "聚义厅 · 第" + BattleView.ToCn(Save.D.endlessRound) + "阵";
             var ch = ChapterDef.All[Save.D.unlocked];
             return "下一回　第" + BattleView.ToCn(ch.Index + 1) + "回 · " + ch.Name;
         }
