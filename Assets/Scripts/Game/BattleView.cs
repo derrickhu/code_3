@@ -306,9 +306,9 @@ namespace Rescue
                     Gfx.Sprite(t, Art.Ground("tex_grass", c, r), Color.white, Vector2.zero, full, 8);
                     break;
                 case Cell.Tile:
-                    Gfx.Sprite(t, Art.Ground("tex_grass", c, r), Color.white, Vector2.zero, full, 8);
-                    Gfx.Sprite(t, Art.Rounded, Pal.Shadow, new Vector2(0.02f, -0.03f), new Vector2(TilePad, TilePad), 9);
-                    Gfx.Sprite(t, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(TilePad, TilePad), 10);
+                    // 开好的地铺成石板院子，相邻几格连成一片，不再一格一块白方砖。
+                    Gfx.Sprite(t, Art.Ground("tex_stone", c, r), Pal.Hex("F4E9D2"), Vector2.zero, full, 8);
+                    PaveEdges(t, side, b, c, r);
                     break;
                 case Cell.Water:
                     Gfx.Sprite(t, Art.White, Pal.Water, Vector2.zero, full, 8);
@@ -332,6 +332,20 @@ namespace Rescue
             var color = kind == Cell.Water ? Pal.Water : Color.white;
             for (int i = 1; i <= 3; i++)
                 Gfx.Sprite(t, sprite, color, new Vector2(outward * i, 0f), new Vector2(1.01f, 1.01f), 8);
+        }
+
+        /// <summary>石板院子只在挨着草地、土路的那一边描一道边，院子里面不画格线。</summary>
+        void PaveEdges(Transform t, int side, Board b, int c, int r)
+        {
+            var self = CellWorld(side, c, r);
+            foreach (var d in new[] { new CellPos(1, 0), new CellPos(-1, 0), new CellPos(0, 1), new CellPos(0, -1) })
+            {
+                int nc = c + d.c, nr = r + d.r;
+                if (Board.InBounds(nc, nr) && b.Cells[nc, nr] == Cell.Tile) continue;
+                var delta = (CellWorld(side, nc, nr) - self) * 0.5f;
+                var edge = Gfx.Sprite(t, Art.Stroke, Pal.PathEdge.A(0.55f), delta * 0.96f, new Vector2(1.0f, 0.06f), 9);
+                edge.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Abs(delta.x) > 0.01f ? 90 : 0);
+            }
         }
 
         void PathEdges(Transform t, int side, Board b, int c, int r)
@@ -2547,6 +2561,13 @@ namespace Rescue
             readonly SpriteRenderer _tile, _shadow, _edge, _icon, _weapon;
             readonly TextMesh _glyph, _level;
             readonly Transform _glyphT;
+            /// <summary>有人物图时：兵是小人，好汉字写在举牌小兵的牌面上，脚下一圈按等级上色的底座。</summary>
+            readonly SpriteRenderer _body, _lvBg;
+            readonly Transform _bodyT;
+            readonly bool _figure;
+            readonly float _bodyH, _bodyY;
+            float _face = 1f;
+            const float PlacardY = 0.186f, PlacardGlyph = 0.44f;
             Color _glyphColor = Pal.Ink;
             float _animT;
             Vector2 _lungeOff;
@@ -2563,18 +2584,38 @@ namespace Rescue
                 Side = side;
                 Root = new GameObject("piece" + p.Id).transform;
                 Root.SetParent(parent, false);
-                _shadow = Gfx.Sprite(Root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.07f), new Vector2(0.92f, 0.92f), 20);
-                _tile = Gfx.Sprite(Root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.92f, 0.92f), 21);
-                _edge = Gfx.Sprite(Root, Art.Frame, Pal.Ink.A(0.22f), Vector2.zero, new Vector2(0.92f, 0.92f), 21);
-                bool iconOnly = p.Type == PieceType.Shovel || p.Type == PieceType.Stove;
-                _glyph = Gfx.Text(Root, iconOnly ? "" : p.Glyph.ToString(), Fonts.Brush, 0.74f, Pal.Ink, new Vector2(0, -0.03f), 22);
-                _glyphT = _glyph.transform;
-                _level = Gfx.Text(Root, "", Fonts.Kai, 0.25f, Pal.InkSoft, new Vector2(0.31f, 0.31f), 23);
+                var body = p.Type == PieceType.Unit ? Art.UnitBody(p.Kind) : p.Type == PieceType.HeroChar ? Art.Opt("pc_placard") : null;
+                _figure = body != null;
+                if (_figure)
+                {
+                    bool placard = p.Type == PieceType.HeroChar;
+                    _bodyH = placard ? 1f : 0.92f;
+                    _bodyY = placard ? 0.03f : 0.02f;
+                    _shadow = Gfx.Sprite(Root, Art.SoftDot, Pal.Shadow, new Vector2(0, -0.4f), new Vector2(0.84f, 0.3f), 20);
+                    _tile = Gfx.Sprite(Root, Art.Circle, Pal.Tile, new Vector2(0, -0.38f), new Vector2(0.72f, 0.22f), 21);
+                    _edge = Gfx.Sprite(Root, Art.Frame, Color.clear, Vector2.zero, new Vector2(0.92f, 0.92f), 21);
+                    _body = Gfx.Sprite(Root, body, Color.white, new Vector2(0, _bodyY), Vector2.one * _bodyH, 22);
+                    _bodyT = _body.transform;
+                    _glyph = Gfx.Text(_bodyT, placard ? p.Glyph.ToString() : "", Fonts.Brush, PlacardGlyph, Pal.RedDeep, new Vector2(0, PlacardY), 23);
+                    _glyphT = _glyph.transform;
+                    _lvBg = Gfx.Sprite(Root, Art.Circle, Pal.Ink, new Vector2(0.33f, -0.33f), Vector2.one * 0.27f, 25);
+                    _level = Gfx.Text(Root, "", Fonts.Kai, 0.22f, Pal.Paper, new Vector2(0.33f, -0.335f), 26);
+                }
+                else
+                {
+                    _shadow = Gfx.Sprite(Root, Art.Rounded, Pal.Shadow, new Vector2(0.04f, -0.07f), new Vector2(0.92f, 0.92f), 20);
+                    _tile = Gfx.Sprite(Root, Art.Rounded, Pal.Tile, Vector2.zero, new Vector2(0.92f, 0.92f), 21);
+                    _edge = Gfx.Sprite(Root, Art.Frame, Pal.Ink.A(0.22f), Vector2.zero, new Vector2(0.92f, 0.92f), 21);
+                    bool iconOnly = p.Type == PieceType.Shovel || p.Type == PieceType.Stove;
+                    _glyph = Gfx.Text(Root, iconOnly ? "" : p.Glyph.ToString(), Fonts.Brush, 0.74f, Pal.Ink, new Vector2(0, -0.03f), 22);
+                    _glyphT = _glyph.transform;
+                    _level = Gfx.Text(Root, "", Fonts.Kai, 0.25f, Pal.InkSoft, new Vector2(0.31f, 0.31f), 23);
+                }
                 if (p.Type == PieceType.Shovel)
                     _icon = Gfx.Sprite(Root, Art.Img("shovel"), Color.white, Vector2.zero, Vector2.one * 0.72f, 22);
                 if (p.Type == PieceType.Stove)
                     _icon = Gfx.Sprite(Root, Art.Img("it_stove"), Color.white, new Vector2(0, -0.02f), Vector2.one * 0.8f, 22);
-                if (p.Type == PieceType.Unit)
+                if (p.Type == PieceType.Unit && !_figure)
                 {
                     _weapon = Gfx.Sprite(Root, Art.Img(WeaponImg(p.Kind)), Color.white, Vector2.zero, Vector2.one * WeaponSize, 24);
                     _weapon.enabled = false;
@@ -2610,6 +2651,11 @@ namespace Rescue
                     _level.color = Pal.RedDeep;
                     return;
                 }
+                if (_figure)
+                {
+                    RefreshFigure();
+                    return;
+                }
                 _level.text = Piece.Level.ToString();
                 if (hero)
                 {
@@ -2626,6 +2672,22 @@ namespace Rescue
                     _glyphColor = Pal.ForLevel(Piece.Level);
                     _level.color = Pal.ForLevel(Piece.Level);
                 }
+                _glyph.color = _glyphColor;
+            }
+
+            void RefreshFigure()
+            {
+                bool hero = Piece.Type == PieceType.HeroChar;
+                // 凑成了好汉、也画了这位好汉：金框里站好汉本人，这几块字牌收起来。
+                bool hidden = hero && Hero != null && Art.HeroBody(Hero.Def.Id) != null;
+                _body.enabled = _tile.enabled = _shadow.enabled = _lvBg.enabled = !hidden;
+                _glyph.gameObject.SetActive(!hidden);
+                _level.text = hidden ? "" : Piece.Level.ToString();
+                var lv = hero ? Pal.Gold : Pal.ForLevel(Piece.Level);
+                _tile.color = Color.Lerp(Pal.Tile, lv, hero || Piece.Level > 1 ? 0.7f : 0.35f);
+                _lvBg.color = lv;
+                _level.color = Pal.Paper;
+                _glyphColor = Pal.RedDeep;
                 _glyph.color = _glyphColor;
             }
 
@@ -2686,6 +2748,7 @@ namespace Rescue
                 _animKind = kind;
                 _animDir = dir.sqrMagnitude > 0.001f ? dir : Vector2.up;
                 _lungeReach = 0f;
+                if (Mathf.Abs(_animDir.x) > 0.15f) _face = _animDir.x < 0 ? -1f : 1f;
             }
 
             float _lungeReach;
@@ -2708,7 +2771,14 @@ namespace Rescue
                 _edge.sortingOrder = o + 1;
                 _glyph.GetComponent<MeshRenderer>().sortingOrder = o + 2;
                 if (_icon != null) _icon.sortingOrder = o + 2;
-                _level.GetComponent<MeshRenderer>().sortingOrder = o + 3;
+                if (_body != null)
+                {
+                    _body.sortingOrder = o + 2;
+                    _glyph.GetComponent<MeshRenderer>().sortingOrder = o + 3;
+                    _lvBg.sortingOrder = o + 5;
+                    _level.GetComponent<MeshRenderer>().sortingOrder = o + 6;
+                }
+                else _level.GetComponent<MeshRenderer>().sortingOrder = o + 3;
                 if (_weapon != null) _weapon.sortingOrder = o + 4;
                 if (_chainA != null)
                 {
@@ -2757,7 +2827,7 @@ namespace Rescue
                 Root.localScale = Vector3.one * ((_dragging ? 1.12f : 1f) * (1f + Mathf.Sin(_punch * 20f) * _punch * 0.5f) * pop);
 
                 float sx = 1, sy = 1, morph = 0;
-                if (_animT > 0 && _animKind == UnitKind.Qi)
+                if (_animT > 0 && (_animKind == UnitKind.Qi || _figure))
                 {
                     _animT = Mathf.Max(0, _animT - dt / AnimDur);
                     if (_animT <= 0f) _lungeReach = 0f;
@@ -2811,6 +2881,11 @@ namespace Rescue
                     sx += breathe;
                     sy += breathe;
                 }
+                if (_figure)
+                {
+                    TickFigure(sx, sy);
+                    return;
+                }
                 float g = 1f - morph * 0.85f;
                 _glyphT.localPosition = new Vector2(0, -0.02f);
                 _glyphT.localScale = new Vector3(sx * g, sy * g, 1);
@@ -2827,6 +2902,31 @@ namespace Rescue
                     _edge.color = Pal.GoldBright;
                     _edge.size = new Vector2(1.02f, 1.02f);
                 }
+            }
+
+            /// <summary>小人原地轻轻起伏，出手时朝目标一挤；牌面的字跟着人走，翻面时字不反。</summary>
+            void TickFigure(float sx, float sy)
+            {
+                float idle = _dragging ? 0f : Mathf.Sin(Time.time * 3f + Piece.Id * 1.7f) * 0.025f;
+                _bodyT.localScale = new Vector3(_bodyH * sx * _face, _bodyH * (sy + idle), 1f);
+                _bodyT.localPosition = new Vector2(0f, _bodyY + idle * 0.4f);
+                _glyphT.localScale = new Vector3(_face, 1f, 1f);
+                var tint = Color.white;
+                if (_stunned)
+                {
+                    tint = Color.Lerp(Color.white, Pal.Hex("8A9BB0"), 0.6f);
+                    _bodyT.localPosition += new Vector3(Mathf.Sin(Time.time * 47f) * 0.025f, 0f, 0f);
+                    float a = 0.75f + 0.25f * Mathf.Sin(Time.time * 6f);
+                    _chainA.color = _chainB.color = Pal.Ink.A(0.9f * a);
+                }
+                _body.color = tint;
+                _glyph.color = _stunned ? Color.Lerp(_glyphColor, Pal.InkSoft, 0.65f) : _glyphColor;
+                if (_pickedPiece)
+                {
+                    _edge.color = Pal.GoldBright;
+                    _edge.size = new Vector2(1.02f, 1.02f);
+                }
+                else _edge.color = Color.clear;
             }
 
             public void FadeOutAndDestroy()
@@ -2850,6 +2950,10 @@ namespace Rescue
             public int Seen;
             float _pulse, _glowT;
             float _barW;
+            /// <summary>画了这位好汉时：框里站好汉本人，框底一块红名牌。</summary>
+            readonly SpriteRenderer _back, _body, _plate;
+            Vector2 _bodyAt, _lungeDir;
+            float _bodyH, _lungeT, _face = 1f;
 
             public FrameView(BattleView v, HeroInstance h, int side)
             {
@@ -2865,6 +2969,19 @@ namespace Rescue
                 _seal = Gfx.Text(_root, disha ? "煞" : "罡", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 26);
                 _xpBg = Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.45f), Vector2.zero, new Vector2(1, 0.06f), 25);
                 _xpFg = Gfx.Sprite(_root, Art.White, _tintBright, Vector2.zero, new Vector2(1, 0.06f), 26);
+                var art = Art.HeroBody(h.Def.Id);
+                if (art != null)
+                {
+                    _back = Gfx.Sprite(_root, Art.Rounded, (disha ? Color.Lerp(Pal.Tile, Pal.Purple, 0.25f) : Pal.TileHero).A(0.95f), Vector2.zero, Vector2.one, 19);
+                    _body = Gfx.Sprite(_root, art, Color.white, Vector2.zero, Vector2.one, 23);
+                    _plate = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.RedDeep, Vector2.zero, new Vector2(0.86f, 0.3f), 25);
+                    _nick.text = h.Def.Name;
+                    _nick.font = Fonts.Brush;
+                    _nick.GetComponent<MeshRenderer>().sharedMaterial = Fonts.Brush.material;
+                    Gfx.SetHeight(_nick, 0.24f);
+                    _nick.color = Pal.Paper;
+                    _nick.GetComponent<MeshRenderer>().sortingOrder = 26;
+                }
                 _v = v;
                 _side = side;
                 SetGear(v.M.Sides[side].GearOf(h.Def));
@@ -2905,6 +3022,19 @@ namespace Rescue
                 _frame.size = size;
                 _glow.size = size + new Vector2(0.3f, 0.3f);
                 _nick.transform.localPosition = new Vector2(0, -size.y * 0.5f + 0.02f);
+                if (_body != null)
+                {
+                    _back.size = size - new Vector2(0.06f, 0.06f);
+                    // 好汉整个站在框里：上留一点边，下让出名牌，宽也按图的比例收住，出手时探身也不出框。
+                    const float top = 0.06f, bottom = 0.12f, side = 0.12f;
+                    var r = _body.sprite.rect;
+                    float aspect = r.width / Mathf.Max(r.width, r.height);
+                    _bodyH = Mathf.Min(size.y - top - bottom, (size.x - side * 2f) / aspect) / 1.04f;
+                    _bodyAt = new Vector2(0f, (bottom - top) * 0.5f);
+                    float plateY = -size.y * 0.5f + 0.04f;
+                    _plate.transform.localPosition = new Vector2(0f, plateY);
+                    _nick.transform.localPosition = new Vector2(0f, plateY);
+                }
                 _sealBg.transform.localPosition = new Vector2(size.x * 0.5f - 0.1f, size.y * 0.5f - 0.1f);
                 _seal.transform.localPosition = _sealBg.transform.localPosition;
                 _barW = size.x - 0.5f;
@@ -2933,6 +3063,22 @@ namespace Rescue
                 float k = h.Level >= UnitDef.MaxLevel ? 1f : Mathf.Clamp01(h.Xp / HeroInstance.XpNeed(h.Level));
                 _xpFg.transform.localScale = new Vector3(_barW * k, 0.06f, 1);
                 _xpFg.transform.localPosition = _xpBg.transform.localPosition - new Vector3(_barW * (1 - k) * 0.5f, 0, 0);
+                if (_body != null)
+                {
+                    _lungeT = Mathf.Max(0f, _lungeT - dt / 0.34f);
+                    float reach = Mathf.Sin((1f - _lungeT) * Mathf.PI) * (_lungeT > 0f ? 0.1f : 0f);
+                    float idle = Mathf.Sin(Time.time * 2.6f + h.Id) * 0.02f;
+                    float squash = reach * 0.5f;
+                    _body.transform.localPosition = _bodyAt + _lungeDir * reach + new Vector2(0f, idle * _bodyH * 0.5f);
+                    _body.transform.localScale = new Vector3(_bodyH * (1f + squash) * _face, _bodyH * (1f + idle - squash * 0.6f), 1f);
+                }
+            }
+
+            public void Lunge(Vector2 dir)
+            {
+                _lungeT = 1f;
+                _lungeDir = dir.sqrMagnitude > 0.001f ? dir.normalized : Vector2.up;
+                if (Mathf.Abs(_lungeDir.x) > 0.15f) _face = _lungeDir.x < 0 ? -1f : 1f;
             }
 
             public void Pulse() => _pulse = 1f;
@@ -2959,21 +3105,33 @@ namespace Rescue
                 Root.SetParent(parent, false);
                 bool boss = e.Boss != null;
                 bool elite = e.Def.Kind == EnemyKind.Bu;
-                float h = boss ? 0.55f : elite ? 0.62f : e.Def.Kind == EnemyKind.Jia ? 0.5f : 0.42f;
+                Body = Art.EnemyBody(e.Def.Kind, e.Id, e.Boss?.Name);
+                float h = Body != null ? BodyHeight(e.Def.Kind)
+                    : boss ? 0.55f : elite ? 0.62f : e.Def.Kind == EnemyKind.Jia ? 0.5f : 0.42f;
                 GlyphHeight = h;
                 _big = boss || elite;
                 uint hash = (uint)e.Id * 2654435761u;
                 _jitter = new Vector2(((hash >> 8) & 0xff) / 255f - 0.5f, ((hash >> 16) & 0xff) / 255f - 0.5f) * (_big ? 0f : 0.28f);
                 _baseColor = boss ? Pal.RedDeep : elite ? Pal.Hex("3B2050") : Pal.Ink;
                 _shadow = Gfx.Sprite(Root, Art.SoftDot, Pal.Shadow, new Vector2(0, -h * 0.45f), new Vector2(h * 1.1f, h * 0.35f), 29);
-                if (boss || elite)
-                    _aura = Gfx.Sprite(Root, Art.Blob, (boss ? Pal.Red : Pal.Hex("3B2050")).A(0.35f), Vector2.zero, Vector2.one * (boss ? 1.6f : 0.95f), 30);
-                if (e.Def.Kind == EnemyKind.Jia)
-                    _aura = Gfx.Sprite(Root, Art.Circle, Pal.InkSoft.A(0.25f), Vector2.zero, Vector2.one * 0.6f, 30);
+                if (Body != null)
+                {
+                    if (boss)
+                        _aura = Gfx.Sprite(Root, Art.Blob, Pal.Red.A(0.35f), new Vector2(0, -h * 0.3f), Vector2.one * 1.6f, 30);
+                    _body = Gfx.Sprite(Root, Body, Color.white, Vector2.zero, Vector2.one * h, 32);
+                }
+                else
+                {
+                    if (boss || elite)
+                        _aura = Gfx.Sprite(Root, Art.Blob, (boss ? Pal.Red : Pal.Hex("3B2050")).A(0.35f), Vector2.zero, Vector2.one * (boss ? 1.6f : 0.95f), 30);
+                    if (e.Def.Kind == EnemyKind.Jia)
+                        _aura = Gfx.Sprite(Root, Art.Circle, Pal.InkSoft.A(0.25f), Vector2.zero, Vector2.one * 0.6f, 30);
+                }
                 _glyph = Gfx.Text(Root, e.Glyph, Fonts.Brush, h, _baseColor, Vector2.zero, 32);
+                if (Body != null) _glyph.gameObject.SetActive(false);
                 _cc = Gfx.Text(Root, "", Fonts.Kai, 0.28f, Pal.Hex("5B7FA6"), new Vector2(0.42f, 0.12f), 35);
                 _barW = boss ? 1.3f : elite ? 0.8f : 0.45f;
-                float y = boss ? 0.55f : 0.4f;
+                float y = Body != null ? h * 0.5f + 0.06f : boss ? 0.55f : 0.4f;
                 _hpBg = Gfx.Sprite(Root, Art.White, Pal.Ink.A(0.55f), new Vector2(0, y), new Vector2(_barW + 0.04f, 0.09f), 33);
                 _hpFg = Gfx.Sprite(Root, Art.White, Pal.Hp, new Vector2(0, y), new Vector2(_barW, 0.06f), 34);
                 Root.gameObject.SetActive(false);
@@ -2990,6 +3148,21 @@ namespace Rescue
             public string GlyphText => _glyph.text;
             public float GlyphHeight { get; }
             public Color GlyphColor => _baseColor;
+            /// <summary>画好的官兵小人；null 时照旧写字。图里的人都朝右走。</summary>
+            public readonly Sprite Body;
+            readonly SpriteRenderer _body;
+            public float Face { get; private set; } = 1f;
+            Vector2 _lastPos;
+            bool _hasLast;
+
+            static float BodyHeight(EnemyKind k) => k switch
+            {
+                EnemyKind.Chai => 0.6f,
+                EnemyKind.Jia => 0.74f,
+                EnemyKind.Bu => 0.92f,
+                EnemyKind.Boss => 1.2f,
+                _ => 0.66f,
+            };
 
             Vector2 _kick;
 
@@ -3044,6 +3217,27 @@ namespace Rescue
                     _aura.color = Pal.Red.A(rage ? 0.55f : 0.35f);
                 }
                 _glyph.transform.localRotation = Quaternion.Euler(0, 0, -_kick.x * 40f);
+                if (_body != null) SyncBody(e, pos, squash, grow, haste, rage);
+            }
+
+            /// <summary>小人按走向翻面、走路左右晃；挨打变红，定身发蓝，被催阵发红。</summary>
+            void SyncBody(Enemy e, Vector2 pos, float squash, float grow, bool haste, bool rage)
+            {
+                if (_hasLast)
+                {
+                    float dx = pos.x - _lastPos.x;
+                    if (Mathf.Abs(dx) > 0.002f) Face = dx < 0 ? -1f : 1f;
+                }
+                _lastPos = pos;
+                _hasLast = true;
+                var tint = e.StunT > 0 ? Pal.Hex("9DB4D6") : haste ? Pal.Hex("FFB0A0") : Color.white;
+                if (rage) tint = Color.Lerp(tint, Pal.Hex("FF8070"), 0.5f + 0.3f * Mathf.Sin(Time.time * 10f));
+                _body.color = Color.Lerp(tint, Pal.Hex("FF4030"), _flash * 0.75f);
+                float h = GlyphHeight;
+                float walk = e.StunT > 0 ? 0f : Mathf.Sin(Time.time * 10f + e.Id) * 5f;
+                var t = _body.transform;
+                t.localScale = new Vector3((1f + squash) * Face, 1f - squash * 0.6f, 1f) * h * grow;
+                t.localRotation = Quaternion.Euler(0, 0, walk - _kick.x * 40f);
             }
         }
 
@@ -3075,15 +3269,25 @@ namespace Rescue
                 _root.SetParent(side == 0 ? v._low : v._root, false);
                 _root.localPosition = pos;
                 // 宋江直接站在路上：脚下一团墨影，头顶飘着心，不垫白底。
-                _feet = Gfx.Sprite(_root, Art.SoftDot, Pal.Ink.A(0.34f), new Vector2(0, -0.36f), new Vector2(0.86f, 0.26f), 24);
-                // 帽子只压住宝盖头上沿，字还读得出是「宋」。
-                _glyphY = -0.15f;
-                _glyph = Gfx.Text(_root, "宋", Fonts.Brush, 0.58f, Pal.RedDeep, new Vector2(0, _glyphY), 27);
-                Gfx.Sprite(_root, Art.Img("hat"), Color.white, new Vector2(0.03f, 0.26f), Vector2.one * 0.46f, 28);
+                var song = Art.Opt("pc_song");
+                _feet = Gfx.Sprite(_root, Art.SoftDot, Pal.Ink.A(0.34f), new Vector2(0, song != null ? -0.44f : -0.36f), new Vector2(0.86f, 0.26f), 24);
+                if (song != null)
+                {
+                    _glyphY = 0.02f;
+                    _glyph = Gfx.Text(_root, "", Fonts.Brush, 0.58f, Pal.RedDeep, new Vector2(0, _glyphY), 27);
+                    _song = Gfx.Sprite(_root, song, Color.white, new Vector2(0, _glyphY), Vector2.one * SongH, 27);
+                }
+                else
+                {
+                    // 帽子只压住宝盖头上沿，字还读得出是「宋」。
+                    _glyphY = -0.15f;
+                    _glyph = Gfx.Text(_root, "宋", Fonts.Brush, 0.58f, Pal.RedDeep, new Vector2(0, _glyphY), 27);
+                    Gfx.Sprite(_root, Art.Img("hat"), Color.white, new Vector2(0.03f, 0.26f), Vector2.one * 0.46f, 28);
+                }
                 _shield = Gfx.Sprite(_root, Art.Swirl, Pal.Red.A(0.75f), Vector2.zero, Vector2.one * 1.9f, 29);
                 _shield.enabled = false;
                 // 心飘在帽子上方；对手大本营贴着屏幕顶时改挂脚下，不钻进标题栏。
-                _heartY = pos.y + 0.7f > TopY - 0.5f ? -0.56f : 0.6f;
+                _heartY = pos.y + 0.7f > TopY - 0.5f ? (song != null ? -0.64f : -0.56f) : (song != null ? 0.68f : 0.6f);
                 _heartCount = Gfx.Text(_root, "", Fonts.Brush, 0.26f, Pal.Ink, new Vector2(0.1f, _heartY), 41);
                 _lastHearts = s.Hearts;
                 _inward = pos.x > 0f ? -1f : 1f;
@@ -3097,6 +3301,8 @@ namespace Rescue
 
             const int MaxRow = 5;
             const float HeartSize = 0.24f, HeartGap = 0.25f;
+            const float SongH = 0.98f;
+            readonly SpriteRenderer _song;
 
             /// <summary>
             /// 心直接飘在宋江头顶，每颗描一圈墨边，在土路和草地上都看得清；掉了的心只剩墨边。
@@ -3174,6 +3380,13 @@ namespace Rescue
                 _glyph.color = Color.Lerp(Pal.RedDeep, Pal.Red, _hurt);
                 _feet.color = Color.Lerp(Pal.Ink.A(0.34f), Pal.Red.A(0.5f), _hurt);
                 _glyph.transform.localPosition = new Vector2(Mathf.Sin(Time.time * 60f) * 0.06f * _hurt, _glyphY);
+                if (_song != null)
+                {
+                    _song.color = Color.Lerp(Color.white, Pal.Hex("FF7060"), _hurt);
+                    float idle = Mathf.Sin(Time.time * 2.2f) * 0.02f;
+                    _song.transform.localPosition = new Vector2(Mathf.Sin(Time.time * 60f) * 0.06f * _hurt, _glyphY + idle * 0.4f);
+                    _song.transform.localScale = new Vector3(SongH, SongH * (1f + idle), 1f);
+                }
 
                 _shield.enabled = s.ShieldT > 0;
                 if (_shield.enabled)

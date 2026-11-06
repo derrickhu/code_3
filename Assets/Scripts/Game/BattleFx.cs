@@ -609,6 +609,7 @@ namespace Rescue
         {
             foreach (var v in _pieces.Values)
                 if (v.Hero != null && v.Hero.Id == heroId) v.Lunge(dir);
+            if (_frames.TryGetValue(heroId, out var f)) f.Lunge(dir);
         }
 
         /// <summary>好汉普攻：兵器小小地挥一下，留给大招去出彩。</summary>
@@ -775,16 +776,14 @@ namespace Rescue
                 var start = (Vector2)view.Root.localPosition;
                 var dir = new Vector2(Rnd(-1f, 1f), Rnd(0.6f, 1.2f)).normalized;
                 float spin = Rnd(360f, 720f) * (UnityEngine.Random.value < 0.5f ? -1 : 1);
-                var tm = Gfx.Text(_fxRoot, view.GlyphText, Fonts.Brush, view.GlyphHeight, view.GlyphColor, start, 47, TextAnchor.MiddleCenter, "corpse");
-                var fx = new Fx { Go = tm.gameObject, Tm = tm, Life = 0.55f, A = start, C = view.GlyphColor };
-                fx.Step = (f, k) =>
+                var red = view.Body != null ? Pal.Hex("FF6050") : Pal.Red;
+                EnemyDouble(view, start, 1f, 47, 0.55f, (f, k) =>
                 {
                     f.Go.transform.localPosition = f.A + dir * k * 1.6f + new Vector2(0, -k * k * 1.2f);
                     f.Go.transform.localRotation = Quaternion.Euler(0, 0, spin * k);
                     f.Go.transform.localScale = Vector3.one * (1f + k * 0.4f);
-                    f.Tm.color = Color.Lerp(f.C, Pal.Red, Mathf.Min(1f, k * 3f)).A(1f - k * k);
-                };
-                _fx.Add(fx);
+                    FxTint(f, Color.Lerp(f.C, red, Mathf.Min(1f, k * 3f)).A(1f - k * k));
+                }, false);
             }
         }
     }

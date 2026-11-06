@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Rescue.Sim;
 using UnityEngine;
 
 namespace Rescue
@@ -93,6 +94,34 @@ namespace Rescue
 
         /// <summary>Resources/Art 下的手绘图（生成后抠图），长边 = 1 个世界单位。</summary>
         public static Sprite Img(string name) => Get("img_" + name, () => Resources.Load<Sprite>("Art/" + name) ?? Rounded);
+
+        static readonly Dictionary<string, Sprite> OptCache = new Dictionary<string, Sprite>();
+
+        /// <summary>没画到的图返回 null，调用方照旧写字。</summary>
+        public static Sprite Opt(string name)
+        {
+            if (!OptCache.TryGetValue(name, out var s)) OptCache[name] = s = Resources.Load<Sprite>("Art/" + name);
+            return s;
+        }
+
+        public static Sprite UnitBody(UnitKind k) => Opt(k switch
+        {
+            UnitKind.Dao => "pc_dao",
+            UnitKind.Qiang => "pc_qiang",
+            UnitKind.Gong => "pc_gong",
+            _ => "pc_qi",
+        });
+
+        public static Sprite HeroBody(HeroId id) => Opt("hr_" + id.ToString().ToLowerInvariant());
+
+        public static Sprite EnemyBody(EnemyKind k, int id, string bossName) => k switch
+        {
+            EnemyKind.Zu => Opt(id % 2 == 0 ? "en_zu" : "en_zu2"),
+            EnemyKind.Chai => Opt("en_chai"),
+            EnemyKind.Jia => Opt("en_jia"),
+            EnemyKind.Bu => Opt("en_bu"),
+            _ => bossName == "县尉" ? Opt("en_xianwei") : null,
+        };
 
         /// <summary>地面贴图按格子切成 1×1 的小块，相邻格子取相邻区域，拼起来比较连贯。</summary>
         public static Sprite Ground(string tex, int c, int r)

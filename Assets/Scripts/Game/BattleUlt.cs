@@ -87,6 +87,26 @@ namespace Rescue
             return fx;
         }
 
+        /// <summary>官兵被打飞、被吞、被举起时的替身：画了小人就用小人，没画的照旧用字。小人的底色是白，变色往红里走。</summary>
+        Fx EnemyDouble(EnemyView view, Vector2 pos, float hMul, int order, float life, Action<Fx, float> step, bool rim = true)
+        {
+            if (view.Body == null) return TextFx(view.GlyphText, view.GlyphHeight * hMul, view.GlyphColor, pos, order, life, step, rim);
+            var fx = new Fx { Life = life, C = Color.white, A = pos, Step = step };
+            fx.Go = new GameObject("double");
+            fx.Go.transform.SetParent(_fxRoot, false);
+            fx.Go.transform.localPosition = pos;
+            float h = view.GlyphHeight * hMul;
+            fx.Sr = Gfx.Sprite(fx.Go.transform, view.Body, Color.white, Vector2.zero, new Vector2(h * view.Face, h), order);
+            _fx.Add(fx);
+            return fx;
+        }
+
+        static void FxTint(Fx f, Color c)
+        {
+            if (f.Tm != null) f.Tm.color = c;
+            else if (f.Sr != null) f.Sr.color = c;
+        }
+
         /// <summary>我方放大招：一道墨幅横穿半场，写着好汉名与绝技名。挤在一起放时只出第一道。</summary>
         void UltCutIn(HeroDef d, string word)
         {
@@ -1015,15 +1035,12 @@ namespace Rescue
             var view = EnemyNear(t, 1f);
             if (view != null)
             {
-                var glyph = view.GlyphText;
-                var color = view.GlyphColor;
-                float h = view.GlyphHeight * 1.3f;
-                TextFx(glyph, h, color, t, 47, 0.55f, (f, k) =>
+                EnemyDouble(view, t, 1.3f, 47, 0.55f, (f, k) =>
                 {
                     float e = Mathf.Sin(k * Mathf.PI);
                     f.Go.transform.localPosition = t + Vector2.up * e * 1.8f;
                     f.Go.transform.localRotation = Quaternion.Euler(0, 0, k * 360f);
-                    f.Tm.color = f.C.A(k < 0.9f ? 1f : (1f - k) * 10f);
+                    FxTint(f, f.C.A(k < 0.9f ? 1f : (1f - k) * 10f));
                 }, false);
             }
             After(0.5f, () =>

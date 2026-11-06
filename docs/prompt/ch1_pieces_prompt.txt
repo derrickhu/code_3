@@ -1,0 +1,39 @@
+【sheet A：梁山兵 + 旗手 + 宋江】3 列 x 2 行
+Character sprite sheet, 3 columns x 2 rows, 6 equal cells, each cell one full-body chibi character centered, on a plain pure white background, generous empty margin around each character, characters do not touch or overlap cell borders.
+
+ART STYLE exactly like the reference images: anime chibi Water Margin (Song dynasty China) characters about 3 heads tall, big head, big shiny eyes, clean thick dark outline, soft cel shading, bright clean saturated colors, mobile game sprite quality. Front three-quarter view, standing pose, feet visible.
+
+All Liangshan rebels wear teal-green and brown cloth outfits with a red headband, cheerful brave faces.
+Row 1:
+1. Sabre soldier: young Liangshan rebel holding a broad dao sabre raised at shoulder.
+2. Spearman: Liangshan rebel holding a long red-tasseled spear upright.
+3. Archer: Liangshan rebel holding a wooden bow with a quiver on the back.
+Row 2:
+4. Rider: Liangshan rebel riding a small round brown pony, small lance.
+5. Flag bearer: Liangshan rebel holding a large square golden-yellow banner on a pole with both hands; the banner faces the viewer flat and is COMPLETELY BLANK plain yellow cloth with a red border, big and clearly visible, occupying the upper half of the cell.
+6. Song Jiang: chibi Song Jiang standing, black scholar futou hat, short black beard, green official robe, kind worried face, one hand raised calling for help.
+
+NO TEXT, no letters, no Chinese characters, no symbols on the banner, no numbers, no labels anywhere in the image.
+
+【pc_placard：好汉字牌（取代 sheet A 第 5 格的旗手，旗面太小写不下字）】参考图：sheet A 的旗手
+Single chibi game sprite, square image, plain pure white background. Same style and same outfit as the soldiers in the reference image: young Liangshan rebel, red headband, teal-green vest over tan shirt, brown belt, dark trousers, anime chibi, thick clean dark outline, soft cel shading. The small soldier stands at the bottom center facing the viewer, cheerful, and holds up with BOTH raised arms a BIG square golden-yellow placard board with a thick red lacquered wooden frame and small gold corner caps, held above his head. The placard is very large: it spans about 85% of the image width and about 50% of the image height, occupying the whole top half of the image; the soldier is small below it, his head just under the board. The placard face is COMPLETELY BLANK plain golden-yellow, facing the viewer flat. NO TEXT, no letters, no Chinese characters, no symbols, no emblem, no numbers anywhere in the image.
+
+【sheet B：第一关好汉】2 列 x 2 行
+Character sprite sheet, 2 columns x 2 rows, 4 equal cells, each cell one full-body chibi hero centered, plain pure white background, generous empty margin, no overlap.
+Same ART STYLE as the reference images (anime chibi, 3 heads tall, thick clean dark outline, cel shading, bright colors). Heroic dynamic standing poses, front three-quarter view.
+1. Shi Jin "Nine Dragons": handsome young hero, bare muscular arms and chest covered with blue dragon tattoos, white trousers, red sash, holding a three-pointed double-edged halberd.
+2. Zhu Wu "Divine Strategist": calm Taoist strategist in a light blue robe with a cloud pattern, small goatee, holding a folded formation map scroll and a small command flag (flag blank).
+3. Chen Da "Tiger Leaping the Ravine": fierce sturdy hero in an orange tiger-stripe tunic, wild hair, holding a steel spear mid-leap.
+4. Yang Chun "White-spotted Snake": tall lean hero in white and dark green clothes with a snake-scale pattern, long-handled big blade guandao.
+NO TEXT, no letters, no Chinese characters, no numbers anywhere.
+
+【sheet C：官兵 + 县尉】3 列 x 2 行
+Character sprite sheet, 3 columns x 2 rows, 6 equal cells, each cell one full-body chibi enemy centered, plain pure white background, generous empty margin, no overlap.
+Same ART STYLE as the reference images. All enemies are Song dynasty government troops in dark navy iron armor with red trim, walking pose facing RIGHT (side three-quarter view), comical grumpy faces.
+1. Foot soldier: basic government soldier, round iron helmet with red plume, sabre.
+2. Yamen runner: skinny fast bailiff in black cap and dark blue uniform with red sash, running pose, wooden baton.
+3. Heavy armored soldier: chunky soldier in thick lamellar armor and big round shield, slow heavy stance.
+4. Constable captain: big burly constable chief, black official hat, iron chain lasso in one hand and an iron ruler weapon, menacing.
+5. County sheriff boss: fat county military officer in golden-trimmed armor and red cape, official winged hat, big moustache, holding a command sword, arrogant.
+6. Spear soldier: government soldier with a long spear, round iron helmet with red plume.
+NO TEXT, no letters, no Chinese characters, no numbers anywhere.

@@ -1,0 +1,12 @@
+【home_bg2：首页背景，竖版 9:16】参考图：code_2 home_bg.jpg（只学画风，不学构图）
+Portrait 9:16 mobile game home screen background, bright cheerful cartoon style exactly like the reference image (clean outlines, soft cel shading, saturated fresh colors, sunny sky with fluffy clouds), but a DIFFERENT scene: the Liangshan marsh in Water Margin.
+Top third: blue sky, far misty green mountains; in the upper center a tall rocky mountain island rising from the lake, with a small Song dynasty mountain fortress on top (wooden palisade, a red-roof hall, several apricot-yellow banners fluttering).
+Middle: a wide calm blue-green lake with reed beds and lotus leaves on both sides, a couple of small fishing boats far away; the center of the image is open water and sky, kept simple and uncluttered (UI and a character illustration will be placed there).
+Bottom quarter: grassy lake shore in the foreground with tall reeds at the left and right edges, some rocks, small wild flowers, a weathered wooden signpost at the far left; the bottom center is a plain light grassy area (buttons go there).
+Left and right edges are slightly darker framing foliage so white UI icons stay readable. No characters, no people.
+NO TEXT, no letters, no Chinese characters, no numbers, no signs with writing anywhere.
+
+【home_hero：首页中间插画】参考图：pc_song.png、pc_dao.png、hr_shijin.png
+Single cute chibi illustration on a plain pure white background, same art style as the reference characters (anime chibi about 3 heads tall, thick clean dark outline, soft cel shading, bright colors).
+Scene: Song Jiang (black scholar futou hat, short beard, green robe, as in the reference) sits inside a wooden prison cart cage with thick vertical bars on two big wooden wheels, gripping the bars and looking hopeful, calling for help. On the left a young Liangshan rebel with red headband and teal vest (as in the reference) raises a dao sabre and runs toward the cart to break the lock; on the right Shi Jin with dragon tattoos (as in the reference) swings his halberd at the cage bars. Dynamic, cheerful rescue moment, small dust puffs and motion lines. The whole group fits in a wide composition about 4:3, centered, full figures visible with margin.
+NO TEXT, no letters, no Chinese characters, no numbers anywhere.

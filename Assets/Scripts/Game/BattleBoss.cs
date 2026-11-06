@@ -343,13 +343,13 @@ namespace Rescue
                         if (_enemies.TryGetValue(ev.Flag, out var vv) && vv.Root != null)
                         {
                             var start = (Vector2)vv.Root.localPosition;
-                            TextFx(vv.GlyphText, vv.GlyphHeight, vv.GlyphColor, start, 47, 0.4f, (f, k) =>
+                            EnemyDouble(vv, start, 1f, 47, 0.4f, (f, k) =>
                             {
                                 float e = k * k;
                                 f.Go.transform.localPosition = Vector2.Lerp(start, from, e);
                                 f.Go.transform.localScale = Vector3.one * (1f - e * 0.8f);
                                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, k * 540f);
-                                f.Tm.color = f.C.A(1f - e * 0.5f);
+                                FxTint(f, f.C.A(1f - e * 0.5f));
                             }, false);
                             Streak(start, from, 0f, 0.08f, Pal.RedDeep.A(0.7f), Pal.Red, 0.35f, 44, 0f);
                         }

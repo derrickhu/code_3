@@ -149,7 +149,9 @@ namespace Rescue
             Tween.Pop(title.transform, 0.5f);
             BuildRankPlate(top, new Vector2(0, -470));
 
-            BuildHero(Corner(0.5f, 0.5f, "hero"));
+            var hero = Corner(0.5f, 0.5f, "hero");
+            hero.SetSiblingIndex(1);
+            BuildHero(hero);
 
             var bottom = Corner(0.5f, 0f, "bottom");
             _loadout = Ui.Label(bottom, "", 30, Pal.Willow, new Vector2(0, 680), new Vector2(940, 46));
@@ -274,22 +276,15 @@ namespace Rescue
             Ui.Stroke(Ui.Label(parent, text, 38, Pal.Paper, pos + new Vector2(0, -112), new Vector2(260, 56), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 3f);
         }
 
-        /// <summary>中央：草丛上的小棋盘，宋字戴幞头，旁边一杆枪，下面墨字「梁山」；下方左右切换回目。</summary>
+        /// <summary>中央：梁山兄弟劫囚车救宋江的插画，脚下一团草地影子；下方左右切换回目。</summary>
         void BuildHero(RectTransform c)
         {
             c.anchoredPosition = new Vector2(0, 150);
-            var board = Ui.Icon(c, "home_board", 760, Vector2.zero, "board");
-            board.rectTransform.sizeDelta = new Vector2(760, 410);
-            var spear = Ui.Icon(c, "spear", 200, new Vector2(118, -20));
-            spear.rectTransform.localRotation = Quaternion.Euler(0, 0, 62);
-            var song = Ui.Label(c, "宋", 176, Pal.Ink, new Vector2(4, 18), new Vector2(220, 220), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Stroke(song, Pal.Hex("FFF6E2"), 2.5f);
-            var hat = Ui.Icon(c, "hat", 112, new Vector2(2, 140));
-            hat.rectTransform.localRotation = Quaternion.Euler(0, 0, 6);
-            var lianshan = Ui.Label(c, "梁山", 120, Pal.Hex("9A5B2E").A(0.92f), new Vector2(-20, -150), new Vector2(400, 150), TextAnchor.MiddleCenter, Fonts.Brush);
-            lianshan.rectTransform.localRotation = Quaternion.Euler(0, 0, -6);
-            Bob(song.transform, 0f);
-            Bob(hat.transform, 0.1f);
+            var shadow = Ui.Box(c, new Vector2(700, 80), new Vector2(0, -190), Pal.Shadow.A(0.35f), Art.SoftDot, "heroShadow");
+            shadow.type = Image.Type.Simple;
+            var art = Ui.Icon(c, "home_hero", 800, new Vector2(10, 20), "heroArt");
+            art.rectTransform.sizeDelta = new Vector2(800, 440);
+            Bob(art.transform, 0f);
 
             _selected = Mathf.Clamp(Save.D.unlocked, 0, ChapterDef.StoryCount);
             var strip = Ui.Framed(c, new Vector2(560, 92), new Vector2(0, -280), Pal.Hex("F3E6C6"), Edge, 5f, "chapterStrip");
