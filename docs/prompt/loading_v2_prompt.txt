@@ -1,0 +1,16 @@
+Vertical 9:16 key art for a premium Chinese mobile game loading screen, "rescue Song Jiang" theme from Water Margin. Polished commercial casual-game quality (think top-grossing WeChat minigame key visual), rich but clean.
+
+Characters: use the FIRST reference image for the exact character designs and the chibi cel-shaded style (thick clean dark outlines, big expressive eyes, warm skin, crisp flat shading with soft highlights). Same three characters, same outfits:
+- Li Kui, shirtless with blue swirl tattoos, white pants, red sash, swinging a big axe, roaring.
+- the green-robed young hero with red headband and a curved saber, charging.
+- Song Jiang in green robe and black official hat, inside a wooden prison cart, gripping the bars, hopeful.
+The two heroes are smashing the prison cart open right now: wooden splinters and bars flying, dust burst, motion lines, a sense of impact. Dynamic diagonal composition, characters large, filling the middle band of the image (roughly from 38% to 78% of the height), seen slightly from below, heroic.
+
+Background: use the SECOND reference image for the Chinese ink-wash watercolor world: rice-paper cream, layered misty mountains, the Liangshan stockade on a cliff with a large blank red banner (no writing), marsh reeds. Add warm dawn light breaking through the mist behind the characters (soft golden rim light on the characters), drifting ink-wash clouds, a few red maple leaves flying. Depth: crisp characters in front, softer ink background behind.
+
+Layout rules (very important):
+- Top 34% of the image: open luminous sky and soft mist, calm and uncluttered, with only faint distant peaks and the stockade small at one side, so a big title logo can be placed there later.
+- Bottom 22%: the ground fades into a soft, darker warm ink-brown haze that gets calmer toward the bottom edge, no characters, no plants, no rocks in the bottom 15%, so a progress bar and small legal text can sit there later.
+- Top-left corner area must stay plain sky (a badge goes there).
+
+NO TEXT, no letters, no Chinese characters, no calligraphy, no seals, no logo, no watermark, no signature anywhere in the image. The banner is blank red cloth.

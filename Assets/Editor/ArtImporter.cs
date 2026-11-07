@@ -30,6 +30,11 @@ namespace Rescue.EditorTools
             if (w > 0) ti.spritePixelsPerUnit = System.Math.Max(w, h);
             var file = System.IO.Path.GetFileName(assetPath);
             if (cdn || file.StartsWith("pc_") || file.StartsWith("hr_") || file.StartsWith("en_")) ti.SetPlatformTextureSettings(Figure());
+            if (file.StartsWith("loading."))
+            {
+                ti.maxTextureSize = 2048;
+                ti.SetPlatformTextureSettings(Figure());
+            }
         }
 
         /// <summary>
