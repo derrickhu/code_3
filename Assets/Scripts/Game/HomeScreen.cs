@@ -454,25 +454,35 @@ namespace Rescue
             Toast(Sfx.On ? "声音已打开" : "声音已关闭");
         }
 
+        const string DefaultNotice =
+            "各位好汉：\n\n" +
+            "《营救宋江》已更新，公告如下。\n\n" +
+            "【更新内容】\n" +
+            "1. 更新首页与战场画面。\n" +
+            "2. 优化官兵行进时的朝向。\n" +
+            "3. 修复排行榜名次显示错误。\n\n" +
+            "【排行榜】\n" +
+            "按战绩由高到低排列。\n" +
+            "战绩相同，先达成者居前。\n" +
+            "名单上的名次，与底部「我」一致。\n\n" +
+            "【温馨提示】\n" +
+            "· 登录微信后，同步昵称、头像和进度。\n" +
+            "· 体力与每日次数，北京时间零点刷新。\n" +
+            "· 若遇异常，退出后重新进入。\n\n" +
+            "感谢支持。\n\n" +
+            "《营救宋江》运营组\n" +
+            "2026年11月7日";
+
         void ShowNotice()
         {
             string remote = LiveConfig.Notice;
-            if (!string.IsNullOrEmpty(remote))
-            {
-                Panel(LiveConfig.NoticeTitle, out var live, new Vector2(900, 1300));
-                var body = Ui.Label(live, remote.Replace("\\n", "\n"), 36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 1080), TextAnchor.UpperLeft);
-                body.lineSpacing = 1.15f;
-                return;
-            }
-            Panel("公告", out var card, new Vector2(900, 1300));
-            Ui.Label(card, "· 剧情五十七回，从史家村一路打到蓼儿洼；每赢一回，原著里这一回上山的好汉入伙\n" +
-                "· 好汉谱收齐一百单八将，忠义堂排座次；之后聚义厅自选五将车轮战\n" +
-                "· 座次：喽啰→小校→都头→提辖→步/水/马军头领→八骠骑→五虎将→地煞→天罡→天魁星，每阶分叁贰壹\n" +
-                "· 胜加星，满五星升一小阶；败掉星，没星再败降一小阶，不跌出大阶\n" +
-                "· 兵器分凡、利、宝、神四品，挂上兵器架，凑出好汉按顺序领；兵器铺每天能升阶；六把名兵器各有一招；有渊源的好汉同场触发羁绊\n" +
-                "· 一场最多带两个主动、四个被动道具，在商店背包里点选\n" +
-                "· 打过第五回开放每日一战：人人同一阵，当天首胜得铜钱和兵器",
-                36, Pal.Ink, new Vector2(0, 30), new Vector2(800, 900), TextAnchor.MiddleLeft);
+            bool live = !string.IsNullOrEmpty(remote);
+            Panel(live ? LiveConfig.NoticeTitle : "公告", out var card, new Vector2(900, 1300));
+            // 内衬底边在 -624，正文停在它上面，避免最后一行压到木框。
+            var body = Ui.Label(card, live ? remote.Replace("\\n", "\n") : DefaultNotice,
+                34, Pal.Ink, new Vector2(0, -36), new Vector2(740, 1040), TextAnchor.UpperLeft);
+            body.lineSpacing = 1.02f;
+            body.verticalOverflow = VerticalWrapMode.Truncate;
         }
 
         void Fight() => Fight(_selected);
