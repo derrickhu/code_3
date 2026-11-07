@@ -77,7 +77,11 @@ namespace Rescue
                     else if (top.Length == 0)
                         Ui.Label(list, _boardProvince ? $"{region}还没人上榜，你就是头一个" : "还没人上榜", 36, Pal.Paper.A(0.8f), new Vector2(0, 120), new Vector2(800, 60));
                     else BoardRows(list, top);
-                    MyRowAt(list, -552, data != null ? data.rank : 0, LiveConfig.MyScore, data != null);
+                    // 人就在这页榜上时，底下「我」用他在列表里的名次，避免同分时和上面对不上。
+                    int mineRank = data != null ? data.rank : 0;
+                    for (int i = 0; i < top.Length; i++)
+                        if (top[i].me) { mineRank = i + 1; break; }
+                    MyRowAt(list, -552, mineRank, LiveConfig.MyScore, data != null);
                     _authHit = list.Find("authBtn") as RectTransform;
                     ArmBoard();
                     if (data != null && data.total > 0)

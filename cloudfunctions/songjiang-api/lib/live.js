@@ -140,8 +140,16 @@ async function handleRankList(req) {
 
   let rank = 0;
   if (me) {
-    const above = await col.where({ ...filter, score: _.gt(me.score) }).count();
-    rank = ((above && above.total) || 0) + 1;
+    const at = top.findIndex((r) => r.me);
+    if (at >= 0) {
+      // 人就在这页里时，名次就是列表里的位置，底下「我」和上面对得上。
+      rank = at + 1;
+    } else {
+      // 落到 50 名开外：分高的在前，同分按先上报的在前，和 orderBy 一致。
+      const higher = await col.where({ ...filter, score: _.gt(me.score) }).count();
+      const earlier = await col.where({ ...filter, score: me.score, updatedAt: _.lt(Number(me.updatedAt) || 0) }).count();
+      rank = ((higher && higher.total) || 0) + ((earlier && earlier.total) || 0) + 1;
+    }
   }
   const count = await col.where(filter).count();
   return {
