@@ -849,6 +849,7 @@ namespace Rescue
                         After(0.08f, () => { Impact(to, 0.4f, Pal.Ink.A(0.7f), gold, 1); Kick(to, n, 0.1f); });
                         break;
                 }
+                After(LandTime(look, kit, from, to), () => HeroMark(to, n, ev.Flag == 1));
                 if (ev.Flag == 1)
                 {
                     After(0.06f, () => Impact(to, 0.8f, Pal.RedDeep.A(0.85f), gold, 3));
@@ -858,6 +859,30 @@ namespace Rescue
                 if (mine && gear != null && UnityEngine.Random.value < 0.3f)
                     FloatText(from + new Vector2(0, 0.95f), "用" + GearBadge(gear), Ui.GradeColor(gear.WGrade), 0.3f, 0.7f);
                 if (_frames.TryGetValue(ev.A, out var fv)) fv.Pulse();
+            }
+        }
+
+        /// <summary>好汉每一下打中都带一圈金色墨环和金线，小兵没有，一眼分得出谁打的。</summary>
+        void HeroMark(Vector2 at, Vector2 n, bool crit)
+        {
+            float s = crit ? 1.25f : 0.95f;
+            Ink("fx_enso", Pal.GoldBright.A(0.9f), at, s, 0.34f, Rnd(0, 360), 46, 0.4f, 40f, 0.3f);
+            Ink("fx_lines", Color.Lerp(Pal.GoldBright, Color.white, 0.4f), at, s * 1.1f, 0.22f, Ang(n), 47, 0.5f, 0f, 0.25f);
+        }
+
+        static float LandTime(Look look, HeroDef kit, Vector2 from, Vector2 to)
+        {
+            float dist = (to - from).magnitude;
+            switch (look)
+            {
+                case Look.Bow: return ArrowTime(dist);
+                case Look.Dart: return kit.WKind == WeaponKind.Bow ? ArrowTime(dist) : HurlTime(dist);
+                case Look.Fire: return Mathf.Clamp(0.14f + dist * 0.045f, 0.18f, 0.38f);
+                case Look.Poison: return Mathf.Clamp(0.16f + dist * 0.05f, 0.2f, 0.42f);
+                case Look.Water:
+                case Look.WaterFire: return 0.26f;
+                case Look.Lasso: return 0.15f;
+                default: return 0.07f;
             }
         }
 

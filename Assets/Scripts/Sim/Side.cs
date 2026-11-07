@@ -1528,7 +1528,7 @@ namespace Rescue.Sim
             }
             if (e.Def.Armor > 0 && src == null) dmg *= 1f - e.Def.Armor;
             e.Hp -= dmg;
-            Emit(new SimEvent { Type = Ev.Hit, A = e.Id, Val = dmg, Flag = flag, P = e.Pos });
+            Emit(new SimEvent { Type = Ev.Hit, A = e.Id, B = src != null ? 1 : 0, Val = dmg, Flag = flag, P = e.Pos });
             if (e.Hp > 0) return;
 
             e.Dead = true;

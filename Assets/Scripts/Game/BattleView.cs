@@ -954,7 +954,8 @@ namespace Rescue
                     var w = HeroDef.Get((HeroId)ev.B);
                     var c = Ui.GradeColor(w.WGrade);
                     Ring(pos, 1.8f, c, 0.45f, 45);
-                    FloatText(pos + new Vector2(0, 0.9f), ev.Text, mine ? c : Pal.RedDeep, mine ? 0.32f : 0.26f, 1.6f);
+                    FloatText(pos + new Vector2(0, 0.95f), ev.Text, mine ? c : Pal.RedDeep, mine ? 0.32f : 0.26f, 1.8f);
+                    if (mine) FloatText(pos + new Vector2(0, 0.62f), GearGain(ev.Side, ev.A, w), Pal.Paper, 0.22f, 1.8f);
                     if (_frames.TryGetValue(ev.A, out var fv)) fv.Glow();
                     if (mine) Sfx.Play(Snd.Merge, 0.8f, 1.5f);
                     break;
@@ -976,7 +977,7 @@ namespace Rescue
                     break;
                 case Ev.Hit:
                     if (_enemies.TryGetValue(ev.A, out var hv)) hv.Flash();
-                    if (mine) DamageNumber(World(ev.Side, ev.P), ev.Val, ev.Flag);
+                    if (mine) DamageNumber(World(ev.Side, ev.P), ev.Val, ev.Flag, ev.B == 1);
                     if (mine)
                     {
                         bool heavy = ev.Flag == 1 || ev.Flag == 2;
@@ -1352,22 +1353,25 @@ namespace Rescue
             _fx.Add(fx);
         }
 
-        void DamageNumber(Vector2 pos, float val, int flag)
+        /// <summary>伤害数字。好汉打的用金字、大一号、描暗红边，和小兵的墨字分开。</summary>
+        void DamageNumber(Vector2 pos, float val, int flag, bool hero = false)
         {
             int n = Mathf.Max(1, Mathf.RoundToInt(val));
-            bool big = flag > 0 || n >= 18;
-            float h = flag == 2 || n >= 40 ? 0.52f : big ? 0.38f : 0.26f;
+            bool big = flag > 0 || n >= 18 || hero;
+            float h = flag == 2 || n >= 40 ? 0.52f : flag > 0 ? 0.38f : hero ? 0.34f : big ? 0.38f : 0.26f;
+            if (hero) h *= 1.1f;
             string s = flag == 2 ? "克" + n : flag == 3 ? "半" + n : flag == 1 ? n + "!" : n.ToString();
-            Color c = flag == 2 ? Pal.Red : flag == 1 ? Pal.Gold : flag == 3 ? Pal.Hex("8A5A44") : Pal.Ink;
-            var at = pos + new Vector2(UnityEngine.Random.Range(-0.2f, 0.2f), 0.4f);
+            Color c = flag == 2 ? Pal.Red : flag == 1 ? Pal.Gold : flag == 3 ? Pal.Hex("8A5A44") : hero ? Pal.GoldBright : Pal.Ink;
+            Color edge = hero ? Pal.RedDeep : Pal.Paper;
+            var at = pos + new Vector2(UnityEngine.Random.Range(-0.2f, 0.2f), hero ? 0.5f : 0.4f);
             var fx = new Fx { Life = big ? 0.8f : 0.5f, C = c, A = at };
             fx.Tm = Gfx.Text(_fxRoot, s, Fonts.Kai, h, c, at, 49, TextAnchor.MiddleCenter, "dmg");
             fx.Go = fx.Tm.gameObject;
             var rim = new TextMesh[4];
             for (int i = 0; i < 4; i++)
             {
-                var o = new Vector2(i % 2 == 0 ? -1 : 1, i < 2 ? -1 : 1) * 0.022f;
-                rim[i] = Gfx.Text(fx.Go.transform, s, Fonts.Kai, h, Pal.Paper, o, 48);
+                var o = new Vector2(i % 2 == 0 ? -1 : 1, i < 2 ? -1 : 1) * (hero ? 0.028f : 0.022f);
+                rim[i] = Gfx.Text(fx.Go.transform, s, Fonts.Kai, h, edge, o, 48);
                 rim[i].transform.localScale = Vector3.one;
                 rim[i].characterSize = fx.Tm.characterSize / fx.Go.transform.localScale.x;
             }
@@ -1379,7 +1383,7 @@ namespace Rescue
                 f.Go.transform.localScale = Vector3.one * pop;
                 float a = k < 0.6f ? 1f : 1f - (k - 0.6f) / 0.4f;
                 f.Tm.color = f.C.A(a);
-                foreach (var r in rim) r.color = Pal.Paper.A(0.9f * a);
+                foreach (var r in rim) r.color = edge.A(0.9f * a);
             };
             _fx.Add(fx);
         }
@@ -2297,6 +2301,18 @@ namespace Rescue
             Tween.Pop(_card, 0.18f);
         }
 
+        /// <summary>领到兵器时那一行说明：伤害加多少、兵器自带的那一条。</summary>
+        string GearGain(int side, int heroInstance, HeroDef weapon)
+        {
+            HeroDef wearer = null;
+            foreach (var h in M.Sides[side].Heroes) if (h.Id == heroInstance) { wearer = h.Def; break; }
+            int pct = wearer == null ? 0 : Mathf.RoundToInt((M.Sides[side].GearMul(wearer) - 1f) * 100f);
+            string affix = Weapons.AffixText(weapon.WKind);
+            int colon = affix.IndexOf('：');
+            if (colon >= 0) affix = affix.Substring(colon + 1);
+            return pct > 0 ? $"伤害 +{pct}%　{affix}" : affix;
+        }
+
         static string GearBadge(HeroDef weapon)
         {
             var name = weapon.Weapon;
@@ -3070,9 +3086,12 @@ namespace Rescue
         {
             readonly SpriteRenderer _frame, _glow, _xpBg, _xpFg;
             readonly TextMesh _nick, _seal;
-            SpriteRenderer _armBg, _armIcon;
-            TextMesh _arm;
+            SpriteRenderer _armBg, _armRim, _armIcon;
             SpriteMask _clip;
+            /// <summary>漆底上的姓氏大字和人背后的一团金光，出手时金光跟着亮。</summary>
+            SpriteRenderer _halo, _lvRim, _lvBg;
+            TextMesh _mark, _lv;
+            bool _ultFull;
             HeroDef _gear;
             readonly BattleView _v;
             readonly SpriteRenderer _sealBg;
@@ -3081,6 +3100,15 @@ namespace Rescue
             public int Seen;
             float _pulse, _glowT;
             float _barW;
+            /// <summary>大招蓄力沿金框走：从框底正中往两边爬，左右在框顶会合就满。</summary>
+            LineRenderer _trace;
+            SpriteRenderer _tipL, _tipR, _glint;
+            readonly List<Vector3> _path = new List<Vector3>();
+            readonly List<float> _cum = new List<float>();
+            readonly List<Vector3> _pts = new List<Vector3>();
+            Vector2 _pathSize, _size;
+            float _lastK, _burstT;
+            Gradient _grad;
             /// <summary>画了这位好汉时：框里站好汉本人，框底一块红名牌。</summary>
             readonly SpriteRenderer _back, _body, _plate;
             readonly Sprite[] _art;
@@ -3094,6 +3122,10 @@ namespace Rescue
             /// <summary>三帧出手：蓄力 → 出手 → 收势。出手那一刻在 StrikeK，特效等到那时才放。</summary>
             const float StrikeDur = 0.46f, StrikeK = 0.4f;
             public const float HitDelay = StrikeDur * StrikeK;
+            /// <summary>好汉比框高出这么多，头和兵器探出框顶，一眼比小兵大一号。</summary>
+            const float Pop = 0.3f;
+            /// <summary>框上的排序：漆底 19、大字 20、金光 21、框 22、蓄力线 23、线头 24、人 25、名牌 26、字 27、兵器章 28。</summary>
+            const int BodyOrder = 25;
 
             public FrameView(BattleView v, HeroInstance h, int side, bool quiet = false)
             {
@@ -3103,36 +3135,58 @@ namespace Rescue
                 _tint = disha ? Pal.Purple : Pal.Gold;
                 _tintBright = disha ? Pal.Hex("A57BD1") : Pal.GoldBright;
                 _glow = Gfx.Sprite(_root, Art.Frame, _tintBright.A(0f), Vector2.zero, Vector2.one, 17);
-                _frame = Gfx.Sprite(_root, Art.Frame, _tintBright, Vector2.zero, Vector2.one, 24);
+                _frame = Gfx.Sprite(_root, Art.Frame, _tintBright, Vector2.zero, Vector2.one, 22);
                 _nick = Gfx.Text(_root, h.Def.Nick, Fonts.Kai, 0.2f, disha ? Pal.Purple : Pal.RedDeep, Vector2.zero, 25);
-                _sealBg = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.Red, Vector2.zero, new Vector2(0.26f, 0.26f), 25);
-                _seal = Gfx.Text(_root, disha ? "煞" : "罡", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 26);
-                _xpBg = Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.45f), Vector2.zero, new Vector2(1, 0.06f), 25);
-                _xpFg = Gfx.Sprite(_root, Art.White, _tintBright, Vector2.zero, new Vector2(1, 0.06f), 26);
+                _sealBg = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.Red, Vector2.zero, new Vector2(0.26f, 0.26f), 26);
+                _seal = Gfx.Text(_root, disha ? "煞" : "罡", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 27);
+                // 顶上一条是绝技蓄力，小兵没有，攒满就放大招。
+                _xpBg = Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.6f), Vector2.zero, new Vector2(1, 0.09f), 26);
+                _xpFg = Gfx.Sprite(_root, Art.White, Pal.Red, Vector2.zero, new Vector2(1, 0.06f), 27);
                 var art = Art.HeroFrame(h.Def.Id, 0);
                 WantsArt = art == null && ArtPack.Has(Art.HeroPack(h.Def.Id));
                 if (WantsArt) ArtPack.Ensure(Art.HeroPack(h.Def.Id));
                 if (art != null)
                 {
                     _art = new[] { art, Art.HeroFrame(h.Def.Id, 1) ?? art, Art.HeroFrame(h.Def.Id, 2) ?? art };
-                    _back = Gfx.Sprite(_root, Art.Rounded, (disha ? Color.Lerp(Pal.Tile, Pal.Purple, 0.25f) : Pal.TileHero).A(0.95f), Vector2.zero, Vector2.one, 19);
-                    _body = Gfx.Sprite(_root, art, Color.white, Vector2.zero, Vector2.one, 23);
+                    // 深色漆底压住，米色地上的小兵和好汉一眼分开。
+                    _back = Gfx.Sprite(_root, Art.Rounded, Pal.Hex(disha ? "33204A" : "4A1A14").A(0.94f), Vector2.zero, Vector2.one, 19);
+                    // 人会探出框顶，顶上横条会压脸，蓄力改成沿金框走一圈，线垫在人身后。
+                    _xpBg.enabled = _xpFg.enabled = false;
+                    var tr = new GameObject("trace");
+                    tr.transform.SetParent(_root, false);
+                    _trace = tr.AddComponent<LineRenderer>();
+                    _trace.useWorldSpace = false;
+                    _trace.sharedMaterial = _frame.sharedMaterial;
+                    _trace.sortingOrder = 23;
+                    _trace.widthMultiplier = 0.075f;
+                    _trace.numCapVertices = 3;
+                    _trace.numCornerVertices = 2;
+                    _trace.positionCount = 0;
+                    _tipL = Gfx.Sprite(_root, Art.SoftDot, Color.white.A(0f), Vector2.zero, Vector2.one * 0.26f, 24);
+                    _tipR = Gfx.Sprite(_root, Art.SoftDot, Color.white.A(0f), Vector2.zero, Vector2.one * 0.26f, 24);
+                    _glint = Gfx.Sprite(_root, Art.SoftDot, Color.white.A(0f), Vector2.zero, Vector2.one * 0.42f, 24);
+                    _mark = Gfx.Text(_root, h.Def.Name.Substring(0, 1), Fonts.Brush, 1f, _tintBright.A(0.2f), Vector2.zero, 20);
+                    _halo = Gfx.Sprite(_root, Art.SoftDot, _tintBright.A(0.4f), Vector2.zero, Vector2.one, 21);
+                    _body = Gfx.Sprite(_root, art, Color.white, Vector2.zero, Vector2.one, BodyOrder);
                     _body.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
-                    // 好汉只画在框里，探出去的兵器被框裁掉，不压到上一行的格子。
+                    // 人从框顶探出一截，两侧和脚下仍按框裁，挥出去的兵器不压到隔壁格子。
                     var clip = new GameObject("clip");
                     clip.transform.SetParent(_root, false);
                     _clip = clip.AddComponent<SpriteMask>();
                     _clip.sprite = Art.White;
                     _clip.isCustomRangeActive = true;
-                    _clip.frontSortingOrder = 23;
-                    _clip.backSortingOrder = 22;
-                    _plate = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.RedDeep, Vector2.zero, new Vector2(0.86f, 0.3f), 25);
+                    _clip.frontSortingOrder = BodyOrder;
+                    _clip.backSortingOrder = BodyOrder - 1;
+                    _plate = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.RedDeep, Vector2.zero, new Vector2(0.86f, 0.3f), 26);
                     _nick.text = h.Def.Name;
                     _nick.font = Fonts.Brush;
                     _nick.GetComponent<MeshRenderer>().sharedMaterial = Fonts.Brush.material;
                     Gfx.SetHeight(_nick, 0.24f);
                     _nick.color = Pal.Paper;
-                    _nick.GetComponent<MeshRenderer>().sortingOrder = 26;
+                    _nick.GetComponent<MeshRenderer>().sortingOrder = 27;
+                    _lvRim = Gfx.Sprite(_root, Art.Circle, _tintBright, Vector2.zero, Vector2.one * 0.34f, 27);
+                    _lvBg = Gfx.Sprite(_root, Art.Circle, Pal.Ink, Vector2.zero, Vector2.one * 0.29f, 28);
+                    _lv = Gfx.Text(_root, "", Fonts.Brush, 0.24f, Pal.Paper, Vector2.zero, 29);
                 }
                 _v = v;
                 _side = side;
@@ -3145,22 +3199,21 @@ namespace Rescue
 
             readonly int _side;
 
-            /// <summary>兵器架是局里动态发的，原主凑出来会把兵器要回去，角标跟着换。</summary>
+            /// <summary>
+            /// 兵器架是局里动态发的，原主凑出来会把兵器要回去，角标跟着换。
+            /// 只留一枚品级色的兵器章，不写兵器名：加了什么在领到时飘字说，点开好汉看详情。
+            /// </summary>
             void SetGear(HeroDef gear)
             {
                 _gear = gear;
                 if (_armBg) UnityEngine.Object.Destroy(_armBg.gameObject);
-                if (_arm) UnityEngine.Object.Destroy(_arm.gameObject);
+                if (_armRim) UnityEngine.Object.Destroy(_armRim.gameObject);
                 if (_armIcon) UnityEngine.Object.Destroy(_armIcon.gameObject);
-                _armBg = _armIcon = null;
-                _arm = null;
+                _armBg = _armRim = _armIcon = null;
                 if (gear == null) return;
-                // 兵器架上领来的兵器：前面一个兵器小图，一看就是“手里拿着这件”。
-                string badge = GearBadge(gear);
-                float bw = 0.5f + badge.Length * 0.19f;
-                _armBg = Gfx.Sprite(_root, Art.Rounded, Ui.GradeColor(gear.WGrade), Vector2.zero, new Vector2(bw, 0.3f), 27);
-                _armIcon = Gfx.Sprite(_root, Art.Img(HeroWeaponSprite(gear)), Color.white, Vector2.zero, new Vector2(0.3f, 0.3f), 28);
-                _arm = Gfx.Text(_root, badge, Fonts.Kai, badge.Length > 3 ? 0.14f : 0.16f, Pal.Paper, Vector2.zero, 28);
+                _armRim = Gfx.Sprite(_root, Art.Circle, Pal.Ink, Vector2.zero, Vector2.one * 0.42f, 28);
+                _armBg = Gfx.Sprite(_root, Art.Circle, Ui.GradeColor(gear.WGrade), Vector2.zero, Vector2.one * 0.36f, 29);
+                _armIcon = Gfx.Sprite(_root, Art.Img(Weapons.Icon(gear.WKind)), Color.white, Vector2.zero, Vector2.one * 0.3f, 30);
             }
 
             void Place(HeroInstance h)
@@ -3176,34 +3229,48 @@ namespace Rescue
                 var size = max - min + new Vector2(1.02f, 1.02f);
                 _root.localPosition = center;
                 _frame.size = size;
-                _glow.size = size + new Vector2(0.3f, 0.3f);
+                _size = size;
+                _glow.size = size + Vector2.one * (0.3f + 0.45f * _burstT);
+                if (_trace != null && size != _pathSize) BuildPath(size);
                 _nick.transform.localPosition = new Vector2(0, -size.y * 0.5f + 0.02f);
                 if (_body != null)
                 {
                     _back.size = size - new Vector2(0.06f, 0.06f);
-                    // 帧是方画布，人占 HeroFigure 高、脚踩在画布 FigureFoot 处。人撑满框高，举过头的兵器由遮罩裁掉。
+                    // 帧是方画布，人占 HeroFigure 高、脚踩在画布 FigureFoot 处。人比框高出 Pop，头探出框顶。
                     const float bottom = 0.1f;
-                    float fig = Mathf.Min(size.y - 0.14f, size.x * 1.05f, 1.9f);
-                    _clip.transform.localScale = new Vector3(size.x - 0.1f, size.y - 0.1f, 1f);
+                    float fig = Mathf.Min(size.y - 0.14f + Pop, size.x * 1.15f, 2.1f);
+                    float clipH = size.y - 0.1f + Pop;
+                    _clip.transform.localPosition = new Vector2(0f, Pop * 0.5f);
+                    _clip.transform.localScale = new Vector3(size.x - 0.1f, clipH, 1f);
                     _bodyH = fig / Art.HeroFigure;
                     float feet = -size.y * 0.5f + bottom;
                     _bodyAt = new Vector2(0f, feet + (Art.FigureFoot - 0.5f) * _bodyH);
                     float plateY = -size.y * 0.5f + 0.04f;
                     _plate.transform.localPosition = new Vector2(0f, plateY);
                     _nick.transform.localPosition = new Vector2(0f, plateY);
+                    float markH = Mathf.Min(size.y, size.x) * 0.92f;
+                    Gfx.SetHeight(_mark, markH);
+                    _mark.transform.localPosition = new Vector2(0f, 0.02f);
+                    _halo.transform.localPosition = new Vector2(0f, feet + fig * 0.45f);
+                    _halo.transform.localScale = new Vector3(Mathf.Min(size.x, 1.6f), fig * 1.05f, 1f);
+                    // 横着的好汉等级章挨着名牌右端；竖着的框太窄，挪到名牌上面的右角。
+                    float lvX = Mathf.Min(0.63f, size.x * 0.5f - 0.17f);
+                    var lv = new Vector2(lvX, lvX < 0.6f ? plateY + 0.33f : plateY);
+                    _lvRim.transform.localPosition = lv;
+                    _lvBg.transform.localPosition = lv;
+                    _lv.transform.localPosition = lv + new Vector2(0f, -0.005f);
                 }
                 _sealBg.transform.localPosition = new Vector2(size.x * 0.5f - 0.1f, size.y * 0.5f - 0.1f);
                 _seal.transform.localPosition = _sealBg.transform.localPosition;
                 _barW = size.x - 0.5f;
-                _xpBg.transform.localPosition = new Vector2(-0.12f, size.y * 0.5f - 0.03f);
-                _xpBg.transform.localScale = new Vector3(_barW, 0.06f, 1);
-                if (_arm != null)
+                _xpBg.transform.localPosition = new Vector2(0f, size.y * 0.5f - 0.03f);
+                _xpBg.transform.localScale = new Vector3(_barW + 0.04f, 0.1f, 1);
+                if (_armBg != null)
                 {
-                    float bw = _armBg.size.x;
-                    var p = new Vector2(-size.x * 0.5f + bw * 0.5f + 0.1f, size.y * 0.5f);
+                    var p = new Vector2(-size.x * 0.5f + 0.12f, size.y * 0.5f - 0.12f);
+                    _armRim.transform.localPosition = p;
                     _armBg.transform.localPosition = p;
-                    _armIcon.transform.localPosition = p + new Vector2(-bw * 0.5f + 0.19f, 0f);
-                    _arm.transform.localPosition = p + new Vector2(0.11f, 0f);
+                    _armIcon.transform.localPosition = p;
                 }
             }
 
@@ -3215,13 +3282,123 @@ namespace Rescue
                 float dt = Time.deltaTime;
                 _pulse = Mathf.Max(0, _pulse - dt * 3.2f);
                 _glowT = Mathf.Max(0, _glowT - dt);
-                float a = Mathf.Max(_pulse * 0.95f, Mathf.Min(1, _glowT) * 0.8f, 0.15f + 0.1f * Mathf.Sin(Time.time * 3f));
-                _glow.color = _tintBright.A(a);
-                _frame.color = Color.Lerp(_tint, _tintBright, 0.5f + 0.5f * Mathf.Sin(Time.time * 3f));
-                float k = h.Level >= UnitDef.MaxLevel ? 1f : Mathf.Clamp01(h.Xp / HeroInstance.XpNeed(h.Level));
+                // 绝技蓄力：红色往金色走，攒满时整框发亮。
+                float full = Mathf.Max(0.01f, _v.M.Sides[_side].UltMax(h));
+                float k = Mathf.Clamp01(1f - h.UltCd / full);
+                bool ready = k >= 0.999f;
+                if (ready && !_ultFull)
+                {
+                    _glowT = Mathf.Max(_glowT, 0.8f);
+                    if (_trace != null) Tween.Pop(_root, 0.22f);
+                }
+                if (k < _lastK - 0.3f) _burstT = 1f;
+                _lastK = k;
+                _ultFull = ready;
+                _burstT = Mathf.Max(0f, _burstT - dt * 2.8f);
+                float breathe = 0.5f + 0.5f * Mathf.Sin(Time.time * (ready ? 7f : 3f));
+                float a = Mathf.Max(_pulse * 0.95f, Mathf.Min(1, _glowT) * 0.8f, _burstT, (ready ? 0.5f : 0.18f) + (ready ? 0.2f : 0.08f) * breathe);
+                _glow.color = (_burstT > 0f ? Color.Lerp(_tintBright, Color.white, _burstT * 0.6f) : _tintBright).A(a);
+                if (_trace != null) Trace(k, ready, breathe);
+                else _frame.color = Color.Lerp(_tint, _tintBright, breathe);
+                _xpFg.color = ready ? Color.Lerp(Pal.GoldBright, Color.white, breathe * 0.6f) : Color.Lerp(Pal.Red, Pal.GoldBright, k * k);
                 _xpFg.transform.localScale = new Vector3(_barW * k, 0.06f, 1);
                 _xpFg.transform.localPosition = _xpBg.transform.localPosition - new Vector3(_barW * (1 - k) * 0.5f, 0, 0);
+                if (_lv != null) _lv.text = h.Level.ToString();
+                if (_halo != null) _halo.color = _tintBright.A(0.32f + 0.12f * breathe + _pulse * 0.5f);
                 if (_body != null) Pose(h, dt);
+            }
+
+            /// <summary>金框带子中线的右半圈：框底正中 → 右下角 → 右边 → 右上角 → 框顶正中。圆角和 Art.Frame 一致。</summary>
+            void BuildPath(Vector2 size)
+            {
+                _pathSize = size;
+                _path.Clear();
+                _cum.Clear();
+                const float inset = 3.5f / 64f, outerR = 18f / 64f;
+                float hx = size.x * 0.5f - inset, hy = size.y * 0.5f - inset;
+                float r = Mathf.Min(outerR - inset, hx, hy);
+                void Add(float x, float y)
+                {
+                    var p = new Vector3(x, y, 0f);
+                    _cum.Add(_path.Count == 0 ? 0f : _cum[_cum.Count - 1] + Vector3.Distance(_path[_path.Count - 1], p));
+                    _path.Add(p);
+                }
+                void Arc(float cx, float cy, float from, float to)
+                {
+                    for (int i = 0; i <= 8; i++)
+                    {
+                        float t = Mathf.Lerp(from, to, i / 8f) * Mathf.Deg2Rad;
+                        Add(cx + Mathf.Cos(t) * r, cy + Mathf.Sin(t) * r);
+                    }
+                }
+                Add(0f, -hy);
+                Arc(hx - r, -hy + r, -90f, 0f);
+                Arc(hx - r, hy - r, 0f, 90f);
+                Add(0f, hy);
+            }
+
+            Vector3 PathAt(float s)
+            {
+                int i = 1;
+                while (i < _path.Count - 1 && _cum[i] < s) i++;
+                float seg = _cum[i] - _cum[i - 1];
+                return Vector3.Lerp(_path[i - 1], _path[i], seg > 1e-5f ? Mathf.Clamp01((s - _cum[i - 1]) / seg) : 1f);
+            }
+
+            static Vector3 Mirror(Vector3 p) => new Vector3(-p.x, p.y, 0f);
+
+            /// <summary>
+            /// 蓄力：金框先压成暗铜色的槽，亮金线从框底正中往左右两边爬，线头一颗光点。
+            /// 满了整圈金框亮起来，一道白光绕框跑；放出大招那下框猛地一闪、外光往外一扩。
+            /// </summary>
+            void Trace(float k, bool ready, float breathe)
+            {
+                float len = _cum[_cum.Count - 1];
+                float s = len * k;
+                _pts.Clear();
+                if (k > 0.005f)
+                {
+                    for (int i = _path.Count - 1; i >= 1; i--) if (_cum[i] < s) _pts.Add(Mirror(_path[i]));
+                    _pts.Insert(0, Mirror(PathAt(s)));
+                    _pts.Add(_path[0]);
+                    for (int i = 1; i < _path.Count; i++) if (_cum[i] < s) _pts.Add(_path[i]);
+                    _pts.Add(PathAt(s));
+                }
+                _trace.positionCount = _pts.Count;
+                for (int i = 0; i < _pts.Count; i++) _trace.SetPosition(i, _pts[i]);
+
+                var hot = Color.Lerp(_tintBright, Color.white, 0.7f);
+                var lit = ready ? Color.Lerp(_tintBright, Color.white, 0.15f + 0.3f * breathe) : _tintBright;
+                var root = ready ? lit : Color.Lerp(_tint, _tintBright, 0.4f);
+                float edge = Mathf.Clamp(0.06f / Mathf.Max(0.05f, k), 0.02f, 0.3f);
+                var g = _grad ??= new Gradient();
+                g.SetKeys(
+                    new[] { new GradientColorKey(ready ? lit : hot, 0f), new GradientColorKey(lit, edge), new GradientColorKey(root, 0.5f), new GradientColorKey(lit, 1f - edge), new GradientColorKey(ready ? lit : hot, 1f) },
+                    new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) });
+                _trace.colorGradient = g;
+                _trace.widthMultiplier = ready ? 0.085f : 0.075f;
+
+                var groove = Color.Lerp(_tint, Pal.Ink, 0.6f);
+                var band = ready ? Color.Lerp(_tintBright, Color.white, 0.2f * breathe) : groove;
+                _frame.color = Color.Lerp(band, Color.white, _burstT);
+
+                bool tips = !ready && k > 0.005f;
+                float flick = 0.85f + 0.3f * Mathf.Sin(Time.time * 17f);
+                _tipL.color = _tipR.color = hot.A(tips ? 0.9f : 0f);
+                _tipL.transform.localScale = _tipR.transform.localScale = Vector3.one * 0.26f * flick;
+                if (tips)
+                {
+                    var p = PathAt(s);
+                    _tipR.transform.localPosition = p;
+                    _tipL.transform.localPosition = Mirror(p);
+                }
+
+                _glint.color = Color.white.A(ready ? 0.85f : 0f);
+                if (ready)
+                {
+                    float lap = Mathf.Repeat(Time.time * 0.9f, 1f) * len * 2f;
+                    _glint.transform.localPosition = lap < len ? PathAt(lap) : Mirror(PathAt(len * 2f - lap));
+                }
             }
 
             void Pose(HeroInstance h, float dt)
