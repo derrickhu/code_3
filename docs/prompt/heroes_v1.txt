@@ -1,0 +1,32 @@
+【好汉 v1：一人一张横条，三个动作：站 / 蓄力 / 出手】
+原图存 game_assets/code_3/assets/raw/heroes/hero_<id小写>.jpg，16:9，风格参考图 Assets/Resources/Art/hr_shijin.png（已有立绘的史进、朱武、陈达、杨春用各自的 hr_ 图当参考）。
+清单在同目录 heroes_v1.tsv：id、外貌、动作类型、兵器/道具。
+
+模板（{} 按清单替换）：
+Game sprite strip: exactly 3 poses of the SAME character side by side in one row, on a plain flat light grey background (#D9D9D9), wide empty space between the poses, poses never touch or overlap.
+Character: {name_en} from Water Margin — {look}.
+Style: same as the reference image — cute chibi Water Margin (Song dynasty) hero, big head small body, thick dark brown outline, clean cel shading, bright saturated colors, mobile game sprite. Identical outfit, colors, hair and weapon in all three poses.
+All three in 3/4 side view facing RIGHT, full body visible, feet on the same ground line, same scale.
+Pose 1 (left): {pose1}
+Pose 2 (middle): {pose2}
+Pose 3 (right): {pose3}
+NO TEXT, no letters, no calligraphy, no labels, no numbers, no ground shadows, no borders, no grid lines.
+
+动作类型（{w} = 兵器/道具）：
+slash   1 ready stance, {w} held low in front. | 2 wind-up, {w} raised high above and behind the head, body leaning back, coiled. | 3 strike, big downward diagonal slash toward the right, {w} swung all the way down in front, body lunging forward, front foot stepping out.
+heavy   1 ready stance, {w} held upright beside the body. | 2 wind-up, {w} swung far back over the shoulder with both hands, body twisted. | 3 strike, {w} swept down and forward to the right in a huge arc, body lunging forward.
+thrust  1 ready stance, {w} held upright beside the body. | 2 wind-up, crouched low, {w} pulled far back horizontally at waist height pointing right. | 3 strike, full forward lunge thrusting {w} horizontally to the right, fully extended.
+smash   1 ready stance, {w} resting on the shoulder. | 2 wind-up, {w} raised high overhead with both hands. | 3 strike, {w} smashed down hard in front toward the right, body bent forward.
+axe     1 ready stance, {w} held low at the sides. | 2 wind-up, {w} raised high above and behind the head, body leaning back. | 3 strike, {w} chopped down hard in front toward the right, body lunging forward.
+bow     1 ready stance, {w} held down at the side. | 2 wind-up, {w} raised toward the right, string pulled fully back to the cheek, arrow aimed right. | 3 just released, string snapped forward, drawing hand flung back open, no arrow on the bow.
+xbow    1 ready stance, {w} held at the waist. | 2 wind-up, {w} raised to the shoulder, aiming right, one eye closed. | 3 firing, {w} kicking back with recoil, bolt just shot, small flash at the front.
+throw   1 ready stance, holding {w} in one hand. | 2 wind-up, throwing arm drawn far back behind the head, other arm pointing right. | 3 throw, arm whipped forward to the right, {w} just released and flying right, hand open.
+punch   1 fighting guard, both fists raised. | 2 wind-up, one fist pulled back at the hip, body coiled low. | 3 full straight punch to the right, arm fully extended, body lunging.
+stab    1 ready stance, {w} held reversed in both hands. | 2 wind-up, crouched low, {w} drawn back. | 3 lunging stab to the right, {w} driven forward, body low and fast.
+lasso   1 ready stance, coiled {w} in one hand, sword in the other. | 2 wind-up, {w} swirling in a big loop above the head. | 3 {w} flung forward to the right, rope stretched out straight.
+chain   1 ready stance, {w} coiled in hand. | 2 wind-up, {w} whirling in a circle overhead. | 3 {w} lashed forward to the right, fully extended.
+cast    1 ready stance, {w} held upright in front of the face. | 2 wind-up, {w} raised to the sky, other hand making a Taoist hand seal, robes fluttering. | 3 {w} pointed forward to the right, glowing magic swirl at the tip.
+pour    1 ready stance, holding {w}. | 2 wind-up, {w} lifted high, about to fling. | 3 flinging the contents of {w} forward to the right, a splash arc flying out.
+cannon  1 standing beside a small bronze cannon on wooden wheels pointing right. | 2 kneeling, lighting the cannon fuse with a torch. | 3 cannon firing to the right with a big muzzle flash and smoke puff, gunner leaning back covering ears.
+head    1 fighting guard, fists up. | 2 crouched, head lowered like a charging bull. | 3 charging headbutt forward to the right, body horizontal.
+support 1 standing calmly holding {w}. | 2 raising {w} up high, gathering power, small sparkles. | 3 presenting {w} forward to the right, golden sparkles bursting out.

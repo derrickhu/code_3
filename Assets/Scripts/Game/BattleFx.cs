@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Rescue
 {
-    /// <summary>局内攻击与受击表现：水墨笔触的刀光、粗箭、枪芒、马冲，每位好汉按兵器定制。</summary>
+    /// <summary>局内攻击与受击表现：刀走弧、枪走直线、箭是一支直射的箭，其余兵器各按自己的出手来。</summary>
     public sealed partial class BattleView
     {
         sealed class Later
@@ -147,99 +147,165 @@ namespace Rescue
             }
         }
 
-        /// <summary>粗笔箭：带白描边、抛物线、拖尾，命中后插在敌人身上抖一下。</summary>
+        /// <summary>
+        /// 一支真箭：箭头朝前、平直飞过去，身后拖一条细光。size 是箭身长度。
+        /// ink、rim 只染离弦的闪光和尾光，箭本身是木杆、铁簇、红羽。
+        /// </summary>
         void InkArrow(Vector2 from, Vector2 to, Color ink, Color rim, float size, float flight, Action onHit)
         {
             var d = to - from;
-            float dist = d.magnitude;
-            float arc = Mathf.Min(0.45f, dist * 0.1f);
-            Vector2 At(float k) => Vector2.Lerp(from, to, k) + Vector2.up * Mathf.Sin(k * Mathf.PI) * arc;
-            float RotAt(float k) => Ang(d + Vector2.up * (arc * Mathf.PI * Mathf.Cos(k * Mathf.PI)));
+            float dist = Mathf.Max(0.01f, d.magnitude);
+            var n = d / dist;
+            float drop = Mathf.Min(0.06f, dist * 0.01f);
+            Vector2 At(float k) => Vector2.Lerp(from, to, k) + Vector2.down * drop * k * k;
 
-            NewSpriteFx(Art.Img("fx_thrust"), rim.A(0.45f), from, new Vector2(0.01f, size * 0.3f), 41, flight, (f, k) =>
+            Ink("fx_lines", rim.A(0.9f), from, Mathf.Clamp(size * 0.55f, 0.28f, 0.6f), 0.09f, Ang(n), 45, 0.25f);
+
+            float thick = Mathf.Clamp(0.012f + size * 0.005f, 0.014f, 0.026f);
+            NewSpriteFx(Art.White, rim.A(0.4f), from, new Vector2(0.02f, thick), 41, flight, (f, k) =>
             {
-                var p = At(k);
-                var tail = At(Mathf.Max(0f, k - 0.45f));
-                var seg = p - tail;
-                float l = Mathf.Max(0.01f, seg.magnitude);
-                f.Go.transform.localPosition = (p + tail) * 0.5f;
-                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(seg) + 180f);
-                f.Go.transform.localScale = new Vector3(l, size * 0.4f, 1);
+                var head = At(k);
+                var tail = At(Mathf.Max(0f, k - 0.1f));
+                var seg = head - tail;
+                f.Go.transform.localPosition = (head + tail) * 0.5f;
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(seg.sqrMagnitude > 1e-6f ? seg : n));
+                f.Go.transform.localScale = new Vector3(Mathf.Max(0.02f, seg.magnitude), thick, 1);
+                f.Sr.color = f.C.A(f.C.a * (1f - k));
             });
 
+            NewSpriteFx(Art.Img("fx_shaft"), Color.white, from, Vector2.one * size, 47, flight, (f, k) =>
+            {
+                var p = At(k);
+                var prev = At(Mathf.Max(0f, k - 0.05f));
+                var vel = p - prev;
+                f.Go.transform.localPosition = p;
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(vel.sqrMagnitude > 1e-6f ? vel : n));
+                if (k >= 1f && f.F == 0f)
+                {
+                    f.F = 1f;
+                    onHit?.Invoke();
+                }
+            });
+        }
+
+        /// <summary>箭簇扎进目标，尾羽轻颤一下再淡掉。size 与飞过来的那支一样长。</summary>
+        void StuckArrow(Vector2 at, Vector2 dir, Color ink, float size)
+        {
+            var n = dir.sqrMagnitude > 1e-4f ? dir.normalized : Vector2.right;
+            float rot = Ang(n);
+            var p = at - n * size * 0.42f;
+            NewSpriteFx(Art.Img("fx_shaft"), Color.white, p, Vector2.one * size, 36, 0.7f, (f, k) =>
+            {
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, rot + Mathf.Sin(k * 22f) * 3.5f * (1f - k));
+                f.Sr.color = Color.white.A(k < 0.62f ? 1f : (1f - k) / 0.38f);
+            });
+        }
+
+        /// <summary>好汉放箭：从胸口平直射向对方胸口，扎住。</summary>
+        void ShootArrow(Vector2 from, Vector2 to, Vector2 n, float len, Color trail, bool mine)
+        {
+            var muzzle = from + n * 0.25f + Vector2.up * 0.18f;
+            var chest = to + Vector2.up * 0.2f;
+            InkArrow(muzzle, chest, Pal.Hex("8A1C1C"), trail, len, ArrowTime((chest - muzzle).magnitude), () =>
+            {
+                if (mine) Sfx.Play(Snd.ArrowHit, 0.35f);
+                StuckArrow(chest, chest - muzzle, Pal.Hex("8A1C1C"), len);
+                Ink("fx_lines", trail, chest, 0.38f, 0.1f, Ang(n), 46, 0.28f);
+                Kick(to, n, 0.1f);
+            });
+        }
+
+        /// <summary>刀从人身上砍到目标：刀光扫过去。</summary>
+        void SlashTo(Vector2 from, Vector2 to, float size, Color ink, Color rim)
+        {
+            var d = to - from;
+            var n = d.sqrMagnitude > 1e-4f ? d.normalized : Vector2.up;
+            float sweep = n.x < 0f ? -1f : 1f;
+            float rot = Ang(n) - 180f;
+            var a = from + n * Mathf.Min(0.4f, d.magnitude * 0.28f);
+            var b = to;
+            const float life = 0.2f;
             for (int layer = 0; layer < 2; layer++)
             {
                 bool back = layer == 0;
-                float sz = size * (back ? 1.14f : 1f);
-                bool last = layer == 1;
-                NewSpriteFx(Art.Img("fx_arrow"), back ? rim : ink, from, Vector2.one * sz, 42 + layer, flight, (f, k) =>
+                float sz = size * (back ? 1.08f : 1f);
+                var c = back ? rim : ink;
+                NewSpriteFx(Art.Img("fx_crescent"), c, a, Vector2.one * sz * 0.7f, 44 + layer, life, (f, k) =>
                 {
-                    f.Go.transform.localPosition = At(k);
-                    f.Go.transform.localRotation = Quaternion.Euler(0, 0, RotAt(k));
-                    if (last && k >= 1f) onHit?.Invoke();
+                    float e = Tween.OutCubic(k);
+                    f.Go.transform.localPosition = Vector2.Lerp(a, b, e);
+                    f.Go.transform.localRotation = Quaternion.Euler(0, 0, rot + sweep * Mathf.Lerp(70f, -50f, e));
+                    float s = sz * Mathf.Lerp(0.6f, 1.05f, e);
+                    f.Go.transform.localScale = new Vector3(s, s * sweep, 1);
+                    f.Sr.color = f.C.A(f.C.a * (k < 0.55f ? 1f : 1f - (k - 0.55f) / 0.45f));
                 });
             }
         }
 
-        /// <summary>箭插在目标身上：尾羽抖两下再淡出。</summary>
-        void StuckArrow(Vector2 at, Vector2 dir, Color ink, float size)
-        {
-            float rot = Ang(dir);
-            var p = at - dir.normalized * size * 0.25f;
-            NewSpriteFx(Art.Img("fx_arrow"), ink, p, Vector2.one * size * 0.8f, 36, 0.4f, (f, k) =>
-            {
-                f.Go.transform.localRotation = Quaternion.Euler(0, 0, rot + Mathf.Sin(k * 40f) * 10f * (1f - k));
-                f.Sr.color = f.C.A(k < 0.5f ? 1f : (1f - k) * 2f);
-            });
-        }
-
-        /// <summary>骑兵冲锋：战马从棋子冲到敌人面前、撞上、再跑回去，一路扬尘。</summary>
-        void Charge(Vector2 from, Vector2 to, float size, Color tint, Action onHit)
+        /// <summary>枪、叉、拳：一小截枪芒从人身上刺到目标，不拉成一道贯穿的光。</summary>
+        void Poke(Vector2 from, Vector2 to, Color core, float thick)
         {
             var d = to - from;
-            var n = d.sqrMagnitude > 1e-4f ? d.normalized : Vector2.up;
-            var end = to - n * 0.3f;
-            bool flip = n.x > 0;
-            bool hit = false;
-            var horse = NewSpriteFx(Art.Img("horse"), tint, from, Vector2.one * size, 46, 0.42f, null);
-            horse.Step = (f, k) =>
+            float dist = Mathf.Max(0.01f, d.magnitude);
+            var n = d / dist;
+            var start = from + n * 0.16f;
+            var end = to + n * 0.08f;
+            float flight = Mathf.Clamp(0.08f + dist * 0.02f, 0.1f, 0.18f);
+            float len = Mathf.Clamp(dist * 0.38f, 0.28f, 0.7f) * Mathf.Clamp(thick / 0.05f, 0.7f, 1.2f);
+            NewSpriteFx(Art.Img("fx_thrust"), Color.white, start, new Vector2(len, len), 45, flight, (f, k) =>
             {
-                Vector2 p;
-                if (k < 0.42f) { float e = k / 0.42f; p = Vector2.Lerp(from, end, e * e); }
-                else if (k < 0.55f) p = end + n * Mathf.Sin((k - 0.42f) / 0.13f * Mathf.PI) * 0.08f;
-                else p = Vector2.Lerp(end, from, Tween.OutCubic((k - 0.55f) / 0.45f));
-                float gallop = Mathf.Abs(Mathf.Sin(k * Mathf.PI * 5f));
-                f.Go.transform.localPosition = p + Vector2.up * gallop * 0.08f;
-                float lean = k < 0.42f ? -14f : k < 0.55f ? 8f : 0f;
-                f.Go.transform.localRotation = Quaternion.Euler(0, 0, (flip ? -lean : lean) + Mathf.Sin(k * 30f) * 4f);
-                bool back = k >= 0.55f;
-                float sx = size * ((flip ^ back) ? -1f : 1f);
-                f.Go.transform.localScale = new Vector3(sx * (k < 0.42f ? 1.08f : 1f), size, 1);
-                float a = Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.3f));
-                f.Sr.color = tint.A(a);
-                f.A = p;
-                if (!hit && k >= 0.42f) { hit = true; onHit?.Invoke(); }
-            };
-            horse.A = from;
-
-            NewSpriteFx(Art.Img("fx_thrust"), Steel.A(0.5f), from, new Vector2(0.01f, 0.3f), 45, 0.2f, (f, k) =>
-            {
-                var p = horse.A;
-                var seg = p - from;
-                float l = Mathf.Max(0.01f, seg.magnitude);
-                f.Go.transform.localPosition = (p + from) * 0.5f;
-                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(n) + 180f);
-                f.Go.transform.localScale = new Vector3(l, 0.45f * (1f - k), 1);
-                f.Sr.color = f.C.A(0.5f * (1f - k));
+                float e = Tween.OutCubic(Mathf.Min(1f, k));
+                var head = Vector2.Lerp(start, end, e);
+                f.Go.transform.localPosition = head - n * len * 0.5f;
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(n));
+                f.Go.transform.localScale = new Vector3(len, len, 1);
+                float fade = k < 0.7f ? 1f : (1f - k) / 0.3f;
+                f.Sr.color = Color.Lerp(core, Color.white, 0.45f).A(0.95f * fade);
             });
-
-            for (int i = 0; i < 2; i++)
-            {
-                float t = 0.05f + i * 0.07f;
-                var p = Vector2.Lerp(from, end, (t / 0.17f) * (t / 0.17f) * 0.8f) + new Vector2(Rnd(-0.1f, 0.1f), -0.22f);
-                After(t, () => DustPuff(p, Rnd(0.38f, 0.5f)));
-            }
+            After(flight, () => Ink("fx_lines", Color.white.A(0.9f), to, 0.32f, 0.1f, Ang(n), 46, 0.22f));
         }
+
+        /// <summary>火球从人身上飞到目标，落地再炸开。</summary>
+        void Flame(Vector2 from, Vector2 to, float size, Action onHit)
+        {
+            var d = to - from;
+            float dist = Mathf.Max(0.01f, d.magnitude);
+            var n = d / dist;
+            float flight = Mathf.Clamp(0.14f + dist * 0.045f, 0.18f, 0.38f);
+            NewSpriteFx(Art.Img("fx_fire"), Fire, from + n * 0.2f, Vector2.one * size * 0.35f, 45, flight, (f, k) =>
+            {
+                f.Go.transform.localPosition = Vector2.Lerp(from + n * 0.2f, to, k);
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, Ang(n) - 90f);
+                float s = size * Mathf.Lerp(0.32f, 0.7f, k);
+                f.Go.transform.localScale = new Vector3(s, s * 1.2f, 1);
+                if (k >= 1f && f.F == 0f)
+                {
+                    f.F = 1f;
+                    onHit?.Invoke();
+                }
+            });
+        }
+
+        /// <summary>暗器、毒烟：抛一条弧，落到了再爆。</summary>
+        void Lob(Vector2 from, Vector2 to, Color c, float size, Action onHit)
+        {
+            float dist = Mathf.Max(0.01f, (to - from).magnitude);
+            float flight = Mathf.Clamp(0.16f + dist * 0.05f, 0.2f, 0.42f);
+            float arc = Mathf.Min(0.55f, dist * 0.16f);
+            NewSpriteFx(Art.Circle, c, from, Vector2.one * size, 45, flight, (f, k) =>
+            {
+                f.Go.transform.localPosition = Vector2.Lerp(from, to, k) + Vector2.up * Mathf.Sin(k * Mathf.PI) * arc;
+                f.Go.transform.localScale = Vector3.one * size * Mathf.Lerp(1f, 0.65f, k);
+                if (k >= 1f && f.F == 0f)
+                {
+                    f.F = 1f;
+                    onHit?.Invoke();
+                }
+            });
+        }
+
+        static float HurlTime(float dist) => Mathf.Clamp(0.14f + dist * 0.045f, 0.16f, 0.42f);
+        static float ArrowTime(float dist) => Mathf.Clamp(0.12f + dist * 0.05f, 0.16f, 0.34f);
 
         void DustPuff(Vector2 p, float size)
         {
@@ -355,7 +421,11 @@ namespace Rescue
             var dir = to - from;
             var n = dir.sqrMagnitude > 1e-4f ? dir.normalized : Vector2.up;
             int lv = Mathf.Max(1, (int)ev.Val);
-            if (_pieces.TryGetValue(ev.A, out var pv)) pv.Attack(kind, n);
+            float dist = dir.magnitude;
+            bool figure = _pieces.TryGetValue(ev.A, out var pv);
+            if (figure) pv.Attack(kind, n, dist);
+            // 特效等兵的出手帧再出：刀落下、枪刺出、箭离弦、马撞上。
+            float hit = figure ? PieceView.HitDelay(kind, lv) : 0f;
             var lvc = Pal.ForLevel(lv);
             var ink = Color.Lerp(Pal.Ink, lvc, 0.55f);
             var rim = lv >= 4 ? Color.Lerp(Pal.GoldBright, Color.white, 0.35f) : Steel;
@@ -364,47 +434,70 @@ namespace Rescue
             switch (kind)
             {
                 case UnitKind.Dao:
-                    if (mine) Sfx.Play(Snd.Dao, 0.3f, 1.05f - lv * 0.03f);
-                    Crescent(to, n, 0.82f * grow, ink, rim, UnityEngine.Random.value < 0.5f, 0.22f);
-                    After(0.05f, () =>
+                    // 刀从兵身上砍到人：刀光扫过，落到身上再溅一下。
+                    After(hit, () =>
                     {
-                        Impact(to, 0.42f * grow, Pal.Ink.A(0.7f), rim, 2);
-                        Kick(to, n, 0.12f);
+                        if (mine) Sfx.Play(Snd.Dao, 0.3f, 1.05f - lv * 0.03f);
+                        SlashTo(from, to, 0.95f * grow, ink, rim);
+                    });
+                    After(hit + 0.08f, () =>
+                    {
+                        Impact(to, 0.4f * grow, Pal.Ink.A(0.65f), rim, 2);
+                        Kick(to, n, 0.14f);
                     });
                     break;
                 case UnitKind.Qiang:
-                    if (mine) Sfx.Play(Snd.Spear, 0.3f, 1.05f - lv * 0.03f);
-                    After(0.05f, () => Streak(from + n * 0.7f, to, 0.25f, 0.07f * grow, rim.A(0.8f), rim, 0.15f, 43, 0f));
-                    After(0.1f, () =>
+                    // 一枪捅穿：细亮的枪芒直贯出去，路上的人都往后一顿。
+                    After(hit, () =>
                     {
-                        Ink("fx_lines", rim, to, 0.6f * grow, 0.16f, Ang(n), 45, 0.5f);
+                        if (mine) Sfx.Play(Snd.Spear, 0.3f, 1.05f - lv * 0.03f);
+                        Poke(from, to, rim, 0.05f * grow);
+                    });
+                    After(hit + 0.04f, () =>
+                    {
                         foreach (var v in _enemies.Values)
                         {
                             var p = (Vector2)v.Root.localPosition;
                             var rel = p - from;
                             float along = Vector2.Dot(rel, n);
-                            if (along < 0f || along > dir.magnitude + 0.7f) continue;
-                            if ((rel - n * along).sqrMagnitude < 0.16f) v.Kick(n, 0.1f);
+                            if (along < 0f || along > dist + 0.7f) continue;
+                            if ((rel - n * along).sqrMagnitude < 0.16f) v.Kick(n, 0.12f);
                         }
                     });
                     break;
                 case UnitKind.Gong:
-                    if (mine) Sfx.Play(Snd.Bow, 0.28f);
-                    InkArrow(from + n * 0.2f, to, ink, rim, 0.52f * grow, 0.13f + dir.magnitude * 0.03f, () =>
+                    // 拉满才放。箭平直射向胸口，扎住，不画成一团墨。
+                    After(hit, () =>
                     {
-                        if (mine) Sfx.Play(Snd.ArrowHit, 0.22f);
-                        StuckArrow(to, n, ink, 0.52f * grow);
-                        Impact(to, 0.36f * grow, Pal.Ink.A(0.65f), rim, 1);
-                        Kick(to, n, 0.08f);
+                        if (mine) Sfx.Play(Snd.Bow, 0.28f);
+                        var muzzle = from + n * 0.28f + Vector2.up * 0.2f;
+                        var chest = to + Vector2.up * 0.22f;
+                        float len = 0.78f * grow;
+                        InkArrow(muzzle, chest, ink, rim, len, ArrowTime(dist), () =>
+                        {
+                            if (mine) Sfx.Play(Snd.ArrowHit, 0.28f);
+                            StuckArrow(chest, chest - muzzle, ink, len);
+                            Ink("fx_lines", rim, chest, 0.36f * grow, 0.1f, Ang(n), 46, 0.3f);
+                            Kick(to, n, 0.1f);
+                        });
                     });
                     break;
                 case UnitKind.Qi:
+                    // 马冲过去，一路扬尘，撞上才是一下重击。
                     if (mine) Sfx.Play(Snd.Horse, 0.32f);
-                    Charge(from, to, 0.85f * (0.9f + lv * 0.06f), Color.Lerp(Color.white, lvc, lv > 1 ? 0.25f : 0f), () =>
+                    for (int i = 1; i <= 3; i++)
+                    {
+                        float u = i / 4f;
+                        var puff = Vector2.Lerp(from, to, u) + Vector2.down * 0.22f;
+                        After(hit * u, () => DustPuff(puff, 0.34f));
+                    }
+                    After(hit, () =>
                     {
                         Impact(to, 0.46f * grow, Pal.Ink.A(0.7f), Steel, 2);
-                        DustPuff(to + Vector2.down * 0.15f, 0.45f);
-                        Kick(to, n, 0.28f);
+                        DustPuff(to + Vector2.down * 0.12f, 0.55f);
+                        Ink("fx_lines", Steel.A(0.85f), to - n * 0.15f, 0.6f * grow, 0.14f, Ang(n), 45, 0.45f);
+                        Kick(to, n, 0.3f);
+                        if (mine) _shake = Mathf.Max(_shake, 0.18f);
                     });
                     break;
             }
@@ -515,8 +608,8 @@ namespace Rescue
             switch (SwingOf(d))
             {
                 case HeroSwing.Thrust: ThrustWeapon(img, from, to, n, 1.2f); break;
-                case HeroSwing.Loose: LooseWeapon(img, from, to, n, d.WKind == WeaponKind.Cannon || d.Look == Look.Fire); break;
-                case HeroSwing.Hurl: HurlWeapon(img, from, to, 0.6f); break;
+                case HeroSwing.Loose: LooseWeapon(img, from, to, n); break;
+                case HeroSwing.Hurl: HurlWeapon(img, from, to, 0.6f, img == "wp_stone"); break;
                 case HeroSwing.Whip: WhipWeapon(img, from, to, n); break;
                 case HeroSwing.Fist: FistWeapon(img, from, to, n); break;
                 default: ArcWeapon(img, from, to, n); break;
@@ -538,7 +631,6 @@ namespace Rescue
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang - 45f + Mathf.Lerp(70f, -90f, e));
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.28f)));
             });
-            Streak(start, end, 0.1f, 0.1f, Pal.GoldBright.A(0.7f), Color.white, 0.2f, WeaponOrder - 1, 0f);
         }
 
         void ThrustWeapon(string img, Vector2 from, Vector2 to, Vector2 n, float size)
@@ -553,10 +645,9 @@ namespace Rescue
                 f.Go.transform.localRotation = Quaternion.Euler(0, 0, ang);
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.22f)));
             });
-            Streak(start, end, 0.1f, 0.08f, Pal.GoldBright.A(0.6f), Color.white, 0.18f, WeaponOrder - 1, 0f);
         }
 
-        void LooseWeapon(string img, Vector2 from, Vector2 to, Vector2 n, bool cannon)
+        void LooseWeapon(string img, Vector2 from, Vector2 to, Vector2 n)
         {
             float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
             var at = from + n * 0.3f;
@@ -568,19 +659,19 @@ namespace Rescue
                 f.Go.transform.localScale = new Vector3(size * draw, size, 1);
                 f.Sr.color = Color.white.A(Mathf.Clamp01(Mathf.Min(k / 0.08f, (1f - k) / 0.25f)));
             });
-            if (cannon) HurlWeapon("fx_fire", from + n * 0.5f, to, 0.5f);
         }
 
-        void HurlWeapon(string img, Vector2 from, Vector2 to, float size)
+        void HurlWeapon(string img, Vector2 from, Vector2 to, float size, bool tumble = true)
         {
-            float dist = (to - from).magnitude;
-            float life = Mathf.Clamp(0.14f + dist * 0.045f, 0.16f, 0.42f);
-            float arc = Mathf.Min(0.55f, dist * 0.12f);
+            var d = to - from;
+            var n = d.sqrMagnitude > 1e-4f ? d.normalized : Vector2.up;
+            float life = HurlTime(d.magnitude);
+            float arc = Mathf.Min(0.45f, d.magnitude * 0.1f);
+            float ang = Mathf.Atan2(n.y, n.x) * Mathf.Rad2Deg - 45f;
             NewSpriteFx(Art.Img(img), Color.white, from, Vector2.one * size, WeaponOrder, life, (f, k) =>
             {
-                var p = Vector2.Lerp(from, to, k) + Vector2.up * Mathf.Sin(k * Mathf.PI) * arc;
-                f.Go.transform.localPosition = p;
-                f.Go.transform.localRotation = Quaternion.Euler(0, 0, k * 360f);
+                f.Go.transform.localPosition = Vector2.Lerp(from, to, k) + Vector2.up * Mathf.Sin(k * Mathf.PI) * arc;
+                f.Go.transform.localRotation = Quaternion.Euler(0, 0, tumble ? k * 360f : ang);
                 f.Sr.color = Color.white.A(k < 0.85f ? 1f : (1f - k) / 0.15f);
             });
         }
@@ -605,11 +696,11 @@ namespace Rescue
             }
         }
 
-        void LungeHero(int heroId, Vector2 dir)
+        void LungeHero(int heroId, Vector2 dir, HeroSwing swing = HeroSwing.Arc, bool crit = false)
         {
             foreach (var v in _pieces.Values)
                 if (v.Hero != null && v.Hero.Id == heroId) v.Lunge(dir);
-            if (_frames.TryGetValue(heroId, out var f)) f.Lunge(dir);
+            if (_frames.TryGetValue(heroId, out var f)) f.Lunge(dir, swing, crit);
         }
 
         /// <summary>好汉普攻：兵器小小地挥一下，留给大招去出彩。</summary>
@@ -629,121 +720,145 @@ namespace Rescue
             var look = gear == null ? hd.Look : LookOfWeapon(gear.WKind, hd.Look);
             var gold = Pal.GoldBright;
             var glow = Color.Lerp(Pal.GoldBright, Color.white, 0.45f);
-            ShowHeroWeapon(kit, from, to, n);
-            LungeHero(ev.A, n);
+            // 画了这位好汉：人自己蓄力出手，兵器不再飞过去（暗器、飞石照样扔），特效等出手那一帧。
+            bool figure = _frames.TryGetValue(ev.A, out var hf) && hf.HasArt;
+            var swing = SwingOf(kit);
+            float hit = figure ? FrameView.HitDelay : 0f;
+            LungeHero(ev.A, n, swing, ev.Flag == 1);
+            if (!figure) ShowHeroWeapon(kit, from, to, n);
+            else if (swing == HeroSwing.Hurl) After(hit, () => ShowHeroWeapon(kit, from, to, n));
+            if (hit > 0f) After(hit, Strike);
+            else Strike();
 
-            switch (look)
+            void Strike()
             {
-                case Look.Fist:
-                    if (mine) Sfx.Play(Snd.Fist, 0.4f);
-                    After(0.08f, () => { Impact(to, 0.45f, Pal.Ink.A(0.75f), gold, 1); Kick(to, n, 0.08f); });
-                    break;
-                case Look.Dart:
-                    if (mine) Sfx.Play(kit.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.35f);
-                    Streak(to - n * 0.5f, to, 0.05f, 0.08f, Pal.Ink, glow, 0.13f);
-                    Impact(to, 0.4f, Pal.Ink.A(0.7f), glow, 1);
-                    Kick(to, n, 0.08f);
-                    break;
-                case Look.Spear:
+                switch (look)
                 {
-                    if (mine) Sfx.Play(Snd.Spear, 0.42f, 0.9f);
-                    Streak(from + n * 0.6f, to, 0.5f, 0.06f, glow.A(0.8f), glow, 0.16f, 43, 0f);
-                    After(0.05f, () =>
+                    case Look.Fist:
+                        if (mine) Sfx.Play(Snd.Fist, 0.4f);
+                        Poke(from, to - n * 0.15f, Pal.Ink.A(0.35f), 0.035f);
+                        After(0.08f, () => { Impact(to, 0.42f, Pal.Ink.A(0.75f), gold, 1); Kick(to, n, 0.1f); });
+                        break;
+                    case Look.Dart:
                     {
-                        Ink("fx_lines", gold, to, 0.5f, 0.16f, Ang(n), 46, 0.5f);
-                        Kick(to, n, 0.12f);
-                    });
-                    break;
+                        if (kit.WKind == WeaponKind.Bow)
+                        {
+                            if (mine) Sfx.Play(Snd.Bow, 0.35f);
+                            ShootArrow(from, to, n, 0.8f, gold, mine);
+                            break;
+                        }
+                        if (mine) Sfx.Play(kit.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.35f);
+                        float fly = HurlTime(dir.magnitude);
+                        After(fly, () =>
+                        {
+                            Impact(to, 0.4f, Pal.Ink.A(0.7f), glow, 1);
+                            Kick(to, n, 0.08f);
+                        });
+                        break;
+                    }
+                    case Look.Spear:
+                        if (mine) Sfx.Play(Snd.Spear, 0.42f, 0.9f);
+                        Poke(from, to, glow, 0.055f);
+                        After(0.05f, () => Kick(to, n, 0.12f));
+                        break;
+                    case Look.Axe:
+                        if (mine) Sfx.Play(Snd.Axe, 0.4f);
+                        SlashTo(from, to, 0.95f, Pal.Ink, glow);
+                        After(0.08f, () =>
+                        {
+                            Impact(to, 0.48f, Pal.Ink.A(0.75f), gold, 2);
+                            DustPuff(to + Vector2.down * 0.1f, 0.4f);
+                            Kick(to, n, 0.12f);
+                        });
+                        break;
+                    case Look.Bow:
+                        if (mine) Sfx.Play(Snd.Bow, 0.4f);
+                        ShootArrow(from, to, n, 0.92f, gold, mine);
+                        break;
+                    case Look.Fire:
+                        if (mine) Sfx.Play(Snd.FireHit, 0.4f);
+                        Flame(from, to, 0.7f, () => { FireBurst(to, 0.6f); Kick(to, n, 0.1f); });
+                        break;
+                    case Look.Water:
+                    case Look.WaterFire:
+                        if (mine) Sfx.Play(Snd.Water, 0.35f, look == Look.WaterFire ? 0.9f : 1f);
+                        WaveTo(from, to, 0.85f, () =>
+                        {
+                            Splash(to, 0.55f);
+                            if (look == Look.WaterFire) FireBurst(to, 0.4f);
+                            Kick(to, n, 0.1f);
+                        });
+                        break;
+                    case Look.Fork:
+                        if (mine) Sfx.Play(Snd.Water, 0.3f, 1.15f);
+                        Poke(from, to, Ice, 0.05f);
+                        After(0.06f, () => { Splash(to, 0.45f); Kick(to, n, 0.08f); });
+                        break;
+                    case Look.Poison:
+                        if (mine) Sfx.Play(Snd.Poison, 0.35f);
+                        Lob(from + Vector2.up * 0.15f, to, Pal.Purple.A(0.9f), 0.22f, () =>
+                        {
+                            Impact(to, 0.4f, Pal.Purple.A(0.7f), Pal.Hex("F2C6B8"), 1);
+                            Ink("fx_dust", Pal.Purple.A(0.45f), to, 0.6f, 0.5f, Rnd(0, 360), 30, 0.4f);
+                        });
+                        break;
+                    case Look.Lasso:
+                        if (mine) Sfx.Play(Snd.Lasso, 0.35f);
+                        Lasso(from, to, Pal.Red);
+                        After(0.15f, () => Kick(to, -n, 0.08f));
+                        break;
+                    case Look.Hammer:
+                        if (mine) Sfx.Play(Snd.Hammer, 0.4f);
+                        After(0.06f, () =>
+                        {
+                            GroundSmash(to, 0.85f, Pal.Ink, mine);
+                            Kick(to, n, 0.16f);
+                        });
+                        break;
+                    case Look.Whip:
+                        if (mine) Sfx.Play(Snd.Whip, 0.4f);
+                        Streak(from + n * 0.15f, to, 0.15f, 0.04f, Pal.Ink, Color.white, 0.12f, 45, 1.4f);
+                        After(0.07f, () =>
+                        {
+                            Ink("fx_lines", Color.white, to, 0.45f, 0.1f, Ang(n), 46, 0.3f);
+                            Kick(to, n, 0.1f);
+                        });
+                        break;
+                    case Look.Staff:
+                        if (mine) Sfx.Play(Snd.Smash, 0.4f);
+                        SlashTo(from, to, 0.8f, Dust, Pal.Hex("E6D2A8"));
+                        After(0.08f, () =>
+                        {
+                            DustPuff(to, 0.45f);
+                            Kick(to, n, 0.12f);
+                        });
+                        break;
+                    case Look.Sword:
+                        if (mine) Sfx.Play(Snd.Sword, 0.38f);
+                        SlashTo(from, to, 0.72f, Pal.Hex("2B3A55"), Color.white);
+                        After(0.07f, () => Kick(to, n, 0.08f));
+                        break;
+                    case Look.Magic:
+                        if (mine) Sfx.Play(Snd.UltMagic, 0.2f, 1.3f);
+                        Streak(from + Vector2.up * 0.3f, to, 0.1f, 0.05f, Pal.Hex("C9B6FF"), Color.white, 0.16f, 46, 1.5f);
+                        After(0.1f, () => Impact(to, 0.45f, Pal.Purple.A(0.65f), Pal.Hex("E6DAFF"), 1));
+                        break;
+                    default:
+                        if (mine) Sfx.Play(Snd.Dao, 0.36f, 0.9f);
+                        SlashTo(from, to, 0.85f, ev.Flag == 1 ? Pal.Red : Pal.Ink, glow);
+                        After(0.08f, () => { Impact(to, 0.4f, Pal.Ink.A(0.7f), gold, 1); Kick(to, n, 0.1f); });
+                        break;
                 }
-                case Look.Axe:
-                    if (mine) Sfx.Play(Snd.Axe, 0.4f);
-                    Crescent(to, n, 0.75f, Pal.Ink, glow, false, 0.2f);
-                    After(0.06f, () => { Impact(to, 0.45f, Pal.Ink.A(0.75f), gold, 2); Kick(to, n, 0.1f); });
-                    break;
-                case Look.Bow:
-                    if (mine) Sfx.Play(kit.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Bow, 0.4f);
-                    InkArrow(from, to, Pal.Hex("8A1C1C"), gold, 0.6f, 0.17f, () =>
-                    {
-                        if (mine) Sfx.Play(Snd.ArrowHit, 0.35f);
-                        StuckArrow(to, n, Pal.Hex("8A1C1C"), 0.55f);
-                        Impact(to, 0.45f, Pal.RedDeep.A(0.75f), gold, 1);
-                        Kick(to, n, 0.1f);
-                    });
-                    break;
-                case Look.Fire:
-                    if (mine) Sfx.Play(Snd.FireHit, 0.4f);
-                    After(0.12f, () => { FireBurst(to, 0.55f); Kick(to, n, 0.1f); });
-                    break;
-                case Look.Water:
-                case Look.WaterFire:
-                    if (mine) Sfx.Play(Snd.Water, 0.35f, look == Look.WaterFire ? 0.9f : 1f);
-                    WaveTo(from, to, 0.85f, () =>
-                    {
-                        Splash(to, 0.55f);
-                        if (look == Look.WaterFire) FireBurst(to, 0.4f);
-                        Kick(to, n, 0.1f);
-                    });
-                    break;
-                case Look.Fork:
-                    if (mine) Sfx.Play(Snd.Water, 0.3f, 1.15f);
-                    Streak(from + n * 0.3f, to, 0.2f, 0.08f, WaterDeep, Ice, 0.16f);
-                    After(0.05f, () => { Splash(to, 0.45f); Kick(to, n, 0.08f); });
-                    break;
-                case Look.Poison:
-                    if (mine) Sfx.Play(Snd.Poison, 0.35f);
-                    After(0.1f, () =>
-                    {
-                        Impact(to, 0.4f, Pal.RedDeep.A(0.7f), Pal.Hex("F2C6B8"), 1);
-                        Ink("fx_dust", Pal.Purple.A(0.3f), to, 0.55f, 0.5f, Rnd(0, 360), 30, 0.4f);
-                    });
-                    break;
-                case Look.Lasso:
-                    if (mine) Sfx.Play(Snd.Lasso, 0.35f);
-                    Lasso(from, to, Pal.Red);
-                    After(0.15f, () => Kick(to, -n, 0.08f));
-                    break;
-                case Look.Staff:
-                case Look.Hammer:
-                case Look.Whip:
-                    if (mine) Sfx.Play(look == Look.Hammer ? Snd.Hammer : look == Look.Whip ? Snd.Whip : Snd.Smash, 0.4f);
-                    After(0.08f, () =>
-                    {
-                        Impact(to, 0.55f, Pal.Ink.A(0.8f), Steel, 2);
-                        Ring(to, 0.9f, Dust.A(0.6f), 0.25f, 44);
-                        Kick(to, n, 0.14f);
-                    });
-                    break;
-                case Look.Sword:
+                if (ev.Flag == 1)
                 {
-                    if (mine) Sfx.Play(Snd.Sword, 0.38f);
-                    bool m = UnityEngine.Random.value < 0.5f;
-                    Crescent(to, n, 0.65f, Pal.Hex("2B3A55"), Color.white, m, 0.16f);
-                    After(0.06f, () => { Ink("fx_lines", Color.white, to, 0.55f, 0.14f, Ang(n), 45, 0.5f); Kick(to, n, 0.08f); });
-                    break;
+                    After(0.06f, () => Impact(to, 0.8f, Pal.RedDeep.A(0.85f), gold, 3));
+                    FloatText(to + new Vector2(0, 0.6f), "暴击！", Pal.Red, 0.32f, 0.6f);
+                    if (mine) { HitStop(0.03f); Sfx.Play(Snd.Crit, 0.4f); }
                 }
-                case Look.Magic:
-                    if (mine) Sfx.Play(Snd.UltMagic, 0.2f, 1.3f);
-                    After(0.05f, () =>
-                    {
-                        Streak(to + new Vector2(Rnd(-0.2f, 0.2f), 1.4f), to, 0f, 0.08f, Pal.Hex("C9B6FF"), Color.white, 0.12f, 46);
-                        Impact(to, 0.45f, Pal.Purple.A(0.65f), Pal.Hex("E6DAFF"), 1);
-                    });
-                    break;
-                default:
-                    if (mine) Sfx.Play(Snd.Dao, 0.36f, 0.9f);
-                    Crescent(to, n, 0.72f, ev.Flag == 1 ? Pal.Red : Pal.Ink, glow, false, 0.2f);
-                    After(0.05f, () => Impact(to, 0.42f, Pal.Ink.A(0.75f), gold, 1));
-                    break;
+                if (mine && gear != null && UnityEngine.Random.value < 0.3f)
+                    FloatText(from + new Vector2(0, 0.95f), "用" + GearBadge(gear), Ui.GradeColor(gear.WGrade), 0.3f, 0.7f);
+                if (_frames.TryGetValue(ev.A, out var fv)) fv.Pulse();
             }
-            if (ev.Flag == 1)
-            {
-                After(0.06f, () => Impact(to, 0.8f, Pal.RedDeep.A(0.85f), gold, 3));
-                FloatText(to + new Vector2(0, 0.6f), "暴击！", Pal.Red, 0.32f, 0.6f);
-                if (mine) { HitStop(0.03f); Sfx.Play(Snd.Crit, 0.4f); }
-            }
-            if (mine && gear != null && UnityEngine.Random.value < 0.3f)
-                FloatText(from + new Vector2(0, 0.95f), "用" + GearBadge(gear), Ui.GradeColor(gear.WGrade), 0.3f, 0.7f);
-            if (_frames.TryGetValue(ev.A, out var fv)) fv.Pulse();
         }
 
         // ─────────────────────────── 截图验收 ───────────────────────────

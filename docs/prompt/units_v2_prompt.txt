@@ -1,0 +1,57 @@
+【兵种 v2：每个兵种一张 3x3 表，行是外观档，列是动作帧】
+
+通用（四张都带）：
+Game sprite sheet, 3 columns x 3 rows, 9 cells on a plain flat light grey background (#D9D9D9), every cell has generous empty space around the character, characters never touch or overlap cell edges.
+Same character design in every row; each row is a stronger rank of the same soldier.
+Style: same as the reference image — cute chibi Water Margin (Song dynasty) soldier, big head small body, thick dark brown outline, clean cel shading, bright saturated colors, mobile game unit sprite.
+All characters in 3/4 side view facing RIGHT, full body, feet on the same ground line in every cell, same scale in every cell.
+Columns (left to right): 1 = ready stance (idle), 2 = wind-up (anticipation), 3 = strike (attack at full extension).
+Rows (top to bottom): 1 = recruit rank, 2 = veteran rank, 3 = elite general rank.
+NO TEXT, no labels, no numbers, no captions, no writing anywhere in the image. No grid lines, no borders, no shadows on the ground.
+
+刀兵（主色 正红 crimson red）：
+Saber soldier, main color CRIMSON RED clothing.
+Row 1 recruit: red cloth tunic, red headband, simple steel dao saber.
+Row 2 veteran: red tunic with brown leather lamellar chest armor and shoulder pads, red headband, bigger saber with red tassel.
+Row 3 elite: shining red-and-gold lamellar armor, gold-trimmed helmet with tall red plume, short red cape, large broad saber with gold guard and a faint white gleam on the blade.
+Column 1: stands ready, saber held low in front.
+Column 2: saber raised high above and behind the head with both hands, body leaning back, coiled.
+Column 3: big downward diagonal slash toward the right, saber swung all the way down in front, body lunging forward, front foot stepping out.
+
+枪兵（主色 宝蓝 royal blue）：
+Spear soldier, main color ROYAL BLUE clothing.
+Row 1 recruit: blue cloth tunic, blue headband, wooden spear with steel tip and red tassel.
+Row 2 veteran: blue tunic with silver scale chest armor and arm guards, longer spear with red tassel.
+Row 3 elite: polished silver-and-gold armor over blue robe, helmet with blue plume, blue cape, long ornate spear with gold collar and white gleam on the spearhead.
+Column 1: stands ready, spear held upright beside the body.
+Column 2: crouched low, spear pulled far back horizontally at waist height, pointing right.
+Column 3: full forward lunge thrust to the right, spear perfectly horizontal and fully extended, back leg straight, front knee bent.
+
+弓兵（主色 翠绿 emerald green）：
+Archer, main color EMERALD GREEN clothing, quiver on the back.
+Row 1 recruit: green cloth tunic, green headband, plain wooden bow.
+Row 2 veteran: green tunic with brown leather vest and bracers, recurve bow, fuller quiver.
+Row 3 elite: green robe with gold-trimmed armor, hat with green feather, large ornate gold-tipped recurve bow.
+Column 1: stands ready, bow held down at the side.
+Column 2: bow raised toward the right, bowstring pulled fully back to the cheek, arrow nocked and aimed right.
+Column 3: just released, string snapped forward, drawing hand flung back open, no arrow on the bow.
+
+骑兵（主色 橙黄 amber orange，马色随档变化）：
+Cavalry rider on a horse, rider main color AMBER ORANGE clothing, holding a lance.
+Row 1 recruit: orange tunic rider on a brown pony with simple saddle.
+Row 2 veteran: orange tunic with leather armor on a white horse with red bridle and light cloth barding.
+Row 3 elite: gold-and-orange armored rider with plumed helmet on a black war horse wearing gold-trimmed armored barding.
+Horse and rider both face RIGHT in side view.
+Column 1: horse standing calmly, lance held upright.
+Column 2: horse rearing up on its hind legs, rider raising the lance.
+Column 3: horse galloping forward at full charge, front legs stretched forward, rider leaning forward with lance lowered and pointing right.
+
+【v4：5 级头饰阶梯（刀 / 枪 / 弓的 2、3 级重画，原图 raw/units_v2/units_v4_<兵种>_l2|l3.jpg）】
+每级头上戴的东西都不一样，缩到格子里也能一眼分开：
+  1 级 头巾 + 布衣
+  2 级 毡笠（宽檐竹编斗笠，同色绳系在下巴）+ 皮背心、护腕
+  3 级 黑色幞头（硬脚黑布帽，后面两根短翅）+ 皮/鳞甲、圆肩甲、同色腰带
+  4 级 钢盔 + 钢甲
+  5 级 插翎金盔 + 金甲披风
+骑兵靠马色区分：棕马 → 栗马 → 白马 → 灰马钢铠 → 黑马金铠。
+单行三帧模板：Game sprite strip: exactly 3 poses of the SAME soldier side by side in one row, on a plain flat light grey background (#D9D9D9) ... 参考图用该兵种 1 级的 pc_<兵种>_1_0.png，动作描述同上面各兵种的 Column 1/2/3。

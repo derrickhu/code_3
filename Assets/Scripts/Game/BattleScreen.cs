@@ -36,6 +36,8 @@ namespace Rescue
 
         Action<BattleResult> _done;
         RivalAI _rival, _auto;
+        /// <summary>截图摆好的阵不让自动下棋的 AI 去动。</summary>
+        public void StopAuto() => _auto = null;
         RectTransform _overlay, _bannerLayer, _hint, _intro;
         Text _hintText;
         CanvasGroup _hintGroup;

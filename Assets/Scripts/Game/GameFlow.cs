@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using Rescue.Sim;
 using UnityEngine;
@@ -40,6 +41,9 @@ namespace Rescue
             }
             Tween.Init(gameObject);
             Sfx.Init(gameObject);
+            ArtPack.Init(gameObject);
+            // 兵和官兵每局都要，开机就在后台装上；进战斗时没装完再等。
+            ArtPack.Ensure(Art.BattlePacks());
 
             _cam = Camera.main;
             if (_cam == null)
@@ -70,7 +74,7 @@ namespace Rescue
             if (_shots != null)
             {
                 if (Arg("-gm") != null) Gm.Force = true;
-                StartCoroutine(Arg("-load") != null ? LoadShots() : Arg("-tut") != null ? TutShots() : Arg("-gm") != null ? GmShots() : Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-range") != null ? RangeShots() : Arg("-maps") != null ? MapShots() : Arg("-drop") != null ? DropShots() : AutoShots());
+                StartCoroutine(AfterPacks(Arg("-load") != null ? LoadShots() : Arg("-tut") != null ? TutShots() : Arg("-gm") != null ? GmShots() : Arg("-ui") != null ? UiShots() : Arg("-fx") != null ? FxShots() : Arg("-units") != null ? UnitShots() : Arg("-heroes") != null ? HeroShots(Arg("-heroes")) : Arg("-range") != null ? RangeShots() : Arg("-maps") != null ? MapShots() : Arg("-drop") != null ? DropShots() : AutoShots()));
             }
             else if (Application.isBatchMode)
             {
@@ -165,7 +169,12 @@ namespace Rescue
 
         void ShowHome()
         {
-            if (_battle) Destroy(_battle.gameObject);
+            if (_battle)
+            {
+                Destroy(_battle.gameObject);
+                // 好汉图一局一换，回主页就把它们从显存里放掉；兵和官兵每局都要，留着。
+                ArtPack.Keep(Art.BattlePacks());
+            }
             _battle = null;
             _home = HomeScreen.Open(transform, StartBattle);
             Sfx.PlayMenu();
@@ -182,8 +191,34 @@ namespace Rescue
             if (_pending.IsDaily && !autoplay) Save.NoteDailyTry();
             if (BattleScreen.Epic(_pending)) Sfx.PlayEpic();
             else Sfx.PlayStory();
-            if (autoplay) OpenBattle(chapter, true);
+            PrefetchHeroes(_pending);
+            if (autoplay) StartCoroutine(PacksThenOpen(chapter));
             else StartCoroutine(MatchThenFight(chapter));
+        }
+
+        static IEnumerator AfterPacks(IEnumerator next)
+        {
+            bool ready = false;
+            ArtPack.Ensure(Art.BattlePacks(), () => ready = true);
+            while (!ready) yield return null;
+            yield return next;
+        }
+
+        /// <summary>这一回可能凑出的好汉先下到本地缓存，凑出来时装图不用等网络。</summary>
+        static void PrefetchHeroes(ChapterDef ch)
+        {
+            if (ch?.Pool == null) return;
+            var packs = new List<string>();
+            foreach (var id in ch.Pool) packs.Add(Art.HeroPack(id));
+            ArtPack.Prefetch(packs);
+        }
+
+        IEnumerator PacksThenOpen(int chapter)
+        {
+            bool ready = false;
+            ArtPack.Ensure(Art.BattlePacks(), () => ready = true);
+            while (!ready) yield return null;
+            OpenBattle(chapter, true);
         }
 
         ChapterDef _pending;
@@ -214,7 +249,22 @@ namespace Rescue
         IEnumerator MatchThenFight(int chapter)
         {
             var layer = BuildMatch(chapter);
-            yield return new WaitForSecondsRealtime(1.8f);
+            var packs = Art.BattlePacks();
+            bool ready = false;
+            ArtPack.Ensure(packs, () => ready = true);
+            float until = Time.realtimeSinceStartup + 1.8f;
+            Text hint = null;
+            while (!ready || Time.realtimeSinceStartup < until)
+            {
+                // 头一回进战斗要从 CDN 下兵马图，慢网下给个进度，别像卡住了。
+                if (!ready && Time.realtimeSinceStartup >= until && layer)
+                {
+                    if (hint == null)
+                        hint = Ui.Label(layer, "", 40, Pal.Paper.A(0.85f), new Vector2(0, -620), new Vector2(800, 60), TextAnchor.MiddleCenter, Fonts.Kai);
+                    hint.text = "整备兵马 " + Mathf.RoundToInt(ArtPack.Progress(packs) * 100f) + "%";
+                }
+                yield return null;
+            }
             if (layer) Destroy(layer.gameObject);
             OpenBattle(chapter, false);
         }
@@ -423,6 +473,98 @@ namespace Rescue
         }
 
         /// <summary>逐个放出兵种、好汉普攻和大招特效截图：-shots DIR -fx 1。</summary>
+        /// <summary>兵种和等级验收：-shots DIR -units 1。刀枪弓骑各摆 1/3/5 级，放一队官兵走过来，连拍出手和走路。</summary>
+        IEnumerator UnitShots()
+        {
+            StartBattle(0, true);
+            yield return new WaitForSecondsRealtime(1.5f);
+            _battle.StopAuto();
+            var view = _battle.View;
+            view.Speed = 0f;
+            var board = _battle.M.Player.Board;
+            var groups = new[]
+            {
+                new[] { Piece.Unit(UnitKind.Dao, 1), Piece.Unit(UnitKind.Dao, 3), Piece.Unit(UnitKind.Dao, 5), Piece.Unit(UnitKind.Qiang, 1),
+                        Piece.Unit(UnitKind.Qiang, 3), Piece.Unit(UnitKind.Qiang, 5), Piece.Unit(UnitKind.Gong, 1), Piece.Unit(UnitKind.Gong, 3) },
+                new[] { Piece.Unit(UnitKind.Qi, 1), Piece.Unit(UnitKind.Qi, 3), Piece.Unit(UnitKind.Qi, 5), Piece.Unit(UnitKind.Gong, 5),
+                        Piece.Unit(UnitKind.Dao, 4), Piece.Unit(UnitKind.Qiang, 2), Piece.Unit(UnitKind.Qi, 2), Piece.Unit(UnitKind.Qi, 4) },
+            };
+            var kinds = new[] { EnemyKind.Zu, EnemyKind.Chai, EnemyKind.Jia, EnemyKind.Bu };
+            for (int g = 0; g < groups.Length; g++)
+            {
+                view.Speed = 0f;
+                for (int c = 0; c < Board.Cols; c++)
+                    for (int r = 0; r < Board.Rows; r++)
+                        board.Pieces[c, r] = null;
+                int placed = 0;
+                for (int r = Board.Rows - 1; r >= 0 && placed < groups[g].Length; r--)
+                    for (int c = 0; c < Board.Cols && placed < groups[g].Length; c++)
+                        if (board.Placeable(c, r)) board.Pieces[c, r] = groups[g][placed++];
+                yield return new WaitForSecondsRealtime(0.6f);
+                yield return Shot("units_lineup" + g);
+                for (int i = 0; i < 10; i++) _battle.M.SpawnOn(_battle.M.Player, kinds[i % kinds.Length], 1.5f + i * 0.9f);
+                view.Speed = 1f;
+                yield return new WaitForSecondsRealtime(1.2f);
+                for (int i = 0; i < 20; i++)
+                {
+                    yield return Shot("units" + g + "_" + i.ToString("00"));
+                    yield return new WaitForSecondsRealtime(0.08f);
+                }
+            }
+            Application.Quit();
+        }
+
+        /// <summary>好汉出手：-shots DIR -heroes LiKui,LinChong,...（给 1 就用默认那一串）。每组两位各占一行，放兵进来连拍。</summary>
+        IEnumerator HeroShots(string arg)
+        {
+            var ids = new List<HeroId>();
+            foreach (var s in (arg == "1" ? "LiKui,LinChong,HuaRong,WuYong,GongSunSheng,LingZhen,ZhangQing,LuZhiShen,HuSanNiang,WuSong,GuanSheng,XuNing" : arg).Split(','))
+                if (Enum.TryParse(s.Trim(), out HeroId id)) ids.Add(id);
+            StartBattle(0, true);
+            yield return new WaitForSecondsRealtime(1.5f);
+            _battle.StopAuto();
+            var view = _battle.View;
+            var side = _battle.M.Player;
+            var board = side.Board;
+            side.Items.Rack = new List<int> { (int)HeroId.ZhuWu };
+            for (int g = 0; g * 2 < ids.Count; g++)
+            {
+                view.Speed = 0f;
+                for (int c = 0; c < Board.Cols; c++)
+                    for (int r = 0; r < Board.Rows; r++)
+                        board.Pieces[c, r] = null;
+                side.Pool.Clear();
+                int row = Board.Rows - 1;
+                for (int k = g * 2; k < Math.Min(ids.Count, g * 2 + 2); k++)
+                {
+                    var def = HeroDef.Get(ids[k]);
+                    side.Pool.Add(def);
+                    for (bool done = false; !done && row >= 0; row--)
+                        for (int c = 0; c + def.Name.Length <= Board.Cols && !done; c++)
+                        {
+                            bool fits = true;
+                            for (int i = 0; i < def.Name.Length; i++) fits &= board.Placeable(c + i, row);
+                            if (!fits) continue;
+                            for (int i = 0; i < def.Name.Length; i++) board.Pieces[c + i, row] = Piece.Hero(def.Name[i], 3);
+                            done = true;
+                        }
+                }
+                side.RecomputeHeroes();
+                yield return new WaitForSecondsRealtime(1f);
+                yield return Shot("heroes_lineup" + g);
+                for (int i = 0; i < 10; i++) _battle.M.SpawnOn(side, i % 3 == 0 ? EnemyKind.Jia : EnemyKind.Zu, 1.5f + i * 0.8f);
+                view.Speed = 1f;
+                yield return new WaitForSecondsRealtime(1.6f);
+                for (int i = 0; i < 24; i++)
+                {
+                    yield return Shot("heroes" + g + "_" + i.ToString("00"));
+                    yield return new WaitForSecondsRealtime(0.06f);
+                }
+                side.Enemies.Clear();
+            }
+            Application.Quit();
+        }
+
         IEnumerator FxShots()
         {
             StartBattle(0, true);

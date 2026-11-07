@@ -19,3 +19,8 @@
 .idea/
 node_modules/
 /Packages/com.qq.weixin.minigame/
+/tools/.cdn_secret
+/Assets/StreamingAssets/art/
+/Assets/StreamingAssets/art.meta
+/Assets/Resources/ArtPacks.txt
+/Assets/Resources/ArtPacks.txt.meta

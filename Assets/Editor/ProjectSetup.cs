@@ -32,6 +32,7 @@ namespace Rescue.EditorTools
             PlayerSettings.defaultScreenHeight = 1040;
             PlayerSettings.resizableWindow = true;
             PlayerSettings.runInBackground = true;
+            ArtPacks.Build(BuildTarget.StandaloneOSX);
 
             var options = new BuildPlayerOptions
             {

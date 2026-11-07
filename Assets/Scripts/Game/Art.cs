@@ -37,6 +37,14 @@ namespace Rescue
 
         public static Color ForLevel(int level) => LevelInk[Mathf.Clamp(level - 1, 0, LevelInk.Length - 1)];
 
+        /// <summary>兵脚下底座：素纸、青铜、白银、黄金、赤金。和兵种的红蓝绿橙不撞色。</summary>
+        static readonly Color[] LevelMetal =
+        {
+            Hex("E6DAC0"), Hex("C9864A"), Hex("B9CCDD"), Hex("F0C23C"), Hex("FFB43A"),
+        };
+
+        public static Color Metal(int level) => LevelMetal[Mathf.Clamp(level - 1, 0, LevelMetal.Length - 1)];
+
         public static Color Hex(string h)
         {
             ColorUtility.TryParseHtmlString("#" + h, out var c);
@@ -104,15 +112,72 @@ namespace Rescue
             return s;
         }
 
-        public static Sprite UnitBody(UnitKind k) => Opt(k switch
-        {
-            UnitKind.Dao => "pc_dao",
-            UnitKind.Qiang => "pc_qiang",
-            UnitKind.Gong => "pc_gong",
-            _ => "pc_qi",
-        });
+        /// <summary>
+        /// 兵种动作帧：每级一套外观（布衣 → 皮甲 → 札甲 → 钢甲 → 将官），帧 0 站、1 蓄力、2 出手。
+        /// 画布是方的，人朝右，脚底在 <see cref="FigureFoot"/>。在 CDN 图包 pc_&lt;兵种&gt; 里，包没装上返回 null。
+        /// </summary>
+        public static Sprite UnitFrame(UnitKind k, int level, int frame) =>
+            ArtPack.Find($"pc_{UnitKey(k)}_{Mathf.Clamp(level, 1, UnitDef.MaxLevel)}_{frame}");
 
-        public static Sprite HeroBody(HeroId id) => Opt("hr_" + id.ToString().ToLowerInvariant());
+        public static string UnitPack(UnitKind k) => "pc_" + UnitKey(k);
+
+        /// <summary>每局都要用的图包：四个兵种、所有官兵。</summary>
+        public static List<string> BattlePacks()
+        {
+            var list = ArtPack.Named("pc_");
+            list.AddRange(ArtPack.Named("en_"));
+            return list;
+        }
+
+        static string HeroKey(HeroId id) => id.ToString().ToLowerInvariant();
+
+        public static string HeroPack(HeroId id) => "hr_" + HeroKey(id);
+
+        /// <summary>好汉动作帧：0 站、1 蓄力、2 出手，画布和兵一样。包没装上返回 null。</summary>
+        public static Sprite HeroFrame(HeroId id, int frame) => ArtPack.Find($"hr_{HeroKey(id)}_{frame}");
+
+        /// <summary>好汉帧里身子（不算兵器）占画布高的比例。</summary>
+        public const float HeroFigure = 330f / 640f;
+
+        static string UnitKey(UnitKind k) => k switch
+        {
+            UnitKind.Dao => "dao",
+            UnitKind.Qiang => "qiang",
+            UnitKind.Gong => "gong",
+            _ => "qi",
+        };
+
+        /// <summary>兵种帧里，一级兵从头到脚占画布高的比例；骑兵连马高一截。高等级的图里人本身就画得大一点。</summary>
+        public static float UnitFigure(UnitKind k) => (k == UnitKind.Qi ? 1.12f : 1f) * 330f / 640f;
+
+        /// <summary>兵和官兵帧里脚底离画布顶的比例。</summary>
+        public const float FigureFoot = 0.86f;
+
+        /// <summary>官兵走路帧，四帧一个循环，人物连兵器占画布高 340/512。没有时返回 null。侧面朝左；front 是正脸朝下，back 是后背朝上。</summary>
+        public static Sprite[] EnemyWalk(EnemyKind k, int id, string bossName) => EnemyFrames(k, id, bossName, "walk");
+
+        public static Sprite[] EnemyFront(EnemyKind k, int id, string bossName) => EnemyFrames(k, id, bossName, "front");
+
+        public static Sprite[] EnemyBack(EnemyKind k, int id, string bossName) => EnemyFrames(k, id, bossName, "back");
+
+        static Sprite[] EnemyFrames(EnemyKind k, int id, string bossName, string facing)
+        {
+            string key = k switch
+            {
+                EnemyKind.Zu => id % 2 == 0 ? "en_zu" : "en_zu2",
+                EnemyKind.Chai => "en_chai",
+                EnemyKind.Jia => "en_jia",
+                EnemyKind.Bu => "en_bu",
+                _ => bossName == "县尉" ? "en_xianwei" : null,
+            };
+            if (key == null) return null;
+            var frames = new Sprite[4];
+            for (int i = 0; i < 4; i++)
+                if ((frames[i] = ArtPack.Find($"{key}_{facing}_{i}")) == null) return null;
+            return frames;
+        }
+
+        public const float EnemyFigure = 340f / 512f;
 
         public static Sprite EnemyBody(EnemyKind k, int id, string bossName) => k switch
         {

@@ -349,7 +349,7 @@ namespace Rescue
             var to = World(ev.Side, ev.Q);
             var n = (to - from).sqrMagnitude > 1e-4f ? (to - from).normalized : Vector2.up;
             bool mine = ev.Side == 0;
-            LungeHero(ev.A, n);
+            LungeHero(ev.A, n, HeroSwing.Loose, true);
             Ink("fx_enso", Pal.GoldBright, from, 2.2f, 0.3f, 0, 46, 1f, -200f, 0.2f).Step += (f, k) =>
                 f.Go.transform.localScale = Vector3.one * Mathf.Lerp(2.2f, 0.4f, k);
             if (mine) Sfx.Play(Snd.Bow, 0.8f, 0.7f);
@@ -401,7 +401,7 @@ namespace Rescue
                     Kick(to, n, 0.25f);
                     if (mine) Sfx.Play(d.WKind == WeaponKind.Stone ? Snd.Stone : Snd.Dart, 0.45f, 1f + _volleyN * 0.03f);
                 });
-                LungeHero(ev.A, n);
+                LungeHero(ev.A, n, HeroSwing.Hurl);
             });
         }
 

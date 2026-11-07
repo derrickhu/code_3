@@ -820,6 +820,12 @@ namespace Rescue
                     f = new FrameView(this, h, s);
                     _frames[h.Id] = f;
                 }
+                else if (f.WantsArt && Art.HeroFrame(h.Def.Id, 0) != null)
+                {
+                    f.Destroy();
+                    f = new FrameView(this, h, s, true);
+                    _frames[h.Id] = f;
+                }
                 f.Seen = _frame;
                 f.Update(h);
             }
@@ -1009,6 +1015,7 @@ namespace Rescue
                     var pos = World(ev.Side, ev.P);
                     var ud = HeroDef.Get((HeroId)ev.B);
                     float r = Mathf.Min(ev.Val, 6f);
+                    if (_frames.TryGetValue(ev.A, out var caster)) caster.StrikeAt(pos, SwingOf(ud));
                     bool custom = HeroUltFx(ev);
                     if (!custom && r > 0.1f)
                     {
@@ -2557,19 +2564,23 @@ namespace Rescue
             public HeroInstance Hero;
 
             const float AnimDur = 0.34f;
-            const float WeaponSize = 0.82f;
-            readonly SpriteRenderer _tile, _shadow, _edge, _icon, _weapon;
+            /// <summary>一级兵从头到脚的高度，脚踩在底座上。</summary>
+            const float UnitFigH = 0.9f, FootY = -0.4f;
+            readonly SpriteRenderer _tile, _shadow, _edge, _icon;
             readonly TextMesh _glyph, _level;
             readonly Transform _glyphT;
             /// <summary>有人物图时：兵是小人，好汉字写在举牌小兵的牌面上，脚下一圈按等级上色的底座。</summary>
-            readonly SpriteRenderer _body, _lvBg;
+            readonly SpriteRenderer _body, _lvBg, _lvRim, _rim, _aura;
             readonly Transform _bodyT;
             readonly bool _figure;
+            /// <summary>兵种有分档动作帧：站、蓄力、出手三张，换档时整组换。</summary>
+            readonly bool _frameSet;
+            readonly Sprite[] _frames = new Sprite[3];
             readonly float _bodyH, _bodyY;
             float _face = 1f;
             const float PlacardY = 0.186f, PlacardGlyph = 0.44f;
             Color _glyphColor = Pal.Ink;
-            float _animT;
+            float _animT, _animDur = AnimDur, _animDist;
             Vector2 _lungeOff;
             UnitKind _animKind;
             Vector2 _animDir;
@@ -2584,22 +2595,43 @@ namespace Rescue
                 Side = side;
                 Root = new GameObject("piece" + p.Id).transform;
                 Root.SetParent(parent, false);
-                var body = p.Type == PieceType.Unit ? Art.UnitBody(p.Kind) : p.Type == PieceType.HeroChar ? Art.Opt("pc_placard") : null;
+                _frameSet = p.Type == PieceType.Unit && Art.UnitFrame(p.Kind, p.Level, 0) != null;
+                var body = _frameSet ? Art.UnitFrame(p.Kind, p.Level, 0) : p.Type == PieceType.HeroChar ? Art.Opt("pc_placard") : null;
                 _figure = body != null;
                 if (_figure)
                 {
                     bool placard = p.Type == PieceType.HeroChar;
-                    _bodyH = placard ? 1f : 0.92f;
-                    _bodyY = placard ? 0.03f : 0.02f;
+                    if (_frameSet)
+                    {
+                        _bodyH = UnitFigH / Art.UnitFigure(p.Kind) * (p.Kind == UnitKind.Qi ? 1.12f : 1f);
+                        _bodyY = FootY + (Art.FigureFoot - 0.5f) * _bodyH;
+                    }
+                    else
+                    {
+                        _bodyH = 1f;
+                        _bodyY = 0.03f;
+                    }
                     _shadow = Gfx.Sprite(Root, Art.SoftDot, Pal.Shadow, new Vector2(0, -0.4f), new Vector2(0.84f, 0.3f), 20);
+                    if (_frameSet)
+                    {
+                        _aura = Gfx.Sprite(Root, Art.SoftDot, Color.clear, new Vector2(0, -0.12f), new Vector2(1.1f, 1.1f), 20);
+                        _rim = Gfx.Sprite(Root, Art.Circle, Pal.Ink.A(0.75f), new Vector2(0, -0.39f), new Vector2(0.8f, 0.27f), 21);
+                        // 和底座同一层，往后挪一点让底座盖在它上面。
+                        _aura.transform.localPosition = new Vector3(0, -0.12f, 0.02f);
+                        _rim.transform.localPosition = new Vector3(0, -0.39f, 0.01f);
+                    }
                     _tile = Gfx.Sprite(Root, Art.Circle, Pal.Tile, new Vector2(0, -0.38f), new Vector2(0.72f, 0.22f), 21);
                     _edge = Gfx.Sprite(Root, Art.Frame, Color.clear, Vector2.zero, new Vector2(0.92f, 0.92f), 21);
                     _body = Gfx.Sprite(Root, body, Color.white, new Vector2(0, _bodyY), Vector2.one * _bodyH, 22);
                     _bodyT = _body.transform;
                     _glyph = Gfx.Text(_bodyT, placard ? p.Glyph.ToString() : "", Fonts.Brush, PlacardGlyph, Pal.RedDeep, new Vector2(0, PlacardY), 23);
                     _glyphT = _glyph.transform;
-                    _lvBg = Gfx.Sprite(Root, Art.Circle, Pal.Ink, new Vector2(0.33f, -0.33f), Vector2.one * 0.27f, 25);
-                    _level = Gfx.Text(Root, "", Fonts.Kai, 0.22f, Pal.Paper, new Vector2(0.33f, -0.335f), 26);
+                    var badge = _frameSet ? new Vector2(0.32f, -0.3f) : new Vector2(0.33f, -0.33f);
+                    float bs = _frameSet ? 0.34f : 0.27f;
+                    _lvRim = Gfx.Sprite(Root, Art.Circle, Pal.Ink, badge, Vector2.one * (bs + 0.05f), 24);
+                    _lvBg = Gfx.Sprite(Root, Art.Circle, Pal.Ink, badge, Vector2.one * bs, 25);
+                    _level = Gfx.Text(Root, "", _frameSet ? Fonts.Brush : Fonts.Kai, _frameSet ? 0.3f : 0.22f, Pal.Paper, badge + new Vector2(0, -0.005f), 26);
+                    if (!_frameSet) _lvRim.enabled = false;
                 }
                 else
                 {
@@ -2615,21 +2647,99 @@ namespace Rescue
                     _icon = Gfx.Sprite(Root, Art.Img("shovel"), Color.white, Vector2.zero, Vector2.one * 0.72f, 22);
                 if (p.Type == PieceType.Stove)
                     _icon = Gfx.Sprite(Root, Art.Img("it_stove"), Color.white, new Vector2(0, -0.02f), Vector2.one * 0.8f, 22);
-                if (p.Type == PieceType.Unit && !_figure)
-                {
-                    _weapon = Gfx.Sprite(Root, Art.Img(WeaponImg(p.Kind)), Color.white, Vector2.zero, Vector2.one * WeaponSize, 24);
-                    _weapon.enabled = false;
-                }
                 Refresh();
             }
 
-            static string WeaponImg(UnitKind k) => k switch
+            /// <summary>
+            /// 各兵种一次出手的时长和落点（占时长的比例）。刀举刀再劈，枪后撤再刺，弓拉满再放，骑扬蹄再冲。
+            /// 攻速快时整段压短，不会上一刀没收回来下一刀又起。
+            /// </summary>
+            public static float StrikeDur(UnitKind k, int level)
             {
-                UnitKind.Dao => "dao",
-                UnitKind.Qiang => "spear",
-                UnitKind.Gong => "bow",
-                _ => "horse",
+                float base_ = k switch
+                {
+                    UnitKind.Dao => 0.42f,
+                    UnitKind.Qiang => 0.4f,
+                    UnitKind.Gong => 0.46f,
+                    _ => 0.5f,
+                };
+                return Mathf.Min(base_, UnitDef.Get(k).CooldownAt(level) * 0.88f);
+            }
+
+            static float StrikeAt(UnitKind k) => k switch
+            {
+                UnitKind.Dao => 0.34f,
+                UnitKind.Qiang => 0.36f,
+                UnitKind.Gong => 0.46f,
+                _ => 0.52f,
             };
+
+            /// <summary>出手那一下离起手多久。特效、伤害数字在这时候出。</summary>
+            public static float HitDelay(UnitKind k, int level) => StrikeDur(k, level) * StrikeAt(k);
+
+            /// <summary>
+            /// 动作帧和身位：k 从 0 到 1。刀劈带前冲和前倾；枪先缩后猛刺，刺出去最远；
+            /// 弓几乎不动，放箭时往后一震；骑先扬起前蹄，再整个冲到敌人跟前撞一下退回。
+            /// </summary>
+            void Pose(float k, out int frame, out Vector2 off, out float rot, out float sx, out float sy)
+            {
+                var d = _animDir;
+                float hit = StrikeAt(_animKind);
+                sx = sy = 1f;
+                rot = 0f;
+                off = Vector2.zero;
+                frame = 0;
+                if (k < hit)
+                {
+                    float e = Tween.OutCubic(k / hit);
+                    frame = 1;
+                    switch (_animKind)
+                    {
+                        case UnitKind.Dao: off = -d * 0.05f * e; rot = 7f * e; sy = 1f + 0.05f * e; break;
+                        case UnitKind.Qiang: off = -d * 0.11f * e; sx = 1f + 0.05f * e; sy = 1f - 0.04f * e; break;
+                        case UnitKind.Gong: off = -d * 0.03f * e; break;
+                        default: off = Vector2.up * 0.07f * e - d * 0.04f * e; rot = 12f * e; break;
+                    }
+                    return;
+                }
+                float t = (k - hit) / (1f - hit);
+                frame = t < 0.62f ? 2 : 0;
+                switch (_animKind)
+                {
+                    case UnitKind.Dao:
+                    {
+                        float p = t < 0.25f ? Tween.OutCubic(t / 0.25f) : 1f - Tween.OutCubic((t - 0.25f) / 0.75f);
+                        off = d * 0.2f * p;
+                        rot = -11f * p;
+                        sx = 1f + 0.06f * p;
+                        break;
+                    }
+                    case UnitKind.Qiang:
+                    {
+                        float p = t < 0.2f ? Tween.OutCubic(t / 0.2f) : 1f - Tween.OutCubic((t - 0.2f) / 0.8f);
+                        off = d * 0.34f * p;
+                        sx = 1f + 0.1f * p;
+                        sy = 1f - 0.05f * p;
+                        break;
+                    }
+                    case UnitKind.Gong:
+                    {
+                        float p = 1f - Tween.OutCubic(t);
+                        off = -d * 0.06f * p;
+                        sx = 1f - 0.04f * p;
+                        break;
+                    }
+                    default:
+                    {
+                        float reach = Mathf.Clamp(_animDist - 0.4f, 0.25f, 1.05f);
+                        float p = t < 0.3f ? Tween.OutCubic(t / 0.3f) : 1f - Tween.OutCubic((t - 0.3f) / 0.7f);
+                        off = d * reach * p + Vector2.up * Mathf.Abs(Mathf.Sin(t * Mathf.PI * 3f)) * 0.05f * p;
+                        rot = -6f * p;
+                        frame = t < 0.75f ? 2 : 0;
+                        break;
+                    }
+                }
+            }
 
             void Refresh()
             {
@@ -2679,10 +2789,24 @@ namespace Rescue
             {
                 bool hero = Piece.Type == PieceType.HeroChar;
                 // 凑成了好汉、也画了这位好汉：金框里站好汉本人，这几块字牌收起来。
-                bool hidden = hero && Hero != null && Art.HeroBody(Hero.Def.Id) != null;
+                bool hidden = hero && Hero != null && Art.HeroFrame(Hero.Def.Id, 0) != null;
                 _body.enabled = _tile.enabled = _shadow.enabled = _lvBg.enabled = !hidden;
                 _glyph.gameObject.SetActive(!hidden);
                 _level.text = hidden ? "" : Piece.Level.ToString();
+                if (_frameSet)
+                {
+                    for (int i = 0; i < 3; i++) _frames[i] = Art.UnitFrame(Piece.Kind, Piece.Level, i) ?? _frames[0];
+                    _body.sprite = _frames[0];
+                    int lvl = Mathf.Clamp(Piece.Level, 1, UnitDef.MaxLevel);
+                    var metal = Pal.Metal(lvl);
+                    _tile.color = metal;
+                    _rim.color = Color.Lerp(metal, Pal.Ink, 0.55f);
+                    _lvBg.color = lvl >= UnitDef.MaxLevel ? Pal.Hex("C0392B") : lvl == 1 ? Pal.InkSoft : Color.Lerp(metal, Pal.Ink, 0.25f);
+                    _lvRim.color = lvl >= 4 ? Pal.GoldBright : Pal.Paper;
+                    _level.color = lvl >= UnitDef.MaxLevel ? Pal.Hex("FFE36A") : Pal.Paper;
+                    _glyphColor = Pal.RedDeep;
+                    return;
+                }
                 var lv = hero ? Pal.Gold : Pal.ForLevel(Piece.Level);
                 _tile.color = Color.Lerp(Pal.Tile, lv, hero || Piece.Level > 1 ? 0.7f : 0.35f);
                 _lvBg.color = lv;
@@ -2742,11 +2866,13 @@ namespace Rescue
                 }
             }
 
-            public void Attack(UnitKind kind, Vector2 dir)
+            public void Attack(UnitKind kind, Vector2 dir, float dist)
             {
                 _animT = 1f;
                 _animKind = kind;
                 _animDir = dir.sqrMagnitude > 0.001f ? dir : Vector2.up;
+                _animDist = dist;
+                _animDur = _frameSet ? StrikeDur(kind, Piece.Level) : AnimDur;
                 _lungeReach = 0f;
                 if (Mathf.Abs(_animDir.x) > 0.15f) _face = _animDir.x < 0 ? -1f : 1f;
             }
@@ -2759,6 +2885,7 @@ namespace Rescue
                 _animT = 1f;
                 _animKind = UnitKind.Qi;
                 _animDir = dir.sqrMagnitude > 0.001f ? dir.normalized : Vector2.up;
+                _animDur = AnimDur;
                 _lungeReach = 0.34f;
             }
 
@@ -2775,11 +2902,13 @@ namespace Rescue
                 {
                     _body.sortingOrder = o + 2;
                     _glyph.GetComponent<MeshRenderer>().sortingOrder = o + 3;
+                    _lvRim.sortingOrder = o + 4;
                     _lvBg.sortingOrder = o + 5;
                     _level.GetComponent<MeshRenderer>().sortingOrder = o + 6;
+                    if (_rim != null) _rim.sortingOrder = o + 1;
+                    if (_aura != null) _aura.sortingOrder = o;
                 }
                 else _level.GetComponent<MeshRenderer>().sortingOrder = o + 3;
-                if (_weapon != null) _weapon.sortingOrder = o + 4;
                 if (_chainA != null)
                 {
                     _chainA.sortingOrder = _chainB.sortingOrder = o + 5;
@@ -2787,14 +2916,16 @@ namespace Rescue
                     _stunMark.GetComponent<MeshRenderer>().sortingOrder = o + 7;
                 }
                 Root.localScale = Vector3.one * (on ? 1.12f : 1f);
-                _shadow.transform.localPosition = on ? new Vector2(0.1f, -0.18f) : new Vector2(0.04f, -0.07f);
+                _shadow.transform.localPosition = _figure ? new Vector2(on ? 0.08f : 0f, on ? -0.46f : -0.4f)
+                    : on ? new Vector2(0.1f, -0.18f) : new Vector2(0.04f, -0.07f);
             }
 
             public void Tick(float dt, bool dragging)
             {
-                if (_lastLevel != Piece.Level * 10 + (Hero != null ? 1 : 0))
+                int key = Piece.Level * 10 + (Hero == null ? 0 : Art.HeroFrame(Hero.Def.Id, 0) != null ? 2 : 1);
+                if (_lastLevel != key)
                 {
-                    _lastLevel = Piece.Level * 10 + (Hero != null ? 1 : 0);
+                    _lastLevel = key;
                     Refresh();
                 }
                 if (_popDelay > 0f)
@@ -2807,17 +2938,30 @@ namespace Rescue
                 var cur = (Vector2)Root.localPosition - _lungeOff;
                 cur = Vector2.Lerp(cur, Target, 1f - Mathf.Exp(-dt * (dragging ? 30f : 16f)));
                 _lungeOff = Vector2.zero;
-                if (_animT > 0 && !dragging)
+                float sx = 1, sy = 1, rot = 0;
+                int frame = 0;
+                if (_animT > 0 && _frameSet)
+                {
+                    if (dragging) _animT = 0f;
+                    else
+                    {
+                        _animT = Mathf.Max(0, _animT - dt / _animDur);
+                        Pose(1f - _animT, out frame, out _lungeOff, out rot, out sx, out sy);
+                    }
+                }
+                else if (_animT > 0)
                 {
                     float lk = 1f - _animT;
-                    float reach = _lungeReach > 0f ? _lungeReach : _animKind switch
+                    if (!dragging)
                     {
-                        UnitKind.Dao => 0.16f,
-                        UnitKind.Qiang => 0.22f,
-                        UnitKind.Gong => -0.09f,
-                        _ => 0.12f,
-                    };
-                    _lungeOff = _animDir * reach * Mathf.Sin(Mathf.Min(1f, lk * 1.6f) * Mathf.PI);
+                        float reach = _lungeReach > 0f ? _lungeReach : 0.14f;
+                        _lungeOff = _animDir * reach * Mathf.Sin(Mathf.Min(1f, lk * 1.6f) * Mathf.PI);
+                    }
+                    _animT = Mathf.Max(0, _animT - dt / _animDur);
+                    if (_animT <= 0f) _lungeReach = 0f;
+                    float q = Mathf.Sin(lk * Mathf.PI);
+                    sx += q * 0.18f;
+                    sy -= q * 0.12f;
                 }
                 Root.localPosition = cur + _lungeOff;
 
@@ -2825,55 +2969,6 @@ namespace Rescue
                 _popK = Mathf.Min(1f, _popK + dt / 0.3f);
                 float pop = _popK < 1f ? Tween.OutBack(_popK) : 1f;
                 Root.localScale = Vector3.one * ((_dragging ? 1.12f : 1f) * (1f + Mathf.Sin(_punch * 20f) * _punch * 0.5f) * pop);
-
-                float sx = 1, sy = 1, morph = 0;
-                if (_animT > 0 && (_animKind == UnitKind.Qi || _figure))
-                {
-                    _animT = Mathf.Max(0, _animT - dt / AnimDur);
-                    if (_animT <= 0f) _lungeReach = 0f;
-                    float q = Mathf.Sin((1f - _animT) * Mathf.PI);
-                    sx += q * 0.18f;
-                    sy -= q * 0.12f;
-                    if (_weapon != null) _weapon.enabled = false;
-                }
-                else if (_animT > 0 && _weapon != null)
-                {
-                    _animT = Mathf.Max(0, _animT - dt / AnimDur);
-                    float k = 1f - _animT;
-                    morph = Mathf.Clamp01(Mathf.Min(k / 0.15f, _animT / 0.25f));
-                    float ang = Mathf.Atan2(_animDir.y, _animDir.x) * Mathf.Rad2Deg;
-                    Vector2 wp = Vector2.zero;
-                    float wr = 0, wsx = 1;
-                    bool flip = false;
-                    switch (_animKind)
-                    {
-                        case UnitKind.Dao:
-                            wr = ang - 45f + Mathf.Lerp(80f, -80f, Tween.OutCubic(k));
-                            wp = _animDir * 0.12f;
-                            break;
-                        case UnitKind.Qiang:
-                            wr = ang - 45f;
-                            wp = _animDir * Mathf.Sin(k * Mathf.PI) * 0.55f;
-                            break;
-                        case UnitKind.Gong:
-                            wr = ang - 180f;
-                            wsx = 1f - 0.28f * Mathf.Sin(Mathf.Min(1f, k * 1.6f) * Mathf.PI);
-                            break;
-                        default:
-                            flip = _animDir.x > 0;
-                            wp = _animDir * Mathf.Sin(k * Mathf.PI) * 0.35f + Vector2.up * Mathf.Abs(Mathf.Sin(k * Mathf.PI * 2f)) * 0.12f;
-                            wr = Mathf.Sin(k * Mathf.PI * 2f) * 10f;
-                            break;
-                    }
-                    _weapon.enabled = morph > 0.01f;
-                    var wt = _weapon.transform;
-                    wt.localPosition = wp;
-                    wt.localRotation = Quaternion.Euler(0, 0, wr);
-                    float ws = WeaponSize * (0.6f + 0.4f * morph);
-                    wt.localScale = new Vector3(ws * wsx * (flip ? -1f : 1f), ws, 1);
-                    _weapon.color = Color.white.A(morph);
-                }
-                else if (_weapon != null) _weapon.enabled = false;
 
                 if (Piece.Type == PieceType.HeroChar && Hero == null && !_dragging)
                 {
@@ -2883,13 +2978,12 @@ namespace Rescue
                 }
                 if (_figure)
                 {
-                    TickFigure(sx, sy);
+                    TickFigure(sx, sy, rot, frame);
                     return;
                 }
-                float g = 1f - morph * 0.85f;
                 _glyphT.localPosition = new Vector2(0, -0.02f);
-                _glyphT.localScale = new Vector3(sx * g, sy * g, 1);
-                _glyph.color = _glyphColor.A(1f - morph * 0.9f);
+                _glyphT.localScale = new Vector3(sx, sy, 1);
+                _glyph.color = _glyphColor;
                 if (_stunned)
                 {
                     _glyph.color = Color.Lerp(_glyphColor, Pal.InkSoft, 0.65f);
@@ -2904,12 +2998,32 @@ namespace Rescue
                 }
             }
 
-            /// <summary>小人原地轻轻起伏，出手时朝目标一挤；牌面的字跟着人走，翻面时字不反。</summary>
-            void TickFigure(float sx, float sy)
+            /// <summary>
+            /// 小人原地轻轻起伏。有动作帧的兵出手时换蓄力、出手两张，身子绕脚底转，前冲后撤跟着兵种走；
+            /// 牌面的字跟着人走，翻面时字不反。
+            /// </summary>
+            void TickFigure(float sx, float sy, float rot, int frame)
             {
-                float idle = _dragging ? 0f : Mathf.Sin(Time.time * 3f + Piece.Id * 1.7f) * 0.025f;
-                _bodyT.localScale = new Vector3(_bodyH * sx * _face, _bodyH * (sy + idle), 1f);
-                _bodyT.localPosition = new Vector2(0f, _bodyY + idle * 0.4f);
+                bool busy = _animT > 0f;
+                float idle = _dragging || busy ? 0f : Mathf.Sin(Time.time * 3f + Piece.Id * 1.7f) * 0.025f;
+                if (_frameSet)
+                {
+                    _body.sprite = _frames[frame] ?? _frames[0];
+                    _body.sortingOrder = (_dragging ? 60 : _baseOrder) + 2 + (busy && _animKind == UnitKind.Qi ? 30 : 0);
+                    // 绕脚底转：先把脚底挪到原点，转完再挪回去。
+                    var foot = new Vector2(0f, FootY);
+                    var q = Quaternion.Euler(0, 0, rot * _face);
+                    var center = new Vector2(0f, (_bodyY - FootY) * (sy + idle));
+                    _bodyT.localRotation = q;
+                    _bodyT.localPosition = foot + (Vector2)(q * center);
+                    _bodyT.localScale = new Vector3(_bodyH * sx * _face, _bodyH * (sy + idle), 1f);
+                    TickAura();
+                }
+                else
+                {
+                    _bodyT.localScale = new Vector3(_bodyH * sx * _face, _bodyH * (sy + idle), 1f);
+                    _bodyT.localPosition = new Vector2(0f, _bodyY + idle * 0.4f);
+                }
                 _glyphT.localScale = new Vector3(_face, 1f, 1f);
                 var tint = Color.white;
                 if (_stunned)
@@ -2929,6 +3043,22 @@ namespace Rescue
                 else _edge.color = Color.clear;
             }
 
+            /// <summary>四级底座泛一圈金光，五级金光一明一暗地呼吸，隔着半个棋盘也认得出。</summary>
+            void TickAura()
+            {
+                int lvl = Piece.Level;
+                if (lvl < 4 || _dragging)
+                {
+                    _aura.color = Color.clear;
+                    return;
+                }
+                float pulse = lvl >= UnitDef.MaxLevel ? 0.5f + 0.5f * Mathf.Sin(Time.time * 3.2f + Piece.Id) : 0.5f;
+                float a = lvl >= UnitDef.MaxLevel ? 0.42f + 0.22f * pulse : 0.26f;
+                _aura.color = Pal.Hex(lvl >= UnitDef.MaxLevel ? "FFB43A" : "F0C23C").A(a);
+                float s = lvl >= UnitDef.MaxLevel ? 1.15f + 0.1f * pulse : 1f;
+                _aura.transform.localScale = new Vector3(s, s * 0.9f, 1f);
+            }
+
             public void FadeOutAndDestroy()
             {
                 var root = Root;
@@ -2940,8 +3070,9 @@ namespace Rescue
         {
             readonly SpriteRenderer _frame, _glow, _xpBg, _xpFg;
             readonly TextMesh _nick, _seal;
-            SpriteRenderer _armBg;
+            SpriteRenderer _armBg, _armIcon;
             TextMesh _arm;
+            SpriteMask _clip;
             HeroDef _gear;
             readonly BattleView _v;
             readonly SpriteRenderer _sealBg;
@@ -2952,10 +3083,19 @@ namespace Rescue
             float _barW;
             /// <summary>画了这位好汉时：框里站好汉本人，框底一块红名牌。</summary>
             readonly SpriteRenderer _back, _body, _plate;
+            readonly Sprite[] _art;
             Vector2 _bodyAt, _lungeDir;
-            float _bodyH, _lungeT, _face = 1f;
+            float _bodyH, _lungeT = -1f, _face = 1f;
+            HeroSwing _swing;
+            bool _crit;
+            /// <summary>图包还没下完，先只摆框和名牌，下完了整个重建。</summary>
+            public readonly bool WantsArt;
 
-            public FrameView(BattleView v, HeroInstance h, int side)
+            /// <summary>三帧出手：蓄力 → 出手 → 收势。出手那一刻在 StrikeK，特效等到那时才放。</summary>
+            const float StrikeDur = 0.46f, StrikeK = 0.4f;
+            public const float HitDelay = StrikeDur * StrikeK;
+
+            public FrameView(BattleView v, HeroInstance h, int side, bool quiet = false)
             {
                 _root = new GameObject("hero" + h.Id).transform;
                 _root.SetParent(side == 0 ? v._low : v._root, false);
@@ -2969,11 +3109,23 @@ namespace Rescue
                 _seal = Gfx.Text(_root, disha ? "煞" : "罡", Fonts.Brush, 0.2f, Pal.Paper, Vector2.zero, 26);
                 _xpBg = Gfx.Sprite(_root, Art.White, Pal.Ink.A(0.45f), Vector2.zero, new Vector2(1, 0.06f), 25);
                 _xpFg = Gfx.Sprite(_root, Art.White, _tintBright, Vector2.zero, new Vector2(1, 0.06f), 26);
-                var art = Art.HeroBody(h.Def.Id);
+                var art = Art.HeroFrame(h.Def.Id, 0);
+                WantsArt = art == null && ArtPack.Has(Art.HeroPack(h.Def.Id));
+                if (WantsArt) ArtPack.Ensure(Art.HeroPack(h.Def.Id));
                 if (art != null)
                 {
+                    _art = new[] { art, Art.HeroFrame(h.Def.Id, 1) ?? art, Art.HeroFrame(h.Def.Id, 2) ?? art };
                     _back = Gfx.Sprite(_root, Art.Rounded, (disha ? Color.Lerp(Pal.Tile, Pal.Purple, 0.25f) : Pal.TileHero).A(0.95f), Vector2.zero, Vector2.one, 19);
                     _body = Gfx.Sprite(_root, art, Color.white, Vector2.zero, Vector2.one, 23);
+                    _body.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+                    // 好汉只画在框里，探出去的兵器被框裁掉，不压到上一行的格子。
+                    var clip = new GameObject("clip");
+                    clip.transform.SetParent(_root, false);
+                    _clip = clip.AddComponent<SpriteMask>();
+                    _clip.sprite = Art.White;
+                    _clip.isCustomRangeActive = true;
+                    _clip.frontSortingOrder = 23;
+                    _clip.backSortingOrder = 22;
                     _plate = Gfx.Sprite(_root, Art.Rounded, disha ? Pal.Purple : Pal.RedDeep, Vector2.zero, new Vector2(0.86f, 0.3f), 25);
                     _nick.text = h.Def.Name;
                     _nick.font = Fonts.Brush;
@@ -2986,6 +3138,7 @@ namespace Rescue
                 _side = side;
                 SetGear(v.M.Sides[side].GearOf(h.Def));
                 Place(h);
+                if (quiet) return;
                 Tween.Pop(_root, 0.4f);
                 _glowT = 1.5f;
             }
@@ -2998,13 +3151,16 @@ namespace Rescue
                 _gear = gear;
                 if (_armBg) UnityEngine.Object.Destroy(_armBg.gameObject);
                 if (_arm) UnityEngine.Object.Destroy(_arm.gameObject);
-                _armBg = null;
+                if (_armIcon) UnityEngine.Object.Destroy(_armIcon.gameObject);
+                _armBg = _armIcon = null;
                 _arm = null;
                 if (gear == null) return;
+                // 兵器架上领来的兵器：前面一个兵器小图，一看就是“手里拿着这件”。
                 string badge = GearBadge(gear);
-                float bw = 0.42f + badge.Length * 0.22f;
-                _armBg = Gfx.Sprite(_root, Art.Rounded, Ui.GradeColor(gear.WGrade), Vector2.zero, new Vector2(bw, 0.34f), 27);
-                _arm = Gfx.Text(_root, badge, Fonts.Kai, badge.Length > 3 ? 0.15f : 0.18f, Pal.Paper, Vector2.zero, 28);
+                float bw = 0.5f + badge.Length * 0.19f;
+                _armBg = Gfx.Sprite(_root, Art.Rounded, Ui.GradeColor(gear.WGrade), Vector2.zero, new Vector2(bw, 0.3f), 27);
+                _armIcon = Gfx.Sprite(_root, Art.Img(HeroWeaponSprite(gear)), Color.white, Vector2.zero, new Vector2(0.3f, 0.3f), 28);
+                _arm = Gfx.Text(_root, badge, Fonts.Kai, badge.Length > 3 ? 0.14f : 0.16f, Pal.Paper, Vector2.zero, 28);
             }
 
             void Place(HeroInstance h)
@@ -3025,12 +3181,13 @@ namespace Rescue
                 if (_body != null)
                 {
                     _back.size = size - new Vector2(0.06f, 0.06f);
-                    // 好汉整个站在框里：上留一点边，下让出名牌，宽也按图的比例收住，出手时探身也不出框。
-                    const float top = 0.06f, bottom = 0.12f, side = 0.12f;
-                    var r = _body.sprite.rect;
-                    float aspect = r.width / Mathf.Max(r.width, r.height);
-                    _bodyH = Mathf.Min(size.y - top - bottom, (size.x - side * 2f) / aspect) / 1.04f;
-                    _bodyAt = new Vector2(0f, (bottom - top) * 0.5f);
+                    // 帧是方画布，人占 HeroFigure 高、脚踩在画布 FigureFoot 处。人撑满框高，举过头的兵器由遮罩裁掉。
+                    const float bottom = 0.1f;
+                    float fig = Mathf.Min(size.y - 0.14f, size.x * 1.05f, 1.9f);
+                    _clip.transform.localScale = new Vector3(size.x - 0.1f, size.y - 0.1f, 1f);
+                    _bodyH = fig / Art.HeroFigure;
+                    float feet = -size.y * 0.5f + bottom;
+                    _bodyAt = new Vector2(0f, feet + (Art.FigureFoot - 0.5f) * _bodyH);
                     float plateY = -size.y * 0.5f + 0.04f;
                     _plate.transform.localPosition = new Vector2(0f, plateY);
                     _nick.transform.localPosition = new Vector2(0f, plateY);
@@ -3043,9 +3200,10 @@ namespace Rescue
                 if (_arm != null)
                 {
                     float bw = _armBg.size.x;
-                    var p = new Vector2(-size.x * 0.5f + bw * 0.5f + 0.06f, size.y * 0.5f - 0.22f);
+                    var p = new Vector2(-size.x * 0.5f + bw * 0.5f + 0.1f, size.y * 0.5f);
                     _armBg.transform.localPosition = p;
-                    _arm.transform.localPosition = p;
+                    _armIcon.transform.localPosition = p + new Vector2(-bw * 0.5f + 0.19f, 0f);
+                    _arm.transform.localPosition = p + new Vector2(0.11f, 0f);
                 }
             }
 
@@ -3063,22 +3221,73 @@ namespace Rescue
                 float k = h.Level >= UnitDef.MaxLevel ? 1f : Mathf.Clamp01(h.Xp / HeroInstance.XpNeed(h.Level));
                 _xpFg.transform.localScale = new Vector3(_barW * k, 0.06f, 1);
                 _xpFg.transform.localPosition = _xpBg.transform.localPosition - new Vector3(_barW * (1 - k) * 0.5f, 0, 0);
-                if (_body != null)
-                {
-                    _lungeT = Mathf.Max(0f, _lungeT - dt / 0.34f);
-                    float reach = Mathf.Sin((1f - _lungeT) * Mathf.PI) * (_lungeT > 0f ? 0.1f : 0f);
-                    float idle = Mathf.Sin(Time.time * 2.6f + h.Id) * 0.02f;
-                    float squash = reach * 0.5f;
-                    _body.transform.localPosition = _bodyAt + _lungeDir * reach + new Vector2(0f, idle * _bodyH * 0.5f);
-                    _body.transform.localScale = new Vector3(_bodyH * (1f + squash) * _face, _bodyH * (1f + idle - squash * 0.6f), 1f);
-                }
+                if (_body != null) Pose(h, dt);
             }
 
-            public void Lunge(Vector2 dir)
+            void Pose(HeroInstance h, float dt)
             {
-                _lungeT = 1f;
+                float idle = Mathf.Sin(Time.time * 2.6f + h.Id) * 0.012f;
+                int frame = 0;
+                Vector2 off = Vector2.zero;
+                float sx = 1f, sy = 1f + idle;
+                if (_lungeT >= 0f)
+                {
+                    _lungeT += dt / StrikeDur;
+                    if (_lungeT >= 1f) _lungeT = -1f;
+                }
+                if (_lungeT >= 0f)
+                {
+                    float t = _lungeT, d = _crit ? 1.4f : 1f;
+                    var n = new Vector2(_lungeDir.x, _lungeDir.y * 0.5f).normalized;
+                    if (t < StrikeK)
+                    {
+                        float k = Tween.OutCubic(t / StrikeK);
+                        frame = 1;
+                        switch (_swing)
+                        {
+                            case HeroSwing.Loose: off = -n * 0.03f * k; sx = 1f - 0.02f * k; break;
+                            case HeroSwing.Hurl: off = -n * 0.06f * k; break;
+                            case HeroSwing.Fist: off = -n * 0.04f * k; sy -= 0.06f * k; sx += 0.04f * k; break;
+                            default: off = -n * 0.05f * k + Vector2.up * 0.03f * k; sy += 0.03f * k; break;
+                        }
+                    }
+                    else
+                    {
+                        float u = (t - StrikeK) / (1f - StrikeK);
+                        float p = u < 0.25f ? Tween.OutCubic(u / 0.25f) : 1f - Tween.OutCubic((u - 0.25f) / 0.75f);
+                        frame = u < 0.62f ? 2 : 0;
+                        switch (_swing)
+                        {
+                            case HeroSwing.Loose: off = -n * 0.07f * (1f - u) * d; break;
+                            case HeroSwing.Hurl: off = n * 0.08f * p * d; break;
+                            case HeroSwing.Thrust: off = n * 0.2f * p * d; sx += 0.05f * p; sy -= 0.03f * p; break;
+                            case HeroSwing.Fist: off = n * 0.16f * p * d; sx += 0.06f * p; break;
+                            case HeroSwing.Whip: off = n * 0.06f * p * d; break;
+                            default: off = n * 0.13f * p * d - Vector2.up * 0.03f * p; sx += 0.05f * p; sy -= 0.05f * p; break;
+                        }
+                    }
+                }
+                _body.sprite = _art[frame];
+                // 缩放绕画布中心，脚要钉在原地。
+                _body.transform.localPosition = _bodyAt + off + new Vector2(0f, (sy - 1f) * _bodyH * (Art.FigureFoot - 0.5f));
+                _body.transform.localScale = new Vector3(_bodyH * sx * _face, _bodyH * sy, 1f);
+            }
+
+            public void Lunge(Vector2 dir, HeroSwing swing = HeroSwing.Arc, bool crit = false)
+            {
+                _lungeT = 0f;
+                _swing = swing;
+                _crit = crit;
                 _lungeDir = dir.sqrMagnitude > 0.001f ? dir.normalized : Vector2.up;
                 if (Mathf.Abs(_lungeDir.x) > 0.15f) _face = _lungeDir.x < 0 ? -1f : 1f;
+            }
+
+            public bool HasArt => _art != null;
+
+            public void StrikeAt(Vector2 at, HeroSwing swing)
+            {
+                var d = at - (Vector2)_root.localPosition;
+                Lunge(d.sqrMagnitude > 0.04f ? d : new Vector2(_face, 0f), swing, true);
             }
 
             public void Pulse() => _pulse = 1f;
@@ -3118,7 +3327,16 @@ namespace Rescue
                 {
                     if (boss)
                         _aura = Gfx.Sprite(Root, Art.Blob, Pal.Red.A(0.35f), new Vector2(0, -h * 0.3f), Vector2.one * 1.6f, 30);
-                    _body = Gfx.Sprite(Root, Body, Color.white, Vector2.zero, Vector2.one * h, 32);
+                    _walk = Art.EnemyWalk(e.Def.Kind, e.Id, e.Boss?.Name);
+                    _front = Art.EnemyFront(e.Def.Kind, e.Id, e.Boss?.Name);
+                    _back = Art.EnemyBack(e.Def.Kind, e.Id, e.Boss?.Name);
+                    if (_walk != null)
+                    {
+                        _canvas = h / Art.EnemyFigure;
+                        _body = Gfx.Sprite(Root, _walk[0], Color.white, new Vector2(0, WalkBodyY(1f)), Vector2.one * _canvas, 32);
+                        _walkFrame = (int)(hash >> 4) & 3;
+                    }
+                    else _body = Gfx.Sprite(Root, Body, Color.white, Vector2.zero, Vector2.one * h, 32);
                 }
                 else
                 {
@@ -3148,10 +3366,19 @@ namespace Rescue
             public string GlyphText => _glyph.text;
             public float GlyphHeight { get; }
             public Color GlyphColor => _baseColor;
-            /// <summary>画好的官兵小人；null 时照旧写字。图里的人都朝右走。</summary>
+            /// <summary>画好的官兵小人；null 时照旧写字。图都是朝左走的。</summary>
             public readonly Sprite Body;
             readonly SpriteRenderer _body;
+            readonly Sprite[] _walk, _front, _back;
+            readonly float _canvas;
+            int _walkFrame;
+            float _travel;
+            /// <summary>0 侧面左右走，1 往上走看后背，-1 往下走看正脸。</summary>
+            int _vert;
             public float Face { get; private set; } = 1f;
+
+            /// <summary>走路帧是方画布、脚在画布 0.86 处；按竖向缩放算画布中心，脚始终踩在 -h/2。</summary>
+            float WalkBodyY(float sy) => -GlyphHeight * 0.5f + (Art.FigureFoot - 0.5f) * _canvas * sy;
             Vector2 _lastPos;
             bool _hasLast;
 
@@ -3177,7 +3404,8 @@ namespace Rescue
 
             public void Sync(Enemy e, Vector2 pos, float dt)
             {
-                Root.localPosition = pos + _jitter + _kick + new Vector2(0, Mathf.Abs(Mathf.Sin(Time.time * 9f + e.Id)) * 0.04f);
+                float bob = _walk != null ? 0f : Mathf.Abs(Mathf.Sin(Time.time * 9f + e.Id)) * 0.04f;
+                Root.localPosition = pos + _jitter + _kick + new Vector2(0, bob);
                 if (e.InBrush)
                 {
                     _out = false;
@@ -3223,10 +3451,19 @@ namespace Rescue
             /// <summary>小人按走向翻面、走路左右晃；挨打变红，定身发蓝，被催阵发红。</summary>
             void SyncBody(Enemy e, Vector2 pos, float squash, float grow, bool haste, bool rage)
             {
+                float step = 0f;
                 if (_hasLast)
                 {
-                    float dx = pos.x - _lastPos.x;
-                    if (Mathf.Abs(dx) > 0.002f) Face = dx < 0 ? -1f : 1f;
+                    var d = pos - _lastPos;
+                    // 竖着走比横着走更明显时换正背：往上脸朝路的前方（宋江在上方就朝他），往下才是正脸。
+                    if (Mathf.Abs(d.y) > Mathf.Abs(d.x) && Mathf.Abs(d.y) > 0.002f)
+                        _vert = d.y > 0f ? 1 : -1;
+                    else if (Mathf.Abs(d.x) > 0.002f)
+                    {
+                        _vert = 0;
+                        Face = d.x < 0f ? 1f : -1f;
+                    }
+                    step = d.magnitude;
                 }
                 _lastPos = pos;
                 _hasLast = true;
@@ -3234,8 +3471,26 @@ namespace Rescue
                 if (rage) tint = Color.Lerp(tint, Pal.Hex("FF8070"), 0.5f + 0.3f * Mathf.Sin(Time.time * 10f));
                 _body.color = Color.Lerp(tint, Pal.Hex("FF4030"), _flash * 0.75f);
                 float h = GlyphHeight;
-                float walk = e.StunT > 0 ? 0f : Mathf.Sin(Time.time * 10f + e.Id) * 5f;
                 var t = _body.transform;
+                float sy = (1f - squash * 0.6f) * grow;
+                if (_walk != null)
+                {
+                    // 按走过的路程翻帧，走得快腿就迈得快；定身、站住时停在当前步。
+                    if (e.StunT <= 0 && step < 0.5f)
+                    {
+                        _travel += step;
+                        float stride = h * 0.2f;
+                        while (_travel >= stride) { _travel -= stride; _walkFrame = (_walkFrame + 1) & 3; }
+                    }
+                    var frames = _vert > 0 && _back != null ? _back : _vert < 0 && _front != null ? _front : _walk;
+                    float face = frames == _walk ? Face : 1f;
+                    _body.sprite = frames[_walkFrame % frames.Length];
+                    t.localScale = new Vector3((1f + squash) * face * grow, sy, 1f) * _canvas;
+                    t.localPosition = new Vector2(0, WalkBodyY(sy));
+                    t.localRotation = Quaternion.Euler(0, 0, -_kick.x * 40f);
+                    return;
+                }
+                float walk = e.StunT > 0 ? 0f : Mathf.Sin(Time.time * 10f + e.Id) * 5f;
                 t.localScale = new Vector3((1f + squash) * Face, 1f - squash * 0.6f, 1f) * h * grow;
                 t.localRotation = Quaternion.Euler(0, 0, walk - _kick.x * 40f);
             }
