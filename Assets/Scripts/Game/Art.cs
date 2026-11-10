@@ -103,6 +103,24 @@ namespace Rescue
         /// <summary>Resources/Art 下的手绘图（生成后抠图），长边 = 1 个世界单位。</summary>
         public static Sprite Img(string name) => Get("img_" + name, () => Resources.Load<Sprite>("Art/" + name) ?? Rounded);
 
+        /// <summary>界面皮（tools/build_ui_skin.py 出的 skin_*）：100 像素一单位，四边按 border 像素切九宫格。</summary>
+        public static Sprite Skin(string name, float border) => Get("skin_" + name, () =>
+        {
+            var src = Resources.Load<Sprite>("Art/" + name);
+            if (src == null) return Rounded;
+            return Sprite.Create(src.texture, src.rect, new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect,
+                new Vector4(border, border, border, border));
+        });
+
+        /// <summary>只切左右两头，中段横向拉长（标题牌）。</summary>
+        public static Sprite SkinH(string name, float border) => Get("skinh_" + name, () =>
+        {
+            var src = Resources.Load<Sprite>("Art/" + name);
+            if (src == null) return Rounded;
+            return Sprite.Create(src.texture, src.rect, new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect,
+                new Vector4(border, 0, border, 0));
+        });
+
         static readonly Dictionary<string, Sprite> OptCache = new Dictionary<string, Sprite>();
 
         /// <summary>没画到的图返回 null，调用方照旧写字。</summary>

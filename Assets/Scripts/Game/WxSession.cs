@@ -117,6 +117,22 @@ namespace Rescue
         static bool _privacyBusy;
         static Action<bool> _privacyDone;
         static GameObject _privacyLayer;
+        static GameObject _contractLayer;
+
+        const string ContractText =
+            "一、微信登录\n" +
+            "打开游戏时使用微信登录，取得账号标识，用来保存进度、铜钱、体力和排行榜名次。标识只存在我们自己的服务器。\n\n" +
+            "二、昵称和头像\n" +
+            "只有你点头像并同意后，才会用你的微信昵称和头像上榜。不同意也能正常游戏，榜上用默认名字和头像。\n\n" +
+            "三、省份\n" +
+            "登录时根据网络来源判断所在省，只用于本省榜，不记录城市和更细的位置。\n\n" +
+            "四、游戏数据\n" +
+            "关卡、战绩、道具和广告观看次数存在你的设备和我们的服务器，用来接着玩、发奖励。\n\n" +
+            "五、激励视频\n" +
+            "补体力、双倍领取会播放微信的激励视频。看不看由你决定，不看不影响已有进度。\n\n" +
+            "六、你的选择\n" +
+            "点「暂不」可以先不同意。游戏照常进行。在微信里删除小游戏后，本机进度一并清除。\n\n" +
+            "上述信息只用于本游戏，不出售。有疑问请通过微信小游戏的反馈入口联系运营组。";
         static bool _avatarAsked;
         static int _coverGen;
 
@@ -242,6 +258,8 @@ namespace Rescue
 
             var link = Ui.Label(card, "查看隐私保护指引", 36, Pal.Hex("1F5FD6"), new Vector2(0, -150), new Vector2(520, 64));
             link.raycastTarget = true;
+            var underline = Ui.Box(link.transform, new Vector2(292, 3), new Vector2(0, -24), Pal.Hex("1F5FD6"), Art.White, "underline");
+            underline.raycastTarget = false;
             Ui.Tap(link, OpenContract);
 
             Ui.CartoonBtn(card, "同意并继续", new Vector2(460, 110), new Vector2(0, -270), Ui.BtnYellow, AgreePrivacy, 46, null, Ui.Edge);
@@ -264,24 +282,58 @@ namespace Rescue
             ClosePrivacy(true);
         }
 
+        /// <summary>
+        /// 先在游戏里展开完整指引。微信后台配了协议时，再叠一层官方页；打不开就停在游戏内这页，不再报错。
+        /// </summary>
         static void OpenContract()
         {
+            ShowContract();
 #if RESCUE_WX
             try
             {
                 WX.OpenPrivacyContract(new OpenPrivacyContractOption
                 {
-                    fail = e => Ui.Toast("这会儿打不开"),
+                    fail = e => Debug.LogWarning("[Privacy] " + e),
                 });
             }
             catch (Exception e)
             {
                 Debug.LogWarning("[Privacy] " + e.Message);
-                Ui.Toast("这会儿打不开");
             }
-#else
-            Ui.Toast("真机上会打开隐私保护指引");
 #endif
+        }
+
+        static void ShowContract()
+        {
+            if (_contractLayer || Ui.Root == null) return;
+            var layer = Ui.Fill(Ui.Root, new Color(0f, 0f, 0f, 0.72f), true, "contract");
+            layer.SetAsLastSibling();
+            _contractLayer = layer.gameObject;
+            var card = Ui.WoodPanel(Ui.Fit(layer, 1560), new Vector2(860, 1400), new Vector2(0, -10));
+            Ui.Title(card, "隐私保护指引", new Vector2(0, 620), 68);
+            Ui.CloseX(card, new Vector2(-400, 620), CloseContract);
+            var content = Ui.Scroll(card, new Vector2(740, 1080), new Vector2(0, -70), 1080, "contractScroll");
+            var body = Ui.Label(content, ContractText, 30, Pal.Ink, Vector2.zero, new Vector2(700, 80), TextAnchor.UpperLeft);
+            body.lineSpacing = 1.02f;
+            Canvas.ForceUpdateCanvases();
+            int lines = 1, chars = 0;
+            foreach (char c in ContractText)
+            {
+                if (c == '\n') { lines++; chars = 0; continue; }
+                if (++chars >= 20) { lines++; chars = 0; }
+            }
+            float h = Mathf.Max(body.preferredHeight + 48f, lines * 38f);
+            content.sizeDelta = new Vector2(740, h);
+            var rt = body.rectTransform;
+            rt.sizeDelta = new Vector2(700, h);
+            rt.anchoredPosition = Ui.Top(content, 0, h * 0.5f);
+            Tween.Pop(card, 0.25f);
+        }
+
+        static void CloseContract()
+        {
+            if (_contractLayer) UnityEngine.Object.Destroy(_contractLayer);
+            _contractLayer = null;
         }
 
         /// <summary>保留给头像点击。昵称授权不再先过微信的隐私接口。</summary>
@@ -296,6 +348,7 @@ namespace Rescue
             _privacyBusy = false;
             PlayerPrefs.SetString(PrivacyKey, ok ? "1" : "0");
             PlayerPrefs.Save();
+            CloseContract();
             if (_privacyLayer) UnityEngine.Object.Destroy(_privacyLayer);
             _privacyLayer = null;
             Action<bool> wait = _privacyDone;

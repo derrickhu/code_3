@@ -15,8 +15,8 @@ namespace Rescue
 
         static readonly Color ShopWood = Pal.Hex("8C6B4E");
         static readonly Color ShopFace = Pal.Hex("C9B48C");
-        static readonly Color LottoWood = Pal.Hex("F0B048");
-        static readonly Color LottoFace = Pal.Hex("D98E3E");
+        static readonly Color LottoWood = Pal.Hex("8C6B4E");
+        static readonly Color LottoFace = Pal.Hex("D8C49C");
 
         bool _lottoTab;
         Action _spinNow;
@@ -225,12 +225,12 @@ namespace Rescue
         void BuildLotto(RectTransform content, Action<string> rebuild)
         {
             var pool = Save.LottoPool();
-            Ui.Framed(content, new Vector2(620, 620), new Vector2(0, 170), Pal.Hex("B86E2E"), Pal.Hex("7A4318"), 6f, "lottoBg");
+            Ui.Framed(content, new Vector2(620, 620), new Vector2(0, 170), Pal.Hex("2A1C13"), Ui.GoldLine, 5f, "lottoBg");
             var cells = new RectTransform[pool.Count];
             for (int k = 0; k < pool.Count && k < Ring.Length; k++)
             {
                 var it = ShopItem.All[pool[k]];
-                var face = Ui.Framed(content, new Vector2(176, 176), LottoPos(Ring[k]), it.RarityColor, Edge, 5f, "framedLotto");
+                var face = Ui.Framed(content, new Vector2(176, 176), LottoPos(Ring[k]), Color.Lerp(it.RarityColor, Pal.Hex("2A1C13"), 0.22f), Edge, 5f, "framedLotto");
                 face.pixelsPerUnitMultiplier = 1.2f;
                 Ui.Box(face.transform, new Vector2(160, 60), new Vector2(0, -50), Color.black.A(0.12f), null, "band").pixelsPerUnitMultiplier = 1.2f;
                 Ui.Icon(face.transform, it.Icon, 112, new Vector2(0, 16));
@@ -245,7 +245,7 @@ namespace Rescue
             hl.gameObject.SetActive(false);
 
             int left = Save.LottoLeft;
-            var center = Ui.Framed(content, new Vector2(176, 176), LottoPos(new Vector2Int(1, 1)), left > 0 ? Pal.Hex("F2672E") : Pal.Hex("8E8A86"), Edge, 5f, "framedSpin");
+            var center = Ui.Framed(content, new Vector2(176, 176), LottoPos(new Vector2Int(1, 1)), left > 0 ? Ui.BtnRed : Pal.Hex("8E8A86"), Edge, 5f, "framedSpin");
             center.pixelsPerUnitMultiplier = 1.2f;
             Ui.Stroke(Ui.Label(center.transform, "抽奖", 52, Pal.Paper, new Vector2(0, 34), new Vector2(176, 70), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 3f);
             Ui.Icon(center.transform, "ui_video", 74, new Vector2(0, -26));
@@ -348,7 +348,7 @@ namespace Rescue
                 count.fontStyle = FontStyle.Bold;
             }
             Ui.Framed(content, new Vector2(790, 248), new Vector2(26, -330), Pal.Hex("3A2A20"), Pal.Hex("5A4632"), 5f, "bag");
-            var side = _lottoTab ? Pal.Hex("5A2E10") : Pal.Hex("3A2A20");
+            var side = _lottoTab ? Pal.Hex("3A2A20") : Pal.Hex("3A2A20");
             Ui.Label(content, "主\n动", 30, side, new Vector2(-400, -270), new Vector2(44, 90)).fontStyle = FontStyle.Bold;
             Ui.Label(content, "被\n动", 30, side, new Vector2(-400, -390), new Vector2(44, 90)).fontStyle = FontStyle.Bold;
             for (int row = 0; row < 2; row++)

@@ -1,0 +1,13 @@
+Vertical 9:16 background painting for the main menu (home screen) of a premium Chinese mobile game, "rescue Song Jiang" theme from Water Margin. It must look like the same artist and the same world as the reference image (the loading screen): Chinese ink-wash watercolor on warm rice-paper cream, layered misty mountains, soft dawn light, drifting ink clouds, a few red maple leaves, muted ochre / umber / slate-teal palette. Polished commercial casual-game key-visual quality.
+
+Scene: the Liangshan marsh at dawn, seen from a slightly raised viewpoint. The Liangshan stockade with curved tiled roofs and a large blank red banner (no writing) stands on a cliff in the upper-right middle distance, smaller than in the reference. Layered peaks fade into mist behind it. A calm lake with reeds on both sides in the middle distance.
+
+NO CHARACTERS, no people, no animals, no prison cart. The characters are placed on top later.
+
+Layout rules (very important):
+- Top 30%: open luminous cream sky with soft mist and faint distant peaks, calm and uncluttered; a title logo goes there.
+- 32% to 58% of the height: an empty, slightly sunlit packed-earth clearing / shore in the center foreground, wide and flat, where a character group will stand later. Light ink grass tufts and reeds only at the far left and right edges.
+- Below 60%: the ground gradually darkens into a soft warm ink-brown haze (like the bottom of the reference), very calm, with only faint reeds silhouettes at the left and right edges, so buttons can sit on it. The bottom 25% is almost plain dark warm brown-black.
+- Left and right 12% columns stay quiet (menu buttons are placed there).
+
+NO TEXT, no letters, no Chinese characters, no calligraphy, no seals, no logo, no watermark, no signature, no UI elements anywhere in the image.

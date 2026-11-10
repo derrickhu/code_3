@@ -274,7 +274,7 @@ namespace Rescue
             var ch = _pending ?? Resolve(chapter);
             var layer = Ui.Fill(Ui.Root, Color.white, true, "match");
             var bg = layer.GetComponent<Image>();
-            bg.sprite = Art.Img("home_bg2");
+            bg.sprite = Art.Img("home_bg");
             var bleed = layer.Find("bleed")?.GetComponent<Image>();
             if (bleed != null) bleed.sprite = bg.sprite;
             Ui.Fill(layer, new Color(0.08f, 0.06f, 0.04f, 0.72f), false, "dim");

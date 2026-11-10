@@ -128,7 +128,7 @@ namespace Rescue
         {
             Analytics.AdShow(scene);
             var layer = Ui.Fill(Ui.Root, Color.black, true, "ad");
-            var video = Ui.Box(layer, new Vector2(1080, 1300), new Vector2(0, 120), Color.white, Art.Img("home_bg2"), "video");
+            var video = Ui.Box(layer, new Vector2(1080, 1300), new Vector2(0, 120), Color.white, Art.Img("home_bg"), "video");
             video.type = Image.Type.Simple;
             video.preserveAspect = false;
             Ui.Box(layer, new Vector2(1080, 1300), new Vector2(0, 120), new Color(0, 0, 0, 0.35f), Art.White, "dim").type = Image.Type.Simple;

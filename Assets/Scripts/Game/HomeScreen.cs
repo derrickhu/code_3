@@ -118,53 +118,74 @@ namespace Rescue
             _root.offsetMin = _root.offsetMax = Vector2.zero;
 
             Save.RefreshShopDay();
-            var bg = Ui.Rect(_root, "bg");
-            bg.SetAsFirstSibling();
-            Ui.PinBleed(bg);
-            var bgImg = bg.gameObject.AddComponent<Image>();
-            bgImg.sprite = Art.Img("home_bg2");
-            bgImg.color = Color.white;
-            bgImg.raycastTarget = false;
+            PageBg(_root, 0f).SetAsFirstSibling();
 
             var tl = Corner(0f, 1f, "topLeft");
             BuildHud(tl, out _coins, out _stamina, true);
 
-            Ui.Tap(Ui.Icon(tl, "ui_gear", 100, new Vector2(80, -222)), ToggleSound);
-            SideSign(tl, "ui_notice", "公告", new Vector2(80, -350), ShowNotice);
-            _codexDot = SideSign(tl, "ui_notice", "好汉谱", new Vector2(80, -476), ShowCodex);
-            SideSign(tl, "ui_notice", "回目", new Vector2(80, -602), ShowChapters);
-            _dailyDot = SideSign(tl, "ui_notice", "每日\n一战", new Vector2(80, -728), ShowDailyBattle);
+            MedalBtn(tl, "音", null, new Vector2(80, -226), 92, ToggleSound);
+            MedalBtn(tl, "告", "公告", new Vector2(80, -372), 108, ShowNotice);
+            _codexDot = MedalBtn(tl, "谱", "好汉谱", new Vector2(80, -534), 108, ShowCodex);
+            MedalBtn(tl, "回", "回目", new Vector2(80, -696), 108, ShowChapters);
+            _dailyDot = MedalBtn(tl, "战", "每日一战", new Vector2(80, -858), 108, ShowDailyBattle);
             if (!Save.DailyOpen) _dailyDot.transform.parent.GetComponent<Image>().color = new Color(0.62f, 0.6f, 0.58f);
 
             var tr = Corner(1f, 1f, "topRight");
-            var shopFace = Ui.Icon(tr, "merchant_bust", 150, new Vector2(-92, -238));
+            Ui.Medal(tr, 128, new Vector2(-88, -250), "shopDisc");
+            var shopFace = Ui.Icon(tr, "merchant_bust", 150, new Vector2(-88, -236));
             Ui.Tap(shopFace, ShowShop);
-            Ui.Stroke(Ui.Label(tr, "神秘商人", 34, Pal.Paper, new Vector2(-92, -328), new Vector2(200, 50), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2.5f);
+            MedalLabel(tr, "神秘商人", new Vector2(-88, -332));
             BuildGm(tr);
 
             var top = Corner(0.5f, 1f, "title");
-            var title = Ui.Label(top, "营救宋江", 168, Pal.Hex("C0392B"), new Vector2(0, -296), new Vector2(900, 190), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Stroke(title, Pal.Hex("FFF6E2"), 5f);
-            title.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(4, -8);
-            Tween.Pop(title.transform, 0.5f);
-            BuildRankPlate(top, new Vector2(0, -470));
+            var logo = Ui.Icon(top, "home_logo", 760, new Vector2(0, -322), "logo");
+            Tween.Pop(logo.transform, 0.5f);
+            BuildRankPlate(top, new Vector2(0, -548));
 
             var hero = Corner(0.5f, 0.5f, "hero");
             hero.SetSiblingIndex(1);
             BuildHero(hero);
 
             var bottom = Corner(0.5f, 0f, "bottom");
-            _loadout = Ui.Label(bottom, "", 30, Pal.Willow, new Vector2(0, 680), new Vector2(940, 46));
-            Ui.Stroke(_loadout, Pal.Hex("FFF6E2"), 2f);
+            _loadout = Ui.Label(bottom, "", 30, Ui.GoldText, new Vector2(0, 556), new Vector2(940, 46));
+            Ui.Stroke(_loadout, Pal.Hex("120B07"), 2f);
             BuildStart(bottom);
 
-            SideBigIcon(Corner(0f, 0f, "rankEntry"), "ui_rank", "排行榜", new Vector2(150, 230), ShowBoard);
-            SideBigIcon(Corner(1f, 0f, "bagEntry"), "ui_bag", "武器背包", new Vector2(-150, 230), ShowArmory);
+            SideBigIcon(Corner(0f, 0f, "rankEntry"), "榜", "排行榜", new Vector2(130, 200), ShowBoard);
+            SideBigIcon(Corner(1f, 0f, "bagEntry"), "兵", "武器背包", new Vector2(-130, 200), ShowArmory);
 
             Refresh();
             LiveConfig.Refresh();
             LiveConfig.SubmitRank();
             if (!Save.Volatile && Save.RollDaily()) ShowDaily();
+        }
+
+        /// <summary>整页底图：梁山水墨，等比铺满到屏幕边，dim 是压在上面的暗度。</summary>
+        static RectTransform PageBg(RectTransform parent, float dim)
+        {
+            var bg = Ui.Rect(parent, "bg");
+            Ui.PinBleed(bg);
+            var under = bg.gameObject.AddComponent<Image>();
+            under.color = Pal.Hex("1A110B");
+            under.raycastTarget = false;
+            var art = Ui.Rect(bg, "art");
+            var img = art.gameObject.AddComponent<Image>();
+            img.sprite = Art.Img("home_bg");
+            img.raycastTarget = false;
+            var fit = art.gameObject.AddComponent<AspectRatioFitter>();
+            fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fit.aspectRatio = Ui.DesignW / Ui.DesignH;
+            if (dim > 0f)
+            {
+                var shade = Ui.Rect(bg, "dim");
+                shade.anchorMin = Vector2.zero;
+                shade.anchorMax = Vector2.one;
+                shade.offsetMin = shade.offsetMax = Vector2.zero;
+                var s = shade.gameObject.AddComponent<Image>();
+                s.color = Pal.Hex("120B07").A(dim);
+                s.raycastTarget = false;
+            }
+            return bg;
         }
 
         /// <summary>标题下的座次牌：左嵌勋章，中写座次，右排星；整块点开排行榜。</summary>
@@ -174,15 +195,12 @@ namespace Rescue
             var plate = Ui.Rect(parent, "rankPlate");
             plate.anchoredPosition = pos;
             plate.sizeDelta = new Vector2(w, h);
-            Ui.Box(plate, new Vector2(w + 12, h + 12), new Vector2(0, -6), Pal.Shadow.A(0.45f), null, "shadow");
-            Ui.Box(plate, new Vector2(w + 12, h + 12), Vector2.zero, Edge, null, "edge");
-            Ui.Box(plate, new Vector2(w + 4, h + 4), Vector2.zero, Pal.Hex("C8962E"), null, "rim");
-            var face = Ui.Box(plate, new Vector2(w - 4, h - 4), Vector2.zero, Pal.Hex("3B2A20"), null, "face");
-            Ui.Box(plate, new Vector2(w - 40, 10), new Vector2(10, h / 2 - 14), Color.white.A(0.07f), null, "gloss");
+            Ui.Box(plate, new Vector2(w + 8, h + 8), new Vector2(0, -7), Pal.Shadow.A(0.6f), null, "shadow");
+            var face = Ui.Skin(plate, Ui.SkinSlot, new Vector2(w, h), Vector2.zero, Color.white, "face");
             face.raycastTarget = true;
             Ui.Tap(face, ShowBoard);
 
-            _rankName = Ui.Label(plate, "", 40, Pal.Hex("FFE7A8"), new Vector2(-w / 2 + 92 + 130, 0), new Vector2(260, h), TextAnchor.MiddleLeft, Fonts.Brush);
+            _rankName = Ui.Label(plate, "", 40, Ui.GoldText, new Vector2(-w / 2 + 92 + 130, 0), new Vector2(260, h), TextAnchor.MiddleLeft, Fonts.Brush);
             _rankName.resizeTextForBestFit = true;
             _rankName.resizeTextMinSize = 28;
             _rankName.resizeTextMaxSize = 40;
@@ -247,63 +265,72 @@ namespace Rescue
         {
             const float h = 72f;
             var c = new Vector2(left + w / 2, HudY);
-            Ui.Box(parent, new Vector2(w + 10, h + 10), c, Edge, null, name + "Edge");
-            Ui.Box(parent, new Vector2(w, h), c, Pal.Hex("3B2A20").A(0.95f), null, name);
-            Ui.Box(parent, new Vector2(w - 36, 8), c + new Vector2(6, h / 2 - 12), Color.white.A(0.08f), null, name + "Gloss");
+            Ui.Skin(parent, Ui.SkinSlot, new Vector2(w, h), c, Color.white, name);
         }
 
-        /// <summary>左边一列木牌。返回右上角的小红点，默认藏着。</summary>
-        Image SideSign(RectTransform parent, string img, string text, Vector2 pos, Action onClick)
+        /// <summary>金边黑漆圆章入口：章心一个金字，下面挂一块小漆牌写全名。返回右上角的小红点，默认藏着。</summary>
+        Image MedalBtn(RectTransform parent, string glyph, string label, Vector2 pos, float size, Action onClick)
         {
-            var icon = Ui.Icon(parent, img, 118, pos);
-            Ui.Tap(icon, onClick);
-            bool two = text.Contains("\n");
-            var t = Ui.Label(icon.transform, text, two ? 28 : text.Length > 2 ? 30 : 36, Pal.Hex("4A2E1C"), new Vector2(0, two ? 4 : 6), new Vector2(110, two ? 80 : 60), TextAnchor.MiddleCenter, Fonts.Brush);
-            t.resizeTextForBestFit = false;
-            if (two) t.lineSpacing = 0.82f;
-            var dot = Ui.Box(icon.transform, new Vector2(30, 30), new Vector2(46, 44), Pal.Hex("E8392B"), Art.Circle, "redDot");
+            var medal = Ui.Medal(parent, size, pos);
+            Ui.Tap(medal, onClick);
+            var g = Ui.Label(medal.transform, glyph, Mathf.RoundToInt(size * 0.5f), Ui.GoldText, new Vector2(0, 2), Vector2.one * size, TextAnchor.MiddleCenter, Fonts.Brush, "glyph");
+            g.gameObject.AddComponent<Shadow>().effectColor = Color.black.A(0.6f);
+            if (label != null) MedalLabel(medal.transform, label, new Vector2(0, -size * 0.5f - 4));
+            var dot = Ui.Box(medal.transform, new Vector2(30, 30), new Vector2(size * 0.36f, size * 0.36f), Pal.Hex("E8392B"), Art.Circle, "redDot");
             dot.type = Image.Type.Simple;
             dot.gameObject.SetActive(false);
             return dot;
         }
 
-        Image _codexDot, _dailyDot;
-
-        void SideBigIcon(RectTransform parent, string img, string text, Vector2 pos, Action onClick)
+        static void MedalLabel(Transform parent, string text, Vector2 pos, int font = 28)
         {
-            var icon = Ui.Icon(parent, img, 176, pos);
-            Ui.Tap(icon, onClick);
-            Ui.Stroke(Ui.Label(parent, text, 38, Pal.Paper, pos + new Vector2(0, -112), new Vector2(260, 56), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 3f);
+            if (text.Length > 3) font = Mathf.Min(font, 24);
+            float w = text.Length * font + 26;
+            Ui.Skin(parent, Ui.SkinSlot, new Vector2(w, font + 16), pos, Color.white, "labelPlate", 46f / ((font + 16) * 0.5f));
+            Ui.Label(parent, text, font, Ui.GoldText, pos + new Vector2(0, 1), new Vector2(w, font + 16), TextAnchor.MiddleCenter, Fonts.Brush, "labelText");
         }
 
-        /// <summary>中央：梁山兄弟劫囚车救宋江的插画，脚下一团草地影子；下方左右切换回目。</summary>
+        Image _codexDot, _dailyDot;
+
+        void SideBigIcon(RectTransform parent, string glyph, string text, Vector2 pos, Action onClick)
+        {
+            var medal = Ui.Medal(parent, 150, pos);
+            Ui.Tap(medal, onClick);
+            var g = Ui.Label(medal.transform, glyph, 78, Ui.GoldText, new Vector2(0, 3), new Vector2(150, 150), TextAnchor.MiddleCenter, Fonts.Brush, "glyph");
+            g.gameObject.AddComponent<Shadow>().effectColor = Color.black.A(0.6f);
+            MedalLabel(medal.transform, text, new Vector2(0, -84), 32);
+        }
+
+        /// <summary>中央：梁山兄弟劫囚车救宋江的插画，站在空地上；下方左右切换回目。</summary>
         void BuildHero(RectTransform c)
         {
-            c.anchoredPosition = new Vector2(0, 150);
-            var shadow = Ui.Box(c, new Vector2(700, 80), new Vector2(0, -190), Pal.Shadow.A(0.35f), Art.SoftDot, "heroShadow");
+            c.anchoredPosition = new Vector2(0, 40);
+            var glow = Ui.Box(c, new Vector2(1000, 600), new Vector2(0, 40), Pal.Hex("FFE9BE").A(0.28f), Art.SoftDot, "heroGlow");
+            glow.type = Image.Type.Simple;
+            var shadow = Ui.Box(c, new Vector2(760, 90), new Vector2(0, -190), new Color(0.1f, 0.06f, 0.03f, 0.45f), Art.SoftDot, "heroShadow");
             shadow.type = Image.Type.Simple;
-            var art = Ui.Icon(c, "home_hero", 800, new Vector2(10, 20), "heroArt");
-            art.rectTransform.sizeDelta = new Vector2(800, 440);
+            var art = Ui.Icon(c, "home_hero", 860, new Vector2(10, 20), "heroArt");
+            art.rectTransform.sizeDelta = new Vector2(860, 473);
             Bob(art.transform, 0f);
 
             _selected = Mathf.Clamp(Save.D.unlocked, 0, ChapterDef.StoryCount);
-            var strip = Ui.Framed(c, new Vector2(560, 92), new Vector2(0, -280), Pal.Hex("F3E6C6"), Edge, 5f, "chapterStrip");
-            _chapterName = Ui.Label(strip.transform, "", 44, Pal.Ink, new Vector2(0, 2), new Vector2(440, 88), TextAnchor.MiddleCenter, Fonts.Brush);
+            var strip = Ui.Skin(c, Ui.SkinSlot, new Vector2(580, 96), new Vector2(0, -300), Color.white, "chapterStrip");
+            _chapterName = Ui.Label(strip.transform, "", 46, Ui.GoldText, new Vector2(0, 2), new Vector2(460, 88), TextAnchor.MiddleCenter, Fonts.Brush);
             _chapterName.resizeTextForBestFit = true;
             _chapterName.resizeTextMinSize = 26;
-            _chapterName.resizeTextMaxSize = 44;
+            _chapterName.resizeTextMaxSize = 46;
             _chapterName.verticalOverflow = VerticalWrapMode.Truncate;
             Ui.Tap(strip, () => { if (_selected >= ChapterDef.StoryCount) ShowTeam(); else ShowChapters(); });
-            _chapterInfo = Ui.Label(c, "", 28, Pal.InkSoft, new Vector2(0, -355), new Vector2(760, 44));
-            Ui.Stroke(_chapterInfo, Pal.Hex("FFF6E2"), 2f);
-            ArrowBtn(c, "◀", new Vector2(-340, -280), -1);
-            ArrowBtn(c, "▶", new Vector2(340, -280), 1);
+            _chapterInfo = Ui.Label(c, "", 29, Pal.Paper, new Vector2(0, -376), new Vector2(860, 44));
+            Ui.Stroke(_chapterInfo, Pal.Hex("120B07"), 2f);
+            ArrowBtn(c, "◀", new Vector2(-350, -300), -1);
+            ArrowBtn(c, "▶", new Vector2(350, -300), 1);
         }
 
         void ArrowBtn(RectTransform parent, string glyph, Vector2 pos, int dir)
         {
-            var b = Ui.Framed(parent, new Vector2(84, 84), pos, Pal.Hex("8C6B4E"), Edge, 5f);
-            Ui.Label(b.transform, glyph, 40, Pal.Paper, Vector2.zero, new Vector2(84, 84));
+            var b = Ui.Medal(parent, 92, pos, "arrow");
+            Ui.Label(b.transform, glyph, 36, Ui.GoldText, new Vector2(dir * 3, 0), new Vector2(92, 92));
             Ui.Tap(b, () => SelectChapter(_selected + dir));
         }
 
@@ -338,22 +365,27 @@ namespace Rescue
         void BuildStart(RectTransform bottom)
         {
             var holder = Ui.Rect(bottom, "start");
-            holder.anchoredPosition = new Vector2(0, 480);
-            holder.sizeDelta = new Vector2(600, 170);
-            Ui.Box(holder, new Vector2(620, 172), new Vector2(0, -10), Pal.Shadow.A(0.6f), null, "shadow");
+            holder.anchoredPosition = new Vector2(0, 430);
+            holder.sizeDelta = new Vector2(600, 150);
+            var glow = Ui.Box(holder, new Vector2(860, 300), Vector2.zero, Pal.Hex("E8573F").A(0.32f), Art.SoftDot, "glow");
+            glow.type = Image.Type.Simple;
+            Ui.Box(holder, new Vector2(610, 156), new Vector2(0, -10), Pal.Shadow.A(0.7f), null, "shadow");
             var body = Ui.Rect(holder, "body");
             body.sizeDelta = holder.sizeDelta;
-            Ui.Box(body, new Vector2(620, 172), Vector2.zero, Edge, null, "edge");
-            Ui.Box(body, new Vector2(600, 152), Vector2.zero, Pal.Hex("B8342A"), null, "face");
-            Ui.Box(body, new Vector2(560, 116), Vector2.zero, Pal.Hex("D2493A"), null, "inner");
-            Ui.Box(body, new Vector2(540, 20), new Vector2(0, 42), Color.white.A(0.16f), null, "gloss");
-            var label = Ui.Label(body, "开始游戏", 64, Pal.Paper, new Vector2(-30, 0), new Vector2(400, 120), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Stroke(label, Pal.Hex("6B1A12"), 3f);
-            Ui.Icon(body, "ui_bolt", 64, new Vector2(190, 0));
-            Ui.Label(body, "-" + Stamina.Cost, 28, Pal.Hex("FFE7A8"), new Vector2(226, -30), new Vector2(60, 40));
-            var swords = Ui.Icon(body, "ui_swords", 120, new Vector2(0, 112));
-            Bob(swords.transform, 0.3f);
-            var hit = Ui.Box(holder, new Vector2(600, 170), Vector2.zero, new Color(0, 0, 0, 0), null, "hit");
+            Ui.Skin(body, Ui.SkinBtn, new Vector2(600, 150), Vector2.zero, Pal.Hex("C23A2A"), "face", 1.2f);
+            Ui.Skin(body, Ui.SkinRim, new Vector2(600, 150), Vector2.zero, Color.white, "rim", 1.2f);
+            foreach (float side in new[] { -1f, 1f })
+            {
+                var d = Ui.Box(body, new Vector2(30, 30), new Vector2(side * 252, 0), Ui.GoldText, Art.White, "diamond");
+                d.rectTransform.localRotation = Quaternion.Euler(0, 0, 45);
+                var dd = Ui.Box(body, new Vector2(12, 12), new Vector2(side * 252, 0), Pal.Hex("6B1A12"), Art.White, "diamondHole");
+                dd.rectTransform.localRotation = Quaternion.Euler(0, 0, 45);
+            }
+            var label = Ui.Label(body, "开始游戏", 70, Pal.Paper, new Vector2(-28, 2), new Vector2(400, 120), TextAnchor.MiddleCenter, Fonts.Brush);
+            Ui.Stroke(label, Pal.Hex("5A140C"), 3f);
+            Ui.Icon(body, "ui_bolt", 56, new Vector2(168, 4));
+            Ui.Stroke(Ui.Label(body, "-" + Stamina.Cost, 28, Ui.GoldText, new Vector2(196, -26), new Vector2(60, 40)), Pal.Hex("5A140C"), 1.5f);
+            var hit = Ui.Box(holder, new Vector2(600, 150), Vector2.zero, new Color(0, 0, 0, 0), null, "hit");
             Ui.Tap(hit, () => Fight(), body, 10f);
             Breathe(holder);
         }

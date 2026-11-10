@@ -74,6 +74,39 @@ namespace Rescue
             Ui.Spin(rays.transform, 10f);
         }
 
+        /// <summary>
+        /// 立绘窗。画布 640，脚在 0.86、头高的能到 0.25、兵器最宽约 0.58，把这段装进窗口并裁掉窗外。
+        /// </summary>
+        public static RectTransform Portrait(Transform parent, HeroId id, Vector2 pos, Vector2 window)
+        {
+            var clip = Ui.Rect(parent, "portrait");
+            clip.anchoredPosition = pos;
+            clip.sizeDelta = window;
+            clip.gameObject.AddComponent<RectMask2D>();
+            var ground = Ui.Box(clip, new Vector2(window.x * 0.52f, 16f), new Vector2(0, -window.y * 0.44f),
+                new Color(0.22f, 0.13f, 0.06f, 0.32f), Art.Circle, "ground");
+            ground.type = Image.Type.Simple;
+            ground.raycastTarget = false;
+
+            const float top = 0.23f, bot = 0.90f, wide = 0.62f;
+            float canvas = Mathf.Min(window.y / (bot - top), window.x / wide);
+            var fig = Ui.Box(clip, new Vector2(canvas, canvas), Vector2.zero, Color.white, null, "figure");
+            fig.type = Image.Type.Simple;
+            fig.preserveAspect = true;
+            fig.raycastTarget = false;
+            fig.enabled = false;
+            fig.rectTransform.anchoredPosition = new Vector2(0f, ((top + bot) * 0.5f - 0.5f) * canvas);
+            ArtPack.Ensure(Art.HeroPack(id), () =>
+            {
+                if (!fig) return;
+                var sp = Art.HeroFrame(id, 0);
+                if (sp == null) return;
+                fig.sprite = sp;
+                fig.enabled = true;
+            });
+            return clip;
+        }
+
         /// <summary>好汉拜帖：星号座次、绰号姓名、职司、兵器（品级与特性）、事迹、本领、绝招、结局。好汉谱详情也用这张。</summary>
         public static RectTransform HeroSheet(Transform parent, HeroDef d, bool joined, Vector2 pos)
         {
@@ -83,8 +116,9 @@ namespace Rescue
             holder.anchoredPosition = pos;
             Ui.Box(holder, new Vector2(900, 1240), new Vector2(0, -14), Pal.Shadow.A(0.6f), null, "shadow");
             Ui.Framed(holder, new Vector2(880, 1220), Vector2.zero, Pal.Hex("F6EEDA"), rim, 10f, "card");
-            Ui.Box(holder, new Vector2(840, 300), new Vector2(0, 430), rim.A(0.14f), null, "band").pixelsPerUnitMultiplier = 1f;
+            Ui.Box(holder, new Vector2(840, 340), new Vector2(0, 390), rim.A(0.14f), null, "band").pixelsPerUnitMultiplier = 1f;
             var t = holder;
+            if (joined) Portrait(t, d.Id, new Vector2(-230, 378), new Vector2(300, 300));
 
             if (d.Rank > 0)
             {
@@ -93,11 +127,27 @@ namespace Rescue
             }
             else Ui.Tag(t, "隐藏好汉", Pal.Hex("8C6B4E"), new Vector2(0, 560), 200, 32);
 
-            Ui.Label(t, d.Nick, 52, Pal.Gold, new Vector2(0, 470), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
-            var name = Ui.Label(t, joined ? d.Name : "？？", 190, Pal.Ink, new Vector2(0, 352), new Vector2(840, 210), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Stroke(name, Pal.Hex("FFF6E2"), 3f);
-            if (!string.IsNullOrEmpty(d.Post))
-                Ui.Label(t, "梁山职司：" + d.Post, 34, Pal.InkSoft, new Vector2(0, 232), new Vector2(820, 46));
+            if (joined)
+            {
+                Ui.Label(t, d.Nick, 40, Pal.Gold, new Vector2(188, 498), new Vector2(420, 56), TextAnchor.MiddleLeft, Fonts.Brush);
+                var name = Ui.Label(t, d.Name, d.Name.Length > 2 ? 68 : 92, Pal.Ink, new Vector2(188, 400), new Vector2(420, 110), TextAnchor.MiddleLeft, Fonts.Brush);
+                Ui.Stroke(name, Pal.Hex("FFF6E2"), 2.5f);
+                if (!string.IsNullOrEmpty(d.Post))
+                {
+                    var post = Ui.Label(t, "梁山职司：" + d.Post, 30, Pal.InkSoft, new Vector2(188, 308), new Vector2(420, 72), TextAnchor.MiddleLeft);
+                    post.resizeTextForBestFit = true;
+                    post.resizeTextMinSize = 20;
+                    post.resizeTextMaxSize = 30;
+                }
+            }
+            else
+            {
+                Ui.Label(t, d.Nick, 52, Pal.Gold, new Vector2(0, 470), new Vector2(800, 70), TextAnchor.MiddleCenter, Fonts.Brush);
+                var name = Ui.Label(t, "？？", 190, Pal.Ink, new Vector2(0, 352), new Vector2(840, 210), TextAnchor.MiddleCenter, Fonts.Brush);
+                Ui.Stroke(name, Pal.Hex("FFF6E2"), 3f);
+                if (!string.IsNullOrEmpty(d.Post))
+                    Ui.Label(t, "梁山职司：" + d.Post, 34, Pal.InkSoft, new Vector2(0, 232), new Vector2(820, 46));
+            }
 
             float y = 108;
             if (!string.IsNullOrEmpty(d.Weapon))

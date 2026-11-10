@@ -11,7 +11,7 @@ namespace Rescue
     {
         // ─────────────────────────── 排行榜 ───────────────────────────
 
-        static readonly Color[] RowColors = { Pal.Hex("E8664A"), Pal.Hex("F08A3C"), Pal.Hex("F5B868"), Pal.Hex("C9C6C0") };
+        static readonly Color[] RowColors = { Pal.Hex("E9C477"), Pal.Hex("D8D3C6"), Pal.Hex("DDAE80"), Pal.Hex("EFE4CC") };
         const float RowPitch = 146f;
         bool _boardProvince = true;
 
@@ -24,14 +24,9 @@ namespace Rescue
             var b = Ui.Rect(Ui.Fit(layer, 1880), "b");
             b.anchoredPosition = new Vector2(0, -20);
 
-            Ui.Box(b, new Vector2(46, 1260), new Vector2(-462, -40), Pal.Hex("4A3628"), null, "postL").pixelsPerUnitMultiplier = 1f;
-            Ui.Box(b, new Vector2(46, 1260), new Vector2(462, -40), Pal.Hex("4A3628"), null, "postR").pixelsPerUnitMultiplier = 1f;
-            Ui.Framed(b, new Vector2(900, 1210), new Vector2(0, -50), Pal.Hex("4F5B5A"), Edge, 7f, "body");
-            var pagoda = Ui.Icon(b, "ui_pagoda", 1060, new Vector2(0, 640));
-            pagoda.rectTransform.sizeDelta = new Vector2(1060, 1060f * 291f / 1208f);
-            var title = Ui.Label(b, "排行榜", 80, Pal.Hex("3B2A20"), new Vector2(0, 640), new Vector2(400, 110), TextAnchor.MiddleCenter, Fonts.Brush);
-            Ui.Stroke(title, Pal.Hex("FFF6E2"), 2f);
-            Ui.CloseX(b, new Vector2(-450, 850), () =>
+            Ui.WoodPanel(b, new Vector2(960, 1290), new Vector2(0, -40), null, Pal.Hex("3A2A20"), "body");
+            Ui.Title(b, "排行榜", new Vector2(0, 600), 92);
+            Ui.CloseX(b, new Vector2(-470, 600), () =>
             {
                 _reloadBoard = null;
                 _authHit = null;
@@ -145,7 +140,7 @@ namespace Rescue
 
         void BoardTab(RectTransform parent, string text, float x, float w, bool on, Action onClick)
         {
-            var face = Ui.Framed(parent, new Vector2(w, 84), new Vector2(x, 470), on ? Pal.Hex("E9C46A") : Pal.Hex("33403F"), Pal.Hex("B8913C"), 4f, "framedTab");
+            var face = Ui.Framed(parent, new Vector2(w, 84), new Vector2(x, 470), on ? Pal.Hex("E9C46A") : Pal.Hex("2A1C13"), Pal.Hex("B8913C"), 4f, "framedTab");
             Ui.Stroke(Ui.Label(face.transform, text, text.Length > 3 ? 42 : 50, on ? Edge : Pal.Paper, new Vector2(0, 2), new Vector2(w, 84), TextAnchor.MiddleCenter, Fonts.Brush),
                 on ? Pal.Hex("FFF2B8") : Edge, 1.5f);
             if (!on) Ui.Tap(face, onClick);
@@ -169,7 +164,7 @@ namespace Rescue
         /// <summary>自己这一行。rank 从 1 起；0 表示没拿到名次。</summary>
         void MyRowAt(RectTransform parent, float y, int rank, int score, bool online, string name = "myRow")
         {
-            var face = Ui.Framed(parent, new Vector2(840, 130), new Vector2(0, y), Pal.Hex("D9452F"), Pal.Hex("FFE36A"), 6f, name);
+            var face = Ui.Framed(parent, new Vector2(840, 130), new Vector2(0, y), Pal.Hex("B8342A"), Ui.GoldText, 6f, name);
             var t = face.transform;
             if (rank > 0) RankBadge(t, rank - 1);
             else Ui.Stroke(Ui.Label(t, online ? "未上榜" : "离线", 30, Pal.Paper, new Vector2(-352, 0), new Vector2(110, 60)), Edge, 2f).fontStyle = FontStyle.Bold;
@@ -205,7 +200,7 @@ namespace Rescue
         /// <summary>圆头像。微信照片铺满圆，没有地址时用默认立绘。</summary>
         static Image CirclePortrait(Transform parent, string url, Vector2 pos, float size, out RectTransform hit)
         {
-            var ring = Ui.Box(parent, Vector2.one * (size + 10f), pos, Pal.Hex("F6E7C1"), Art.Circle, "avatarRing");
+            var ring = Ui.Box(parent, Vector2.one * (size * 1.2f), pos, Color.white, Ui.SkinDisc, "avatarRing");
             ring.type = Image.Type.Simple;
             ring.raycastTarget = false;
             var maskGo = new GameObject("avatarMask", typeof(RectTransform), typeof(Image), typeof(Mask));
@@ -241,7 +236,7 @@ namespace Rescue
         /// <summary>榜单下方：昨日座次发的俸禄，没领就亮着。</summary>
         void BuildClaimStrip(RectTransform b)
         {
-            var face = Ui.Framed(b, new Vector2(860, 150), new Vector2(0, -790), Pal.Hex("C9402E"), Edge, 6f, "claim");
+            var face = Ui.Framed(b, new Vector2(860, 150), new Vector2(0, -790), Pal.Hex("A8321F"), Ui.GoldLine, 5f, "claim");
             var t = face.transform;
             Ui.Label(t, "昨日座次", 28, Pal.Paper.A(0.85f), new Vector2(-280, 36), new Vector2(240, 40));
             Ui.Stroke(Ui.Label(t, RankRules.Name(Save.D.claimTier), 38, Pal.Hex("FFE36A"), new Vector2(-280, -16), new Vector2(260, 60), TextAnchor.MiddleCenter, Fonts.Brush), Edge, 2f);
@@ -341,27 +336,21 @@ namespace Rescue
         public void ShowArmory()
         {
             if (_armory) Destroy(_armory.gameObject);
-            _armory = Ui.Fill(_root, Pal.Hex("6E5536"), true, "armory");
+            _armory = Ui.Fill(_root, Pal.Hex("1A110B"), true, "armory");
             var a = _armory;
+            PageBg(a, 0.45f);
             var top = Ui.Rect(a, "top");
             Ui.Anchor(top, 0.5f, 1f);
-            const float grassH = 570f;
-            Ui.Box(top, new Vector2(1600, grassH), new Vector2(0, -grassH / 2), Pal.Hex("86AE5E"), Art.White, "grass").type = Image.Type.Simple;
-            for (int i = 0; i < 9; i++)
-            {
-                var tuft = Ui.Icon(top, "bush", 90 + (i % 3) * 20, new Vector2(-480 + i * 120 + (i % 2) * 30, -300 - (i % 3) * 70));
-                tuft.color = Color.white.A(0.3f);
-            }
-            Ui.Box(top, new Vector2(1600, 14), new Vector2(0, -grassH), Pal.Hex("4E3A24"), Art.White, "earthEdge").type = Image.Type.Simple;
-
-            Ui.Box(top, new Vector2(260, 76), new Vector2(-330, -80), Pal.Hex("3B2A20").A(0.92f), null, "coinBar");
+            const float headH = 570f;
+            Ui.Box(top, new Vector2(1600, 140), new Vector2(0, -headH - 70), Pal.Hex("120B07").A(0.5f), Art.White, "headShade").type = Image.Type.Simple;
+            Ui.Box(top, new Vector2(1600, 3), new Vector2(0, -headH), Ui.GoldLine, Art.White, "headLine").type = Image.Type.Simple;
+            Ui.Skin(top, Ui.SkinSlot, new Vector2(260, 72), new Vector2(-330, -80), Color.white, "coinBar");
             Ui.Icon(top, "coin", 90, new Vector2(-450, -80));
-            Ui.Label(top, Save.D.coins.ToString(), 44, Pal.Hex("FFE7A8"), new Vector2(-300, -80), new Vector2(180, 76)).fontStyle = FontStyle.Bold;
-            var back = Ui.Framed(top, new Vector2(92, 92), new Vector2(-470, -200), Pal.Hex("EFE6CF"), Edge, 5f, "framedBack");
-            Ui.Label(back.transform, "◀", 46, Edge, new Vector2(-2, 0), new Vector2(92, 92));
+            Ui.Label(top, Save.D.coins.ToString(), 44, Ui.GoldText, new Vector2(-300, -80), new Vector2(180, 76)).fontStyle = FontStyle.Bold;
+            var back = Ui.Medal(top, 96, new Vector2(-470, -200), "back");
+            Ui.Label(back.transform, "◀", 40, Ui.GoldText, new Vector2(-3, 0), new Vector2(96, 96));
             Ui.Tap(back, () => { if (_armory) Destroy(_armory.gameObject); _armory = null; Refresh(); });
-            Ui.Icon(top, "ui_shield", 100, new Vector2(400, -80));
-            Ui.Title(top, "兵器谱", new Vector2(0, -200), 84, Pal.Hex("F7D35A"));
+            Ui.Title(top, "兵器谱", new Vector2(0, -200), 84);
 
             if (_armSel >= 0 && string.IsNullOrEmpty(HeroDef.Get((HeroId)_armSel).Weapon)) _armSel = -1;
 
@@ -712,7 +701,7 @@ namespace Rescue
 
         public void ShowCodex()
         {
-            var layer = Panel("好汉谱", out var card, new Vector2(1000, 1700));
+            var layer = Panel("好汉谱", out var card, new Vector2(1000, 1700), () => ArtPack.Keep(Art.BattlePacks()));
             int got = Save.JoinedCount;
             // 有赏钱没领时进度条让出右边，摆「领赏」按钮。
             bool owed = Save.CodexPending > 0;
@@ -770,7 +759,7 @@ namespace Rescue
             }
             list.Sort((a, b) => (a.Rank <= 0 ? 999 : a.Rank).CompareTo(b.Rank <= 0 ? 999 : b.Rank));
             const int cols = 4;
-            const float cw = 228f, ch = 300f;
+            const float cw = 228f, ch = 368f;
             float h = Mathf.Ceil(list.Count / (float)cols) * ch + 20;
             var content = Ui.Scroll(body, new Vector2(940, 1290), new Vector2(0, -50), h, "heroes");
             for (int i = 0; i < list.Count; i++)
@@ -780,25 +769,36 @@ namespace Rescue
                 var pos = Ui.Top(content, -342 + (i % cols) * cw, 10 + (i / cols) * ch + ch * 0.5f);
                 Color tone = d.Rank <= 0 ? Pal.Hex("8C6B4E") : d.Disha ? Pal.Hex("8A54C0") : Pal.Hex("C8962E");
                 Color bg = have ? (d.Rank <= 0 ? Pal.Hex("EAD9BC") : d.Disha ? Pal.Hex("E4D2F2") : Pal.TileHero) : Pal.Hex("B8AE9C");
-                var face = Ui.Framed(content, new Vector2(206, 282), pos, bg, have ? tone : Edge, have ? 7f : 4f, "framedHero");
+                var face = Ui.Framed(content, new Vector2(214, 352), pos, bg, have ? tone : Edge, have ? 7f : 4f, "framedHero");
                 face.pixelsPerUnitMultiplier = 0.9f;
                 var t = face.transform;
-                Ui.Tag(t, d.Rank > 0 ? d.Star : "隐藏", have ? tone : Pal.Hex("7A7062"), new Vector2(0, 112), 120, 24);
                 if (have)
                 {
-                    var nm = Ui.Label(t, d.Name, d.Name.Length > 2 ? 60 : 80, Pal.Ink, new Vector2(0, 14), new Vector2(200, 130), TextAnchor.MiddleCenter, Fonts.Brush);
-                    nm.lineSpacing = 0.9f;
+                    JoinPanel.Portrait(t, d.Id, new Vector2(0, 30), new Vector2(200, 180));
                     bool owed = Save.CodexClaimable((int)d.Id);
-                    Ui.Label(t, d.Nick, 28, Pal.RedDeep, new Vector2(0, owed ? -68 : -78), new Vector2(200, 36)).fontStyle = FontStyle.Bold;
+                    var nm = Ui.Label(t, d.Name, d.Name.Length > 2 ? 36 : 46, Pal.Ink, new Vector2(0, owed ? -90 : -108), new Vector2(196, 50), TextAnchor.MiddleCenter, Fonts.Brush);
+                    Ui.Stroke(nm, Pal.Hex("FFF6E2"), 1.5f);
                     if (owed) CodexClaimChip(t, d, refill);
-                    else Ui.Label(t, (d.Rank > 0 ? d.Rank108 + " · " : "") + d.TypeLabel, 22, Pal.InkSoft, new Vector2(0, -112), new Vector2(200, 32));
+                    else
+                    {
+                        Ui.Label(t, d.Nick, 22, Pal.RedDeep, new Vector2(d.Rank > 0 ? -46 : 0, -150), new Vector2(d.Rank > 0 ? 96 : 180, 28),
+                            d.Rank > 0 ? TextAnchor.MiddleRight : TextAnchor.MiddleCenter).fontStyle = FontStyle.Bold;
+                        if (d.Rank > 0)
+                        {
+                            var rk = Ui.Label(t, d.Rank108, 20, Pal.InkSoft, new Vector2(50, -150), new Vector2(88, 28), TextAnchor.MiddleLeft);
+                            rk.resizeTextForBestFit = true;
+                            rk.resizeTextMinSize = 15;
+                            rk.resizeTextMaxSize = 20;
+                        }
+                    }
                 }
                 else
                 {
-                    Ui.Label(t, d.Hidden ? "隐" : "？", 110, Pal.Ink.A(0.25f), new Vector2(0, 20), new Vector2(200, 150), TextAnchor.MiddleCenter, Fonts.Brush);
+                    Ui.Label(t, d.Hidden ? "隐" : "？", 110, Pal.Ink.A(0.25f), new Vector2(0, -8), new Vector2(200, 150), TextAnchor.MiddleCenter, Fonts.Brush);
                     int jc = ChapterDef.JoinChapter(d.Id);
-                    Ui.Label(t, d.Hidden ? "隐藏好汉" : $"第{BattleView.ToCn(jc + 1)}回入伙", 26, Pal.Paper, new Vector2(0, -96), new Vector2(200, 40)).fontStyle = FontStyle.Bold;
+                    Ui.Label(t, d.Hidden ? "隐藏好汉" : $"第{BattleView.ToCn(jc + 1)}回入伙", 24, Pal.Paper, new Vector2(0, -124), new Vector2(200, 36)).fontStyle = FontStyle.Bold;
                 }
+                Ui.Tag(t, d.Rank > 0 ? d.Star : "隐藏", have ? tone : Pal.Hex("7A7062"), new Vector2(0, 142), 128, 22);
                 Ui.Tap(face, () => HeroDetail(layer, d, have));
             }
         }
@@ -807,11 +807,11 @@ namespace Rescue
         void CodexClaimChip(Transform card, HeroDef d, Action refill)
         {
             int coins = Save.CodexCoins(d);
-            var chip = Ui.Framed(card, new Vector2(176, 46), new Vector2(0, -114), Pal.Hex("F6C531"), Edge, 4f, "claimChip");
+            var chip = Ui.Framed(card, new Vector2(176, 46), new Vector2(0, -144), Pal.Hex("F6C531"), Edge, 4f, "claimChip");
             chip.raycastTarget = true;
             Ui.Icon(chip.transform, "coin", 42, new Vector2(-52, 0));
             Ui.Label(chip.transform, "领 " + coins, 28, Edge, new Vector2(22, 0), new Vector2(110, 44)).fontStyle = FontStyle.Bold;
-            var dot = Ui.Box(card, new Vector2(30, 30), new Vector2(88, 126), Pal.Hex("E8392B"), Art.Circle, "redDot");
+            var dot = Ui.Box(card, new Vector2(30, 30), new Vector2(90, 158), Pal.Hex("E8392B"), Art.Circle, "redDot");
             dot.type = Image.Type.Simple;
             Ui.Tap(chip, () =>
             {

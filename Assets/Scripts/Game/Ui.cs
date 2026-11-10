@@ -373,6 +373,59 @@ namespace Rescue
             return t;
         }
 
+        // ── 界面皮：黑漆、金边、宣纸，和启动页同一套（tools/build_ui_skin.py）──
+        public static Sprite SkinPanel => Art.Skin("skin_panel", 68);
+        public static Sprite SkinPaper => Art.Skin("skin_paper", 40);
+        public static Sprite SkinBtn => Art.Skin("skin_btn", 44);
+        public static Sprite SkinRim => Art.Skin("skin_btn_rim", 44);
+        public static Sprite SkinSlot => Art.Skin("skin_slot", 46);
+        public static Sprite SkinDisc => Art.Img("skin_disc");
+        public static Sprite SkinTitle => Art.SkinH("skin_title", 110);
+
+        public static readonly Color GoldText = Pal.Hex("F6D98E");
+        public static readonly Color GoldLine = Pal.Hex("C9A060");
+        public static readonly Color Lacquer = Pal.Hex("21160F");
+
+        /// <summary>九宫格皮。贴图按两倍界面尺寸画，scale 越大边越细。</summary>
+        public static Image Skin(Transform parent, Sprite sprite, Vector2 size, Vector2 pos, Color c, string name = "skin", float scale = 2f)
+        {
+            var img = Box(parent, size, pos, c, sprite, name);
+            img.type = Image.Type.Sliced;
+            img.pixelsPerUnitMultiplier = scale;
+            return img;
+        }
+
+        /// <summary>按钮底：染色的漆面 + 不染色的金边。返回漆面。</summary>
+        static Image BtnFace(Transform parent, Vector2 size, Color face, float scale = 2f)
+        {
+            float s = Mathf.Max(scale, 88f / Mathf.Max(1f, Mathf.Min(size.x, size.y)) * 2f);
+            var img = Skin(parent, SkinBtn, size, Vector2.zero, face, "face", s);
+            Skin(img.transform, SkinRim, size, Vector2.zero, Color.white, "rim", s).rectTransform.anchoredPosition = Vector2.zero;
+            return img;
+        }
+
+        /// <summary>金边黑漆圆章（主界面入口、箭头按钮）。</summary>
+        public static Image Medal(Transform parent, float size, Vector2 pos, string name = "medal")
+        {
+            var img = Box(parent, Vector2.one * size, pos, Color.white, SkinDisc, name);
+            img.type = Image.Type.Simple;
+            return img;
+        }
+
+        /// <summary>两颗金菱夹一道金线，作标题、分隔用。</summary>
+        public static void GoldRule(Transform parent, Vector2 pos, float width, float gap = 0f)
+        {
+            foreach (float side in new[] { -1f, 1f })
+            {
+                float inner = gap * 0.5f;
+                float len = (width - gap) * 0.5f - 14f;
+                if (len <= 0) continue;
+                Box(parent, new Vector2(len, 3), pos + new Vector2(side * (inner + len * 0.5f), 0), GoldLine.A(0.85f), Art.White, "rule");
+                var d = Box(parent, new Vector2(14, 14), pos + new Vector2(side * (inner + len + 8f), 0), GoldText, Art.White, "ruleDot");
+                d.rectTransform.localRotation = Quaternion.Euler(0, 0, 45);
+            }
+        }
+
         public static Button Btn(Transform parent, string text, Vector2 size, Vector2 pos, Color bg, Action onClick,
             int fontSize = 48, Color? fg = null, Font font = null)
         {
@@ -380,8 +433,8 @@ namespace Rescue
             holder.sizeDelta = size;
             holder.anchoredPosition = pos;
             Box(holder, size, new Vector2(0, -8), Pal.Shadow, Art.Rounded, "shadow");
-            var img = Box(holder, size, Vector2.zero, bg, Art.Rounded, "face");
-            Label(img.transform, text, fontSize, fg ?? Color.white, Vector2.zero, size, TextAnchor.MiddleCenter, font, "text");
+            var img = BtnFace(holder, size, bg);
+            Label(img.transform, text, fontSize, fg ?? Pal.Paper, Vector2.zero, size, TextAnchor.MiddleCenter, font, "text");
             Tap(img, onClick, img.rectTransform, 7f);
             return img.GetComponent<Button>();
         }
@@ -394,8 +447,10 @@ namespace Rescue
             var holder = Rect(parent, name);
             holder.sizeDelta = size;
             holder.anchoredPosition = pos;
-            Box(holder, size + Vector2.one * thick * 2f, Vector2.zero, edge, Art.Rounded, "edge");
-            return Box(holder, size, Vector2.zero, face, Art.Rounded, "face");
+            float s = Mathf.Max(2f, 80f / Mathf.Max(1f, Mathf.Min(size.x, size.y)) * 2f);
+            // 描边圆角 = 纸面圆角 + 描边厚：Rounded 的圆角在 multiplier 1 时是 25 单位，纸面是 18/s。
+            Skin(holder, Art.Rounded, size + Vector2.one * thick * 2f, Vector2.zero, edge, "edge", 25f / (18f / s + thick));
+            return Skin(holder, SkinPaper, size, Vector2.zero, face, "face", s);
         }
 
         public static Text Stroke(Text t, Color c, float d = 3f)
@@ -439,27 +494,24 @@ namespace Rescue
         }
 
         public static readonly Color Edge = Pal.Hex("2E2119");
-        public static readonly Color BtnRed = Pal.Hex("E8573F");
-        public static readonly Color BtnDark = Pal.Hex("4A4542");
-        public static readonly Color BtnYellow = Pal.Hex("F6C531");
-        public static readonly Color BtnOrange = Pal.Hex("F59B2E");
-        public static readonly Color BtnBlue = Pal.Hex("5B86C9");
-        public static readonly Color BtnGreen = Pal.Hex("5FB548");
+        public static readonly Color BtnRed = Pal.Hex("C9402E");
+        public static readonly Color BtnDark = Pal.Hex("3A2C22");
+        public static readonly Color BtnYellow = Pal.Hex("E8B84A");
+        public static readonly Color BtnOrange = Pal.Hex("D9822B");
+        public static readonly Color BtnBlue = Pal.Hex("3F6E9E");
+        public static readonly Color BtnGreen = Pal.Hex("4E8A3E");
 
-        /// <summary>卡通按钮：底影、粗描边、面色、顶部高光，可在文字左边放图标（广告按钮放视频图标）。</summary>
+        /// <summary>漆面金边按钮：底影、染色漆面、金边，可在文字左边放图标（广告按钮放视频图标）。</summary>
         public static RectTransform CartoonBtn(Transform parent, string text, Vector2 size, Vector2 pos, Color face, Action onClick,
             int fontSize = 52, string icon = null, Color? fg = null, Font font = null)
         {
             var holder = Rect(parent, "framedBtn");
             holder.sizeDelta = size;
             holder.anchoredPosition = pos;
-            Box(holder, size + new Vector2(12, 12), new Vector2(0, -10), Pal.Shadow.A(0.5f), null, "shadow");
+            Box(holder, size + new Vector2(8, 8), new Vector2(0, -9), Pal.Shadow.A(0.55f), null, "shadow");
             var body = Rect(holder, "body");
             body.sizeDelta = size;
-            Box(body, size + new Vector2(12, 12), Vector2.zero, Edge, null, "edge");
-            Box(body, size, Vector2.zero, face, null, "face");
-            Box(body, new Vector2(size.x - 16, size.y * 0.42f), new Vector2(0, -size.y * 0.25f + 4), Color.Lerp(face, Color.black, 0.12f), null, "under");
-            Box(body, new Vector2(size.x - 36, Mathf.Max(10, size.y * 0.13f)), new Vector2(0, size.y * 0.32f), Color.white.A(0.3f), null, "gloss");
+            BtnFace(body, size + new Vector2(8, 8), face);
             float iconW = icon != null ? size.y * 0.62f : 0f;
             var label = Label(body, text, fontSize, fg ?? Pal.Paper, new Vector2(iconW * 0.55f, 2), new Vector2(size.x - iconW - 20, size.y),
                 TextAnchor.MiddleCenter, font ?? Fonts.Brush, "text");
@@ -481,7 +533,6 @@ namespace Rescue
         public static void SetBtnFace(RectTransform btn, Color c)
         {
             btn.Find("body/face").GetComponent<Image>().color = c;
-            btn.Find("body/under").GetComponent<Image>().color = Color.Lerp(c, Color.black, 0.12f);
         }
 
         /// <summary>竖向内容高 needH，屏幕矮（平板、横向留白多的机型）放不下时整体等比缩小。返回缩放层。</summary>
@@ -493,32 +544,38 @@ namespace Rescue
             return rt;
         }
 
-        /// <summary>木框面板：深色外描边、木色框、深色内线、面色。返回放内容的那层（中心为原点）。</summary>
+        /// <summary>
+        /// 漆框面板：黑漆宽边、内外金边、四角金菱，里面铺宣纸（face 染色）。返回放内容的那层（中心为原点）。
+        /// wood 是旧木框的颜色，换成统一的漆框后不再用。
+        /// </summary>
         public static RectTransform WoodPanel(Transform parent, Vector2 size, Vector2 pos, Color? wood = null, Color? face = null, string name = "wood")
         {
             var holder = Rect(parent, name);
             holder.sizeDelta = size;
             holder.anchoredPosition = pos;
-            Box(holder, size + new Vector2(14, 14), new Vector2(0, -14), Pal.Shadow.A(0.6f), null, "shadow");
-            Box(holder, size + new Vector2(14, 14), Vector2.zero, Edge, null, "edge");
-            Box(holder, size, Vector2.zero, wood ?? Pal.Hex("8C6B4E"), null, "frame");
-            Box(holder, size - new Vector2(52, 52), new Vector2(0, -6), Pal.Hex("5E4532"), null, "innerEdge");
-            Box(holder, size - new Vector2(64, 64), new Vector2(0, -6), face ?? Pal.Hex("E9DDBF"), null, "inner");
+            Box(holder, size + new Vector2(6, 6), new Vector2(0, -16), new Color(0, 0, 0, 0.5f), null, "shadow");
+            Skin(holder, SkinPaper, size - new Vector2(56, 56), Vector2.zero, face ?? Pal.Hex("EFE4CC"), "inner");
+            Skin(holder, SkinPanel, size, Vector2.zero, Color.white, "frame");
             return holder;
         }
 
-        /// <summary>面板标题：粗描边大字，压在面板上沿。</summary>
+        /// <summary>面板标题：黑漆金边标题牌压在面板上沿，牌上写金字。</summary>
         public static Text Title(Transform parent, string s, Vector2 pos, int size = 92, Color? c = null)
         {
-            var t = Label(parent, s, size, c ?? Pal.Hex("F7A928"), pos, new Vector2(800, size + 40), TextAnchor.MiddleCenter, Fonts.Brush, "title");
-            Stroke(t, Edge, 4.5f);
-            t.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(0, -6);
+            float fs = size * 0.86f;
+            var t = Label(parent, s, Mathf.RoundToInt(fs), c ?? GoldText, pos + new Vector2(0, 2), new Vector2(800, size + 40), TextAnchor.MiddleCenter, Fonts.Brush, "title");
+            float h = size * 1.28f;
+            float w = Mathf.Clamp(t.preferredWidth + h * 1.9f, h * 3.2f, 860f);
+            var plate = Skin(parent, SkinTitle, new Vector2(w, h), pos, Color.white, "titlePlate", 132f / h);
+            plate.transform.SetSiblingIndex(t.transform.GetSiblingIndex());
+            Stroke(t, Pal.Hex("120B07"), 2.5f);
+            t.gameObject.AddComponent<Shadow>().effectDistance = new Vector2(0, -4);
             return t;
         }
 
         public static Image CloseX(Transform parent, Vector2 pos, Action onClick, float size = 116)
         {
-            var x = Icon(parent, "ui_close", size, pos, "close");
+            var x = Icon(parent, "skin_close", size * 0.86f, pos, "close");
             Tap(x, onClick);
             return x;
         }
@@ -529,9 +586,9 @@ namespace Rescue
             if (w <= 0) w = s.Length * font + 34;
             var holder = Rect(parent, "tag");
             holder.anchoredPosition = pos;
-            Box(holder, new Vector2(w + 8, font + 26), Vector2.zero, Edge, null, "edge").pixelsPerUnitMultiplier = 1f;
-            var face = Box(holder, new Vector2(w, font + 18), Vector2.zero, c, null, "face");
-            face.pixelsPerUnitMultiplier = 1f;
+            float k = 88f / (font + 22) * 2f;
+            var face = Skin(holder, SkinBtn, new Vector2(w + 4, font + 22), Vector2.zero, c, "face", k);
+            Skin(face.transform, SkinRim, new Vector2(w + 4, font + 22), Vector2.zero, Color.white, "rim", k);
             Stroke(Label(holder, s, font, Pal.Paper, new Vector2(0, 1), new Vector2(w + 20, font + 18)), Color.Lerp(c, Color.black, 0.55f), 2f);
             return face;
         }
@@ -547,7 +604,7 @@ namespace Rescue
         public static void Toast(string s, float y = -260)
         {
             int len = Mathf.Max(6, s.Length);
-            var bg = Box(Root, new Vector2(Mathf.Min(1000, len * 42 + 120), 104), new Vector2(0, y), Pal.Ink.A(0.86f), null, "toast");
+            var bg = Skin(Root, SkinSlot, new Vector2(Mathf.Min(1000, len * 42 + 120), 104), new Vector2(0, y), Color.white, "toast");
             Label(bg.transform, s, 42, Pal.Paper, Vector2.zero, new Vector2(980, 100));
             bg.transform.SetAsLastSibling();
             Tween.Pop(bg.transform, 0.2f);
