@@ -26,6 +26,8 @@ namespace Rescue
         static bool _sessionStarted;
         static string _userId = "";
         static bool _sending;
+        static int _inflight;
+        static bool _flushPending;
         static string _anonId;
         static string _sessionId;
         static int _seq;
@@ -55,6 +57,24 @@ namespace Rescue
             Flush();
         }
 
+        public static void IntroShow(int levelId, string name)
+        {
+            if (!_sessionStarted) return;
+            Track("level_intro", Param.Of("level_id", levelId).Str("level_name", name ?? ""), true);
+        }
+
+        public static void TutorialStep(string step)
+        {
+            if (!_sessionStarted || string.IsNullOrEmpty(step)) return;
+            Track("tutorial_step", Param.Of("step", step).Num("level_id", _levelId), true);
+        }
+
+        public static void LoreEvent(int chapterId, string action, bool solved)
+        {
+            if (!_sessionStarted) return;
+            Track("shuihu_lore", Param.Of("chapter_id", chapterId).Str("action", action ?? "").Bool("solved", solved), true);
+        }
+
         public static void LevelStart(int levelId, string name)
         {
             if (!_sessionStarted) return;
@@ -63,21 +83,21 @@ namespace Rescue
             _levelId = levelId;
             _levelName = name ?? "";
             _levelAt = Time.realtimeSinceStartup;
-            Track("level_start", LevelParams(null, 0, 0));
+            Track("level_start", LevelParams(null, 0, 0), true);
         }
 
         public static void LevelClear(int wave, int kills)
         {
             if (!_sessionStarted || !_levelOpen) return;
             _levelOpen = false;
-            Track("level_clear", LevelParams(null, wave, kills));
+            Track("level_clear", LevelParams(null, wave, kills), true);
         }
 
         public static void LevelFail(string reason, int wave, int kills)
         {
             if (!_sessionStarted || !_levelOpen) return;
             _levelOpen = false;
-            Track("level_fail", LevelParams(string.IsNullOrEmpty(reason) ? "lose" : reason, wave, kills));
+            Track("level_fail", LevelParams(string.IsNullOrEmpty(reason) ? "lose" : reason, wave, kills), true);
         }
 
         /// <summary>商店买、看广告白拿、抽奖抽中。how 是 coin / ad / lotto / refund。</summary>
@@ -139,7 +159,7 @@ namespace Rescue
                 .Str("scene", string.IsNullOrEmpty(scene) ? "unknown" : scene);
             if (_levelOpen) p.Num("level_id", _levelId);
             if (ended.HasValue) p.Bool("is_ended", ended.Value);
-            Track(name, p);
+            Track(name, p, true);
         }
 
         static Param LevelParams(string reason, int wave, int kills)
@@ -172,36 +192,80 @@ namespace Rescue
         public static void OnHide(string reason)
         {
             if (!_ready || !_sessionStarted) return;
-            if (Time.realtimeSinceStartup - _lastEndAt < 1f)
+            if (Time.realtimeSinceStartup - _lastEndAt >= 1f)
             {
-                Flush();
-                return;
+                _lastEndAt = Time.realtimeSinceStartup;
+                Track("session_end", Param.Of("reason", reason));
             }
-            _lastEndAt = Time.realtimeSinceStartup;
-            Track("session_end", Param.Of("reason", reason));
-            Flush();
+            Persist();
+            FlushOnHide();
         }
 
-        static void Track(string name, Param param)
+        static void Track(string name, Param param, bool urgent = false)
         {
             if (Application.isEditor || !_ready || string.IsNullOrEmpty(name)) return;
             _seq++;
             Queue.Add(Envelope(name, param));
             while (Queue.Count > MaxQueue) Queue.RemoveAt(0);
-            if (Queue.Count >= Bulk) Flush();
+            if (urgent || Queue.Count >= Bulk) Flush();
         }
 
         public static void Flush()
         {
-            if (!_ready || _pump == null || _sending || Queue.Count == 0) return;
+            if (!_ready || _pump == null || Queue.Count == 0) return;
             Persist();
+            if (_sending)
+            {
+                _flushPending = true;
+                return;
+            }
+            _flushPending = false;
             _pump.StartCoroutine(Send());
+        }
+
+        /// <summary>切后台瞬间同步把尚未发出的尾部事件推给底层 wx.request，不等上一批回调。</summary>
+        static void FlushOnHide()
+        {
+            if (Application.isEditor || !_ready || _pump == null) return;
+            if (!_sending)
+            {
+                Flush();
+                return;
+            }
+            int start = Mathf.Clamp(_inflight, 0, Queue.Count);
+            int rem = Queue.Count - start;
+            if (rem <= 0) return;
+            int n = Mathf.Min(Bulk, rem);
+            var body = new StringBuilder(256 * n);
+            body.Append("{\"batch\":[");
+            for (int i = 0; i < n; i++)
+            {
+                if (i > 0) body.Append(',');
+                body.Append(Queue[start + i]);
+            }
+            body.Append("]}");
+            Queue.RemoveRange(start, n);
+            Persist();
+            _pump.StartCoroutine(SendRaw(body.ToString()));
+        }
+
+        static IEnumerator SendRaw(string payload)
+        {
+            using (var req = new UnityWebRequest(Endpoint, "POST"))
+            {
+                req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(payload));
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.timeout = 6;
+                yield return req.SendWebRequest();
+            }
         }
 
         static IEnumerator Send()
         {
             _sending = true;
             int n = Mathf.Min(Bulk, Queue.Count);
+            _inflight = n;
             var batch = new string[n];
             for (int i = 0; i < n; i++) batch[i] = Queue[i];
             var body = new StringBuilder(256 * n);
@@ -232,9 +296,10 @@ namespace Rescue
                 if (drop > 0) Queue.RemoveRange(0, drop);
                 if (clientErr) Debug.LogWarning("[Analytics] drop batch status=" + status);
             }
+            _inflight = 0;
             Persist();
             _sending = false;
-            if (ok && Queue.Count >= Bulk) Flush();
+            if (ok && (Queue.Count >= Bulk || (_flushPending && Queue.Count > 0))) Flush();
         }
 
         static string Envelope(string name, Param param)

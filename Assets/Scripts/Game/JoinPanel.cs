@@ -15,12 +15,15 @@ namespace Rescue
 
         /// <summary>入伙流程里点了「查看好汉谱」：回到主页后直接打开好汉谱。</summary>
         public static bool WantCodex;
+        /// <summary>小课堂里点了「直奔下一回」：回到主页后直接开下一回。</summary>
+        public static int WantNextChapter = -1;
 
         public static void Show(List<HeroId> heroes, int chapter, bool seat, Action done)
         {
+            WantNextChapter = -1;
             Sfx.PlayStory();
             var layer = Ui.Fill(Ui.Root, new Color(0.07f, 0.05f, 0.04f, 0.92f), true, "join");
-            int i = 0;
+            int count = heroes != null ? heroes.Count : 0;
             RectTransform page = null;
 
             void Finish()
@@ -35,33 +38,104 @@ namespace Rescue
                 if (page) UnityEngine.Object.Destroy(page.gameObject);
                 var ch = chapter >= 0 && chapter < ChapterDef.StoryCount ? ChapterDef.All[chapter] : null;
                 if (ch == null || string.IsNullOrEmpty(ch.Lore)) { Finish(); return; }
-                page = LorePage(layer, ch, Finish);
+                Analytics.LoreEvent(ch.Index + 1, "open_after_win", false);
+                page = LorePage(layer, ch, true, Finish, null);
             }
 
-            void Next()
+            if (count <= 0)
             {
-                if (page) UnityEngine.Object.Destroy(page.gameObject);
-                if (i >= heroes.Count) { Lore(); return; }
-                var d = HeroDef.Get(heroes[i]);
-                i++;
+                Lore();
+                return;
+            }
+            if (count == 1)
+            {
+                var d = HeroDef.Get(heroes[0]);
                 page = Ui.Rect(Ui.Fit(layer, 1800), "page");
                 Rays(page, new Vector2(0, 640));
                 var title = Ui.Title(page, "好汉入伙", new Vector2(0, 820), 100, Pal.GoldBright);
                 Tween.Pop(title.transform, 0.35f);
-                Ui.Label(page, $"{i} / {heroes.Count}", 36, Pal.Paper.A(0.7f), new Vector2(0, 730), new Vector2(300, 50));
-                var sheet = HeroSheet(page, d, true, new Vector2(0, -20));
+                var sheet = HeroSheet(page, d, true, new Vector2(0, -10));
                 Tween.Pop(sheet, 0.4f, 0.05f);
                 Sfx.Play(Snd.Join, 0.9f);
-                bool last = i >= heroes.Count;
-                Ui.CartoonBtn(page, last ? "继  续" : "下一位", new Vector2(420, 128), new Vector2(170, -760), Ui.BtnRed, Next, 56);
-                Ui.CartoonBtn(page, "好汉谱", new Vector2(300, 112), new Vector2(-240, -760), Ui.BtnBlue, () =>
+                Ui.CartoonBtn(page, "水浒小课堂", new Vector2(440, 128), new Vector2(165, -760), Ui.BtnRed, Lore, 52);
+                Ui.CartoonBtn(page, "好汉谱", new Vector2(280, 112), new Vector2(-245, -760), Ui.BtnBlue, () =>
                 {
                     WantCodex = true;
-                    Next();
-                }, 46);
+                    Lore();
+                }, 44);
+                return;
             }
 
-            Next();
+            // 多位好汉同回入伙（如第一回少华山与史进四将）：一页群像齐拜山，轻点任意好汉可展阅完整拜帖，一键进入水浒小课堂。
+            page = GroupJoinPage(layer, heroes, chapter, Lore);
+        }
+
+        static RectTransform GroupJoinPage(RectTransform layer, List<HeroId> heroes, int chapter, Action onNext)
+        {
+            var page = Ui.Rect(Ui.Fit(layer, 1840), "groupJoin");
+            Rays(page, new Vector2(0, 640));
+            var title = Ui.Title(page, "群雄拜山", new Vector2(0, 810), 100, Pal.GoldBright);
+            Tween.Pop(title.transform, 0.35f);
+            string chName = chapter >= 0 && chapter < ChapterDef.StoryCount ? ChapterDef.All[chapter].Name : "梁山";
+            Ui.Label(page, $"{chName} · {heroes.Count} 位好汉同归大义（点卡片可看详情）", 32, Pal.Paper.A(0.85f), new Vector2(0, 705), new Vector2(920, 48));
+            Sfx.Play(Snd.Join, 0.9f);
+
+            int showCount = Mathf.Min(heroes.Count, 4);
+            bool twoOnly = showCount == 2;
+            for (int idx = 0; idx < showCount; idx++)
+            {
+                var d = HeroDef.Get(heroes[idx]);
+                bool di = d.Disha;
+                Color rim = d.Rank <= 0 ? Pal.Hex("8C6B4E") : di ? DiColor : TianColor;
+                Vector2 size = twoOnly ? new Vector2(440, 880) : new Vector2(452, 580);
+                Vector2 pos = twoOnly
+                    ? new Vector2(idx == 0 ? -240 : 240, 20)
+                    : new Vector2(idx % 2 == 0 ? -242 : 242, idx < 2 ? 320 : -295);
+
+                var face = Ui.Framed(page, size, pos, Pal.Hex("F6EEDA"), rim, 8f, "heroCard");
+                var t = face.transform;
+                Ui.Box(t, new Vector2(size.x - 28, twoOnly ? 380 : 260), new Vector2(0, twoOnly ? 160 : 95), rim.A(0.14f), null, "band").pixelsPerUnitMultiplier = 1f;
+                Portrait(t, d.Id, new Vector2(0, twoOnly ? 165 : 98), twoOnly ? new Vector2(310, 340) : new Vector2(236, 244));
+
+                if (d.Rank > 0)
+                    Ui.Tag(t, d.Star + " · " + d.Rank108, rim, new Vector2(0, size.y * 0.5f - 36), 250, 24);
+                else
+                    Ui.Tag(t, "隐藏好汉", rim, new Vector2(0, size.y * 0.5f - 36), 180, 24);
+
+                float nameY = twoOnly ? -90 : -82;
+                Ui.Label(t, d.Nick, 32, Pal.RedDeep, new Vector2(0, nameY + 48), new Vector2(size.x - 36, 42), TextAnchor.MiddleCenter).fontStyle = FontStyle.Bold;
+                var nm = Ui.Label(t, d.Name, d.Name.Length > 2 ? 56 : 70, Pal.Ink, new Vector2(0, nameY - 14), new Vector2(size.x - 36, 84), TextAnchor.MiddleCenter, Fonts.Brush);
+                Ui.Stroke(nm, Pal.Hex("FFF6E2"), 2f);
+
+                if (!string.IsNullOrEmpty(d.Weapon))
+                    Ui.Label(t, "兵器：" + d.Weapon, 25, Pal.Hex("7A5432"), new Vector2(0, nameY - 76), new Vector2(size.x - 40, 36));
+                var sk = Ui.Label(t, d.Skill, 24, Pal.InkSoft, new Vector2(0, twoOnly ? -285 : -214), new Vector2(size.x - 44, twoOnly ? 110 : 76));
+                sk.resizeTextForBestFit = true;
+                sk.resizeTextMinSize = 18;
+                sk.resizeTextMaxSize = 24;
+
+                var heroDef = d;
+                Ui.Tap(face, () =>
+                {
+                    var shade = Ui.Fill(layer, new Color(0, 0, 0, 0.72f), true, "sheetPreview");
+                    Ui.Tap(shade.GetComponent<Image>(), () => UnityEngine.Object.Destroy(shade.gameObject));
+                    var sheet = HeroSheet(shade, heroDef, true, new Vector2(0, -10));
+                    var block = Ui.Box(sheet, new Vector2(880, 1220), Vector2.zero, Color.clear, null, "block");
+                    block.raycastTarget = true;
+                    block.transform.SetAsFirstSibling();
+                    Ui.CloseX(sheet, new Vector2(-430, 600), () => UnityEngine.Object.Destroy(shade.gameObject), 100);
+                    Tween.Pop(sheet, 0.22f);
+                });
+                Tween.Pop(face.transform.parent, 0.32f, 0.05f * idx);
+            }
+
+            Ui.CartoonBtn(page, "水浒小课堂", new Vector2(450, 128), new Vector2(165, -745), Ui.BtnRed, onNext, 52);
+            Ui.CartoonBtn(page, "好汉谱", new Vector2(280, 112), new Vector2(-245, -745), Ui.BtnBlue, () =>
+            {
+                WantCodex = true;
+                onNext();
+            }, 44);
+            return page;
         }
 
         static void Rays(RectTransform parent, Vector2 pos)
@@ -183,25 +257,206 @@ namespace Rescue
             return holder;
         }
 
-        static RectTransform LorePage(RectTransform layer, ChapterDef ch, Action done)
+        /// <summary>在山寨回目卷里随时打开某一回的水浒小课堂，支持前后翻卷与补答考校领赏。</summary>
+        public static void ShowLoreModal(Transform host, int chapterIndex, Action onChanged = null)
         {
-            var page = Ui.Rect(Ui.Fit(layer, 1560), "lore");
-            Ui.Title(page, "水浒小课堂", new Vector2(0, 700), 100, Pal.GoldBright);
-            var card = Ui.WoodPanel(page, new Vector2(900, 900), new Vector2(0, 40), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
-            Ui.Label(card, $"第{BattleView.ToCn(ch.Index + 1)}回 · {ch.Name}", 52, Pal.Ink, new Vector2(0, 340), new Vector2(800, 80), TextAnchor.MiddleCenter, Fonts.Brush);
+            int cur = Mathf.Clamp(chapterIndex, 0, ChapterDef.StoryCount - 1);
+            var layer = Ui.Fill(host, new Color(0.06f, 0.05f, 0.04f, 0.88f), true, "loreModal");
+            RectTransform page = null;
+            void Rebuild()
+            {
+                if (page) UnityEngine.Object.Destroy(page.gameObject);
+                Analytics.LoreEvent(cur + 1, "revisit", Save.LoreAnswered(cur));
+                page = LorePage(layer, ChapterDef.All[cur], false, () =>
+                {
+                    UnityEngine.Object.Destroy(layer.gameObject);
+                    onChanged?.Invoke();
+                }, delta =>
+                {
+                    int maxOpen = Mathf.Clamp(Mathf.Max(0, Save.D.unlocked - 1), 0, ChapterDef.StoryCount - 1);
+                    cur = Mathf.Clamp(cur + delta, 0, maxOpen);
+                    Rebuild();
+                }, onChanged);
+            }
+            Rebuild();
+        }
+
+        static RectTransform LorePage(RectTransform layer, ChapterDef ch, bool fromBattle, Action done, Action<int> stepChapter, Action onQuizReward = null)
+        {
+            var page = Ui.Rect(Ui.Fit(layer, 1840), "lore");
+            Ui.Title(page, "水浒小课堂", new Vector2(0, 815), 94, Pal.GoldBright);
+            int mastered = Save.LoreAnsweredCount;
+            string scholar = ShuihuLore.ScholarTitle(mastered);
+            Ui.Label(page, $"梁山书场【{scholar}】· 已通晓 {mastered}/{ChapterDef.StoryCount} 卷　好汉谱 {Mathf.Min(Save.JoinedCount, 108)}/108",
+                27, Pal.Paper.A(0.88f), new Vector2(0, 728), new Vector2(920, 40));
+
+            var card = Ui.WoodPanel(page, new Vector2(960, 1340), new Vector2(0, 20), Pal.Hex("8C6B4E"), Pal.Hex("F3E6C6"));
+            if (!fromBattle)
+                Ui.CloseX(card, new Vector2(960 * 0.5f - 108f, 1340 * 0.5f - 104f), done, 88f);
+
+            var entry = ShuihuLore.Of(ch.Index);
+
+            // 抬头：第X回　回名 + 风物专题签
+            var chTitle = Ui.Label(card, $"第{BattleView.ToCn(ch.Index + 1)}回　{ch.Name}", 48, Pal.Ink,
+                new Vector2(entry != null ? -110 : 0, 578), new Vector2(entry != null ? 580 : 820, 68),
+                entry != null ? TextAnchor.MiddleLeft : TextAnchor.MiddleCenter, Fonts.Brush);
+            chTitle.resizeTextForBestFit = true;
+            chTitle.resizeTextMinSize = 32;
+            chTitle.resizeTextMaxSize = 48;
+            if (entry != null)
+                Ui.Tag(card, entry.Topic, Pal.Hex("7A2E22"), new Vector2(275, 578), 260, 24);
+
             if (!string.IsNullOrEmpty(ch.Hui))
-                Ui.Label(card, "《水浒传》" + ch.Hui, 32, Pal.Hex("9A6A1E"), new Vector2(0, 265), new Vector2(820, 50));
-            Ui.Box(card, new Vector2(700, 4), new Vector2(0, 225), Pal.Hex("C9B48E"), null, "rule").pixelsPerUnitMultiplier = 1f;
-            Ui.Label(card, ch.Lore, 42, Pal.Ink, new Vector2(0, 20), new Vector2(780, 380), TextAnchor.MiddleLeft);
-            int next = ch.Index + 1;
-            string tip = next < ChapterDef.StoryCount
-                ? $"下一回：{ChapterDef.All[next].Name}（{ChapterDef.All[next].Act}）"
-                : "剧情已终。聚义厅车轮战开张：自选五员大将，看能撑几阵！";
-            Ui.Label(card, tip, 34, Pal.RedDeep, new Vector2(0, -260), new Vector2(800, 90));
-            Ui.Label(card, $"好汉谱 {Save.JoinedCount} / 108", 32, Pal.InkSoft, new Vector2(0, -340), new Vector2(600, 50));
-            Ui.CartoonBtn(page, "回山寨", new Vector2(420, 128), new Vector2(0, -560), Ui.BtnRed, done, 56);
-            Tween.Pop(card, 0.35f);
+            {
+                var hui = Ui.Label(card, "《水浒传》" + ch.Hui, 26, Pal.Hex("9A6A1E"), new Vector2(0, 520), new Vector2(830, 40), TextAnchor.MiddleLeft);
+                hui.resizeTextForBestFit = true;
+                hui.resizeTextMinSize = 18;
+                hui.resizeTextMaxSize = 26;
+            }
+
+            if (entry != null && !string.IsNullOrEmpty(entry.Verse))
+            {
+                var verseBar = Ui.Framed(card, new Vector2(836, 66), new Vector2(0, 458), Pal.Hex("EFE0BE"), Pal.Hex("C8962E"), 4f, "verse");
+                var vl = Ui.Label(verseBar.transform, "「" + entry.Verse + "」", 34, Pal.RedDeep, Vector2.zero, new Vector2(800, 56), TextAnchor.MiddleCenter, Fonts.Brush);
+                vl.resizeTextForBestFit = true;
+                vl.resizeTextMinSize = 22;
+                vl.resizeTextMaxSize = 34;
+            }
+
+            // 第一栏：原著讲古
+            Ui.Tag(card, "原著讲古", Pal.Hex("B5651D"), new Vector2(-334, 384), 160, 24);
+            var loreBody = Ui.Label(card, ch.Lore, 30, Pal.Ink, new Vector2(0, 286), new Vector2(828, 146), TextAnchor.UpperLeft);
+            loreBody.lineSpacing = 1.08f;
+            loreBody.verticalOverflow = VerticalWrapMode.Truncate;
+
+            Ui.Box(card, new Vector2(828, 3), new Vector2(0, 200), Pal.Hex("C9B48E"), null, "rule").pixelsPerUnitMultiplier = 1f;
+
+            // 第二栏：宋风知微（宋代风物、制度、成语与江湖规矩）
+            if (entry != null)
+            {
+                Ui.Tag(card, "宋风知微", Pal.Hex("4A6B53"), new Vector2(-334, 162), 160, 24);
+                var noteBody = Ui.Label(card, entry.Note, 28, Pal.Hex("3C3024"), new Vector2(0, 56), new Vector2(828, 164), TextAnchor.UpperLeft);
+                noteBody.lineSpacing = 1.08f;
+                noteBody.verticalOverflow = VerticalWrapMode.Truncate;
+
+                // 第三栏：小课堂考校（答对立赏铜钱，内衬底边在 -638，考校框底边停在 -585 绝不出框）
+                BuildQuizBox(card, ch.Index, entry, onQuizReward);
+            }
+
+            if (fromBattle)
+            {
+                int next = ch.Index + 1;
+                bool canDirectNext = next < ChapterDef.StoryCount && ch.Index < 3 && Stamina.Current >= Stamina.Cost;
+                if (canDirectNext)
+                {
+                    string nextLabel = $"下一回　{ChapterDef.All[next].Name}";
+                    var goNext = Ui.CartoonBtn(page, nextLabel, new Vector2(500, 126), new Vector2(150, -745), Ui.BtnRed, () =>
+                    {
+                        WantNextChapter = next;
+                        done?.Invoke();
+                    }, nextLabel.Length > 7 ? 42 : 48);
+                    Ui.CartoonBtn(page, "回山寨", new Vector2(280, 112), new Vector2(-275, -745), Ui.BtnDark, done, 44);
+                    Tween.Run(goNext, 999f, k =>
+                    {
+                        if (goNext) goNext.localScale = Vector3.one * (1f + 0.035f * Mathf.Sin(k * 999f * 4.2f));
+                    });
+                }
+                else
+                {
+                    Ui.CartoonBtn(page, "回山寨", new Vector2(440, 126), new Vector2(0, -745), Ui.BtnRed, done, 54);
+                }
+            }
+            else
+            {
+                int maxOpen = Mathf.Clamp(Mathf.Max(0, Save.D.unlocked - 1), 0, ChapterDef.StoryCount - 1);
+                if (ch.Index > 0)
+                    Ui.CartoonBtn(page, "上一回", new Vector2(240, 108), new Vector2(-310, -745), Ui.BtnBlue, () => stepChapter?.Invoke(-1), 40);
+                Ui.CartoonBtn(page, "合上书卷", new Vector2(320, 116), new Vector2(0, -745), Ui.BtnRed, done, 46);
+                if (ch.Index < maxOpen)
+                    Ui.CartoonBtn(page, "下一回", new Vector2(240, 108), new Vector2(310, -745), Ui.BtnBlue, () => stepChapter?.Invoke(1), 40);
+            }
+
+            Tween.Pop(card, 0.32f);
             return page;
+        }
+
+        static void BuildQuizBox(RectTransform card, int chapterIndex, LoreEntry entry, Action onQuizReward)
+        {
+            var box = Ui.Framed(card, new Vector2(840, 536), new Vector2(0, -316), Pal.Hex("EFE2C4"), Pal.Hex("B5823A"), 5f, "quizBox");
+            var qt = box.transform;
+
+            void RenderQuiz(int wrongPick, int justEarned)
+            {
+                for (int i = qt.childCount - 1; i >= 0; i--) UnityEngine.Object.Destroy(qt.GetChild(i).gameObject);
+                bool solved = Save.LoreAnswered(chapterIndex);
+
+                Ui.Stroke(Ui.Label(qt, "书场考校", 34, Pal.RedDeep, new Vector2(-310, 224), new Vector2(200, 44), TextAnchor.MiddleLeft, Fonts.Brush), Pal.Hex("FFF6E2"), 2f);
+                if (solved)
+                    Ui.Tag(qt, "已通晓 · 博学", Pal.Willow, new Vector2(265, 224), 230, 22);
+                else
+                    Ui.Tag(qt, $"答对赏铜钱 +{ShuihuLore.QuizRewardCoins}", Pal.Hex("C8871E"), new Vector2(250, 224), 260, 22);
+
+                var qLabel = Ui.Label(qt, entry.Question, 28, Pal.Ink, new Vector2(0, 152), new Vector2(784, 78), TextAnchor.MiddleLeft);
+                qLabel.fontStyle = FontStyle.Bold;
+                qLabel.lineSpacing = 1.05f;
+                qLabel.resizeTextForBestFit = true;
+                qLabel.resizeTextMinSize = 22;
+                qLabel.resizeTextMaxSize = 28;
+
+                string[] prefixes = { "甲 · ", "乙 · ", "丙 · " };
+                for (int i = 0; i < 3 && i < entry.Options.Length; i++)
+                {
+                    int idx = i;
+                    float oy = 56f - i * 86f;
+                    bool isRight = idx == entry.Answer;
+                    bool isWrongPick = !solved && wrongPick == idx;
+
+                    Color faceCol = solved && isRight ? Pal.Hex("D6EAD0")
+                        : isWrongPick ? Pal.Hex("EAD0CA")
+                        : Pal.Hex("FAF3E3");
+                    Color rimCol = solved && isRight ? Pal.Willow
+                        : isWrongPick ? Pal.Red
+                        : Pal.Hex("8C6B4E");
+
+                    var opt = Ui.Framed(qt, new Vector2(784, 70), new Vector2(0, oy), faceCol, rimCol, solved && isRight ? 5f : 3.5f, "opt_" + i);
+                    string suffix = solved && isRight ? "　（正解）" : isWrongPick ? "　（再想想）" : "";
+                    var ol = Ui.Label(opt.transform, prefixes[i] + entry.Options[i] + suffix, 27,
+                        isWrongPick ? Pal.RedDeep : Pal.Ink, new Vector2(12, 0), new Vector2(740, 60), TextAnchor.MiddleLeft);
+                    if (solved && isRight) ol.fontStyle = FontStyle.Bold;
+                    if (!solved)
+                    {
+                        Ui.Tap(opt, () =>
+                        {
+                            if (idx == entry.Answer)
+                            {
+                                int got = Save.ClaimLoreQuiz(chapterIndex);
+                                Sfx.Play(Snd.Rain, 0.85f);
+                                Analytics.LoreEvent(chapterIndex + 1, "quiz_correct", true);
+                                onQuizReward?.Invoke();
+                                RenderQuiz(-1, got);
+                            }
+                            else
+                            {
+                                Sfx.Play(Snd.Deny, 0.7f);
+                                Analytics.LoreEvent(chapterIndex + 1, "quiz_wrong", false);
+                                RenderQuiz(idx, 0);
+                            }
+                        });
+                    }
+                }
+
+                string foot = justEarned > 0 ? $"妙哉！通晓本回典故，赏铜钱 +{justEarned}！（{ShuihuLore.NextScholarHint(Save.LoreAnsweredCount)}）"
+                    : solved ? $"已收入书场卷宗 · {ShuihuLore.NextScholarHint(Save.LoreAnsweredCount)}"
+                    : wrongPick >= 0 ? "差一点点！答案就在上方的「原著讲古」与「宋风知微」里，再选一次照领赏钱"
+                    : "轻点上方一处答案参与考校，读水浒、领铜钱";
+                Color footCol = justEarned > 0 || solved ? Pal.Willow : wrongPick >= 0 ? Pal.RedDeep : Pal.InkSoft;
+                var fl = Ui.Label(qt, foot, 23, footCol, new Vector2(0, -214), new Vector2(788, 48));
+                fl.resizeTextForBestFit = true;
+                fl.resizeTextMinSize = 18;
+                fl.resizeTextMaxSize = 23;
+            }
+
+            RenderQuiz(-1, 0);
         }
 
         /// <summary>忠义堂排座次：石碣上刻满一百单八将，天罡金、地煞紫。</summary>

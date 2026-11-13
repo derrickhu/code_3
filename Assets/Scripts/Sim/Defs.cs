@@ -129,6 +129,8 @@ namespace Rescue.Sim
         public const float BossNemesisMul = 5f;
         /// <summary>出兵口草堆盖住的那段路。怪走出之前看不见，也不能被打到。</summary>
         public const float SpawnCover = 0.72f;
+        /// <summary>沿路离宋江不到这么远，才算走到跟前。看剩余路程，不看直线。</summary>
+        public const float GateRange = 2.2f;
         /// <summary>开局先让探马沿路走一圈，玩家趁这段时间征兵布阵，再出第一波。</summary>
         public const float FirstWaveAt = 12f;
         public const float ScoutStart = 0.8f;
@@ -139,6 +141,13 @@ namespace Rescue.Sim
         public const float CdShu = 10f;
         public const float CdFu = 12f;
         public const float CdTrap = 8f;
+        public const float CdPen = 10f;
+        /// <summary>孤字助威：场上尚未成名的好汉单字不再白占格，给周围八格友军加快出手。</summary>
+        public const float OrphanAura = 0.94f;
+        public const float OrphanAuraFloor = 0.85f;
+        /// <summary>宿命对决：本回克星好汉撞见头目时战意爆发，五秒内出手加快。</summary>
+        public const float NemesisDuelT = 5f;
+        public const float NemesisDuelCd = 0.8f;
 
         /// <summary>前两波之后留口气看局面，后面逐步收紧。</summary>
         public static float WaveGap(int wave) => wave <= 2 ? 8f : wave <= 5 ? 7f : 6f;

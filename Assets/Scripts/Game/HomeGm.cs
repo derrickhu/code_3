@@ -47,22 +47,38 @@ namespace Rescue
 
         public void ShowGm()
         {
-            Panel("GM", out var card, new Vector2(820, 960));
-            _gmStatus = Ui.Label(card, GmFrontier(), 40, Pal.Ink, new Vector2(0, 330), new Vector2(720, 70), TextAnchor.MiddleCenter, Fonts.Brush);
+            Panel("GM", out var card, new Vector2(820, 1120));
+            _gmStatus = Ui.Label(card, GmFrontier(), 40, Pal.Ink, new Vector2(0, 410), new Vector2(720, 70), TextAnchor.MiddleCenter, Fonts.Brush);
             _gmStatus.resizeTextForBestFit = true;
             _gmStatus.resizeTextMinSize = 28;
             _gmStatus.resizeTextMaxSize = 40;
             bool hall = Save.StoryDone;
             Ui.Label(card, hall
                 ? "只在开发工具里出现。\n聚义厅按赢下一阵计。关卡全开跳到第二十一阵。"
-                : "只在开发工具里出现。\n跳过按赢下这一回计，好汉照常入伙。", 30, Pal.InkSoft, new Vector2(0, 215), new Vector2(700, 100));
-            Ui.CartoonBtn(card, hall ? "跳过本阵" : "跳过本回", new Vector2(560, 110), new Vector2(0, 70), Ui.BtnRed, () => GmSkip(1), 46);
-            Ui.CartoonBtn(card, hall ? "连跳五阵" : "连跳五回", new Vector2(560, 110), new Vector2(0, -64), Ui.BtnOrange, () => GmSkip(5), 46);
-            Ui.CartoonBtn(card, "关卡全开", new Vector2(560, 110), new Vector2(0, -198), Ui.BtnGreen, () => GmSkip(ChapterDef.StoryCount), 46, null, Pal.Ink);
-            Ui.CartoonBtn(card, "清档", new Vector2(560, 110), new Vector2(0, -332), Ui.BtnDark, () =>
+                : "只在开发工具里出现。\n跳过按赢下这一回计，好汉照常入伙。", 28, Pal.InkSoft, new Vector2(0, 305), new Vector2(700, 90));
+            Ui.CartoonBtn(card, hall ? "跳过本阵" : "跳过本回", new Vector2(560, 102), new Vector2(0, 175), Ui.BtnRed, () => GmSkip(1), 44);
+            Ui.CartoonBtn(card, hall ? "连跳五阵" : "连跳五回", new Vector2(560, 102), new Vector2(0, 52), Ui.BtnOrange, () => GmSkip(5), 44);
+            Ui.CartoonBtn(card, "关卡全开", new Vector2(560, 102), new Vector2(0, -71), Ui.BtnGreen, () => GmSkip(ChapterDef.StoryCount), 44, null, Pal.Ink);
+            Ui.CartoonBtn(card, "发道具+模拟跨零点", new Vector2(560, 102), new Vector2(0, -194), Ui.BtnYellow, GmTestRollover, 40, null, Pal.Ink);
+            Ui.CartoonBtn(card, "清档", new Vector2(560, 102), new Vector2(0, -317), Ui.BtnDark, () =>
             {
                 Confirm("清档", "本地和云端都换成新档\n铜钱、进度、兵器都没了，不能恢复", "清档", WipeAll);
-            }, 46);
+            }, 44);
+        }
+
+        void GmTestRollover()
+        {
+            // 先给满几件主被动（含招贤酒、十字坡灶、萧让代笔、蒙汗药），再模拟过零点结算
+            ShopItem.All[12].Give(); // 十字坡灶
+            ShopItem.All[13].Give(); // 招贤酒
+            ShopItem.All[0].Give();  // 生辰纲
+            ShopItem.All[14].Give(); // 萧让代笔
+            ShopItem.All[4].Give();  // 蒙汗药
+            Save.RolloverItemsForNewDay();
+            Save.ConsumeCarryNotice(out var kept, out var coins);
+            Save.Write();
+            Refresh();
+            Ui.Toast($"模拟跨零点完成：保留「{kept}」，旧货折银 +{coins}！", -640f);
         }
 
         void WipeAll()

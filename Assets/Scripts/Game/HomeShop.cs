@@ -68,7 +68,7 @@ namespace Rescue
             }
             Rebuild(null);
 
-            var tip = Ui.Label(_shop, "打完一局换新货。一场最多带两个主动、四个被动", 36, Pal.Paper, new Vector2(0, -640), new Vector2(940, 60));
+            var tip = Ui.Label(_shop, "打完一局换新货 · 跨零点保留「留」字底牌与一件主动，余货折铜钱", 32, Pal.Paper, new Vector2(0, -640), new Vector2(960, 60));
             tip.fontStyle = FontStyle.Bold;
             Tween.Pop(body, 0.3f);
         }
@@ -337,12 +337,12 @@ namespace Rescue
             return "成功获得" + it.Name;
         }
 
-        /// <summary>我的道具：主动一行（上场两件，背包四种）、被动一行（上场四件，背包七种），点图标决定带不带；今天买的可以点红减号退货。</summary>
+        /// <summary>我的道具：主动一行（上场两件，背包四种）、被动一行（上场四件，背包七种）。点图标先看功能说明，说明里再决定带不带；今天买的可以点红减号退货。</summary>
         void BuildBag(RectTransform content, Action<string> rebuild)
         {
             if (!_lottoTab)
             {
-                Ui.Label(content, "我的道具 · 点图标决定上场", 32, Pal.Ink, new Vector2(-190, -186), new Vector2(480, 50), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
+                Ui.Label(content, "我的道具 · 点图标看说明", 32, Pal.Ink, new Vector2(-190, -186), new Vector2(480, 50), TextAnchor.MiddleLeft).fontStyle = FontStyle.Bold;
                 var count = Ui.Label(content, $"主动 {Save.D.activeOn.Count}/{Save.MaxActiveField}　被动 {Save.PassiveFieldCount}/{Save.MaxPassiveField}", 28, Pal.Hex("4A3A2C"),
                     new Vector2(250, -186), new Vector2(320, 50), TextAnchor.MiddleRight);
                 count.fontStyle = FontStyle.Bold;
@@ -374,15 +374,23 @@ namespace Rescue
                         tag.pixelsPerUnitMultiplier = 1.4f;
                         Ui.Label(tag.transform, "上", 22, Pal.Paper, Vector2.zero, new Vector2(40, 28));
                     }
-                    Ui.Tap(cell, () =>
+                    if (!it.Active)
                     {
-                        bool was = it.Active ? Save.ActiveFielded(it.Id) : Save.PassiveFielded(it.Id);
-                        string err;
-                        bool ok = it.Active ? Save.ToggleActiveField(it.Id, out err) : Save.TogglePassiveField(it.Id, out err);
-                        if (!ok) { Nope(err); return; }
-                        if (!was) Toast(it.Name + "：" + it.Desc);
-                        rebuild(was ? it.Name + "这场不带" : it.Name + "这场带上");
-                    });
+                        bool kept = Save.D.heirloom == it.Id;
+                        var keepBadge = Ui.Box(cell.transform, new Vector2(42, 30), new Vector2(26, -32),
+                            kept ? Pal.Hex("E9B53A") : Pal.Hex("2E2119").A(0.65f), null, "heirloom");
+                        keepBadge.pixelsPerUnitMultiplier = 1.4f;
+                        keepBadge.raycastTarget = true;
+                        Ui.Label(keepBadge.transform, "留", 20, kept ? Edge : Pal.Paper.A(0.8f), Vector2.zero, new Vector2(42, 30)).fontStyle = FontStyle.Bold;
+                        Ui.Tap(keepBadge, () =>
+                        {
+                            Save.SetHeirloom(it.Id);
+                            Sfx.Play(Snd.Tap);
+                            Toast($"已设「{it.Name}」为压寨底牌，跨零点免费保留！");
+                            rebuild($"「{it.Name}」明日继续替客官压阵！");
+                        });
+                    }
+                    Ui.Tap(cell, () => ShowBagItem(it, rebuild));
                     if (!Save.D.shopSold.Contains(it.Id)) continue;
                     var minus = Ui.Box(cell.transform, new Vector2(42, 42), new Vector2(42, 42), Pal.Hex("D7362B"), Art.Circle, "minus");
                     minus.type = Image.Type.Simple;
@@ -403,7 +411,57 @@ namespace Rescue
             plank.rectTransform.sizeDelta = new Vector2(350, 120);
             plank.preserveAspect = false;
             plank.rectTransform.localRotation = Quaternion.Euler(0, 0, -2);
-            Ui.Tap(plank, () => Toast("主动背包最多四种，一场带两个；被动一场带四个"));
+            Ui.Tap(plank, () => Toast("点道具图标看功能。主动一场带两个，被动一场带四个"));
+        }
+
+        /// <summary>背包图标先打开说明，带不带在说明里再点，避免为了看字把已上场的卸掉。</summary>
+        void ShowBagItem(ShopItem it, Action<string> rebuild)
+        {
+            bool fielded = it.Active ? Save.ActiveFielded(it.Id) : Save.PassiveFielded(it.Id);
+            var layer = Ui.Fill(_root, new Color(0, 0, 0, 0.72f), true, "itemRead");
+            // 漆框约 34。内容离外沿至少 72，关钮和底部按钮整颗落在宣纸里。
+            const float cardW = 860f, cardH = 860f;
+            var card = Ui.WoodPanel(layer, new Vector2(cardW, cardH), Vector2.zero);
+            Ui.CloseX(card, new Vector2(cardW * 0.5f - 118f, cardH * 0.5f - 112f), () => { if (layer) Destroy(layer.gameObject); }, 92f);
+
+            const float iconX = -262f, iconY = 188f;
+            Ui.Box(card, new Vector2(144, 144), new Vector2(iconX, iconY), Edge, Art.Circle, "discEdge").type = Image.Type.Simple;
+            Ui.Box(card, new Vector2(130, 130), new Vector2(iconX, iconY), it.DiscColor, Art.Circle, "disc").type = Image.Type.Simple;
+            Ui.Icon(card, it.Icon, 104, new Vector2(iconX, iconY));
+
+            const float nameL = -150f;
+            var name = Ui.Label(card, it.Name, 48, Pal.Ink, new Vector2(nameL + 170f, iconY + 34f), new Vector2(340, 60), TextAnchor.MiddleLeft, Fonts.Brush);
+            name.fontStyle = FontStyle.Bold;
+            int n = it.Count();
+            Ui.Tag(card, it.Rarity, it.RarityColor, new Vector2(nameL + 62f, iconY - 32f), 124, 28);
+            string kind = (it.Active ? "主动道具" : "被动道具") + (n > 1 ? "  ×" + n : "");
+            Ui.Label(card, kind, 30, Pal.Hex("4A3A2C"), new Vector2(nameL + 245f, iconY - 32f), new Vector2(210, 44), TextAnchor.MiddleLeft);
+
+            var head = Ui.Label(card, "功能说明", 30, Pal.Hex("8A5649"), new Vector2(-270f, 72f), new Vector2(160, 40), TextAnchor.MiddleLeft);
+            head.fontStyle = FontStyle.Bold;
+            Ui.Framed(card, new Vector2(700, 128), new Vector2(0, -22), Pal.Hex("F2E7CA"), Pal.Hex("5A4632"), 4f, "descPaper");
+            var desc = Ui.Label(card, it.Desc, 38, Pal.Ink, new Vector2(0, -22), new Vector2(620, 96), TextAnchor.MiddleCenter);
+            desc.lineSpacing = 1.15f;
+
+            string state = fielded ? "这场已带上，进战斗就能用" : "这场还没带上，带上之后才生效";
+            Ui.Label(card, state, 32, fielded ? Pal.Hex("3E6B32") : Pal.Hex("8A5649"), new Vector2(0, -152), new Vector2(700, 44));
+            if (!it.Active)
+            {
+                bool kept = Save.D.heirloom == it.Id;
+                Ui.Label(card, kept ? "已标「留」，跨零点免费留下这一件" : "背包图标上的「留」，跨零点免费留下这一件", 28, Pal.Hex("6B5A48"),
+                    new Vector2(0, -202), new Vector2(700, 40));
+            }
+
+            Ui.CartoonBtn(card, fielded ? "这场不带" : "这场带上", new Vector2(340, 96), new Vector2(0, -300),
+                fielded ? Ui.BtnDark : Ui.BtnRed, () =>
+                {
+                    string err;
+                    bool ok = it.Active ? Save.ToggleActiveField(it.Id, out err) : Save.TogglePassiveField(it.Id, out err);
+                    if (!ok) { Nope(err); return; }
+                    if (layer) Destroy(layer.gameObject);
+                    rebuild(fielded ? it.Name + "这场不带" : it.Name + "这场带上");
+                }, 44);
+            Tween.Pop(card, 0.25f);
         }
     }
 }

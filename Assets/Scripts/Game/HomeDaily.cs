@@ -38,7 +38,8 @@ namespace Rescue
             sk.lineSpacing = 1.05f;
             var names = new List<string>();
             foreach (var id in ch.Pool) { var d = HeroDef.Get(id); if (!d.Hidden) names.Add(d.Name); }
-            Ui.Label(card, $"克星 {HeroDef.Get(ch.Boss.Nemesis).Name}　本阵好汉 {string.Join(" ", names)}", 30, Pal.Gold, new Vector2(0, -100), new Vector2(840, 50));
+            Ui.Label(card, $"克星 {HeroDef.Get(ch.Boss.Nemesis).Name}　本阵好汉 {string.Join(" ", names)}", 28, Pal.Gold, new Vector2(0, -92), new Vector2(840, 44));
+            Ui.Label(card, $"军令：{ch.RuleDesc}", 26, Pal.Hex("8A3B22"), new Vector2(0, -134), new Vector2(840, 40));
 
             bool won = Save.DailyWonToday;
             var box = Ui.Framed(card, new Vector2(800, 200), new Vector2(0, -250), won ? Pal.Hex("E2D2AE") : Pal.Hex("F6E2B0"), won ? Pal.Hex("8C6B4E") : Pal.Hex("D9822B"), 5f, "reward");
@@ -58,9 +59,18 @@ namespace Rescue
             }
             Ui.Label(card, "不动座次，输了也不掉星", 30, Pal.InkSoft, new Vector2(0, -385), new Vector2(800, 46));
 
-            var go = Ui.CartoonBtn(card, "出  战", new Vector2(460, 132), new Vector2(-30, -520), Ui.BtnRed, () => Fight(ChapterDef.DailySlot), 64);
-            Ui.Icon(go, "ui_bolt", 56, new Vector2(170, 0));
-            Ui.Label(go, "-" + Stamina.Cost, 26, Pal.Hex("FFE7A8"), new Vector2(204, -26), new Vector2(60, 36));
+            bool freeToday = Save.DailyFreeToday;
+            var go = Ui.CartoonBtn(card, "出  战", new Vector2(460, 132), new Vector2(freeToday ? 0 : -30, -520), Ui.BtnRed, () => Fight(ChapterDef.DailySlot), 64);
+            if (freeToday)
+            {
+                var freeTag = Ui.Framed(go, new Vector2(180, 44), new Vector2(150, 56), Pal.Willow, Edge, 3f, "freeTag");
+                Ui.Label(freeTag.transform, "首战免体力", 24, Pal.Paper, Vector2.zero, new Vector2(174, 40)).fontStyle = FontStyle.Bold;
+            }
+            else
+            {
+                Ui.Icon(go, "ui_bolt", 56, new Vector2(170, 0));
+                Ui.Label(go, "-" + Stamina.Cost, 26, Pal.Hex("FFE7A8"), new Vector2(204, -26), new Vector2(60, 36));
+            }
             if (!won) Breathe(go);
         }
 

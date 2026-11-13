@@ -45,20 +45,21 @@ namespace Rescue
 
         public static readonly ShopItem[] All =
         {
-            new ShopItem { Id = 0, Name = "生辰纲", Desc = "开局炊饼 +30，抢先聚义", Rarity = "卓越", Icon = "it_gang", Price = Economy.ItemPrices[0], Count = () => B(Save.D.gang), Give = () => { Save.D.gang = true; Save.NotePassive(0); }, Take = () => { Save.D.gang = false; Save.NotePassive(0); } },
-            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "全军伤害 +22%，全局生效", Rarity = "史诗", Icon = "it_flag", Price = Economy.ItemPrices[1], Count = () => B(Save.D.flag), Give = () => { Save.D.flag = true; Save.NotePassive(1); }, Take = () => { Save.D.flag = false; Save.NotePassive(1); } },
-            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵移速 -25%，全局生效", Rarity = "史诗", Icon = "it_marsh", Price = Economy.ItemPrices[2], Count = () => B(Save.D.marsh), Give = () => { Save.D.marsh = true; Save.NotePassive(2); }, Take = () => { Save.D.marsh = false; Save.NotePassive(2); } },
-            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵靠近宋江时，天降石碣砸下", Rarity = "传说", Icon = "it_stele", Price = Economy.ItemPrices[3], Count = () => B(Save.D.stele), Give = () => { Save.D.stele = true; Save.NotePassive(3); }, Take = () => { Save.D.stele = false; Save.NotePassive(3); } },
-            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = Economy.ItemPrices[4], Count = () => Save.D.menghan, Give = () => { Save.D.menghan++; Save.NoteActive(4); }, Take = () => { Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1); Save.NoteActive(4); } },
-            new ShopItem { Id = 5, Name = "天书", Desc = "拖到哪个兵身上，哪个升一级", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = Economy.ItemPrices[5], Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
-            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "五成半回一颗心，否则掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = Economy.ItemPrices[6], Count = () => Save.D.baozi, Give = () => { Save.D.baozi++; Save.NoteActive(6); }, Take = () => { Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1); Save.NoteActive(6); } },
-            new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江多八颗心，能硬吃第一波", Rarity = "传说", Icon = "it_xuming", Price = Economy.ItemPrices[7], Count = () => B(Save.D.xuming), Give = () => { Save.D.xuming = true; Save.NotePassive(7); }, Take = () => { Save.D.xuming = false; Save.NotePassive(7); } },
-            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局送 2 把铲子，多开两块地", Rarity = "稀有", Icon = "shovel", Price = Economy.ItemPrices[8], Count = () => Save.D.shovels, Give = () => { Save.D.shovels = 2; Save.NotePassive(8); }, Take = () => { Save.D.shovels = 0; Save.NotePassive(8); } },
-            new ShopItem { Id = 9, Name = "攻速符", Desc = "单位攻速 +40%，持续十二秒", Rarity = "史诗", Icon = "it_fu", Active = true, Price = Economy.ItemPrices[9], Count = () => Save.D.fu, Give = () => { Save.D.fu++; Save.NoteActive(9); }, Take = () => { Save.D.fu = Mathf.Max(0, Save.D.fu - 1); Save.NoteActive(9); } },
-            new ShopItem { Id = 10, Name = "御敌千里", Desc = "远程单位攻击范围翻倍，全局生效", Rarity = "稀有", Icon = "it_far", Price = Economy.ItemPrices[10], Count = () => B(Save.D.far), Give = () => { Save.D.far = true; Save.NotePassive(10); }, Take = () => { Save.D.far = false; Save.NotePassive(10); } },
-            new ShopItem { Id = 11, Name = "陷阱", Desc = "敌人掉下去一时会爬不出来", Rarity = "稀有", Icon = "it_trap", Active = true, Price = Economy.ItemPrices[11], Count = () => Save.D.trap, Give = () => { Save.D.trap++; Save.NoteActive(11); }, Take = () => { Save.D.trap = Mathf.Max(0, Save.D.trap - 1); Save.NoteActive(11); } },
-            new ShopItem { Id = 12, Name = "十字坡灶", Desc = "占一格，慢慢出炊饼；天书能升灶", Rarity = "卓越", Icon = "it_stove", Price = Economy.ItemPrices[12], Count = () => B(Save.D.stove), Give = () => { Save.D.stove = true; Save.NotePassive(12); }, Take = () => { Save.D.stove = false; Save.NotePassive(12); } },
-            new ShopItem { Id = 13, Name = "招贤酒", Desc = "聚义时更常出好汉的字", Rarity = "史诗", Icon = "it_wine", Price = Economy.ItemPrices[13], Count = () => B(Save.D.wine), Give = () => { Save.D.wine = true; Save.NotePassive(13); }, Take = () => { Save.D.wine = false; Save.NotePassive(13); } },
+            new ShopItem { Id = 0, Name = "生辰纲", Desc = "一进场多30个炊饼，够先多招几回兵", Rarity = "卓越", Icon = "it_gang", Price = Economy.ItemPrices[0], Count = () => B(Save.D.gang), Give = () => { Save.D.gang = true; Save.NotePassive(0); }, Take = () => { Save.D.gang = false; Save.NotePassive(0); } },
+            new ShopItem { Id = 1, Name = "替天行道旗", Desc = "你的兵和好汉伤害高两成，整场都算", Rarity = "史诗", Icon = "it_flag", Price = Economy.ItemPrices[1], Count = () => B(Save.D.flag), Give = () => { Save.D.flag = true; Save.NotePassive(1); }, Take = () => { Save.D.flag = false; Save.NotePassive(1); } },
+            new ShopItem { Id = 2, Name = "水泊", Desc = "官兵走得慢四分之一，整场都慢", Rarity = "史诗", Icon = "it_marsh", Price = Economy.ItemPrices[2], Count = () => B(Save.D.marsh), Give = () => { Save.D.marsh = true; Save.NotePassive(2); }, Take = () => { Save.D.marsh = false; Save.NotePassive(2); } },
+            new ShopItem { Id = 3, Name = "石碣", Desc = "官兵走近宋江，就砸下石碣，旁边的一起伤", Rarity = "传说", Icon = "it_stele", Price = Economy.ItemPrices[3], Count = () => B(Save.D.stele), Give = () => { Save.D.stele = true; Save.NotePassive(3); }, Take = () => { Save.D.stele = false; Save.NotePassive(3); } },
+            new ShopItem { Id = 4, Name = "蒙汗药", Desc = "点一下，官兵停住3秒，不走也不打", Rarity = "史诗", Icon = "it_menghan", Active = true, Price = Economy.ItemPrices[4], Count = () => Save.D.menghan, Give = () => { Save.D.menghan++; Save.NoteActive(4); }, Take = () => { Save.D.menghan = Mathf.Max(0, Save.D.menghan - 1); Save.NoteActive(4); } },
+            new ShopItem { Id = 5, Name = "天书", Desc = "拖到兵或灶上升一级，满级的不行", Rarity = "传说", Icon = "it_tianshu", Active = true, Price = Economy.ItemPrices[5], Count = () => Save.D.tianshu, Give = () => { Save.D.tianshu++; Save.NoteActive(5); }, Take = () => { Save.D.tianshu = Mathf.Max(0, Save.D.tianshu - 1); Save.NoteActive(5); } },
+            new ShopItem { Id = 6, Name = "孙二娘包子", Desc = "多半给宋江加一颗心，不成就掉一颗", Rarity = "卓越", Icon = "bun", Active = true, Price = Economy.ItemPrices[6], Count = () => Save.D.baozi, Give = () => { Save.D.baozi++; Save.NoteActive(6); }, Take = () => { Save.D.baozi = Mathf.Max(0, Save.D.baozi - 1); Save.NoteActive(6); } },
+            new ShopItem { Id = 7, Name = "续命丹", Desc = "宋江开局多八颗心，更能扛漏进来的兵", Rarity = "传说", Icon = "it_xuming", Price = Economy.ItemPrices[7], Count = () => B(Save.D.xuming), Give = () => { Save.D.xuming = true; Save.NotePassive(7); }, Take = () => { Save.D.xuming = false; Save.NotePassive(7); } },
+            new ShopItem { Id = 8, Name = "方便铲", Desc = "开局多两把铲子，拖到草地上挖出空位", Rarity = "稀有", Icon = "shovel", Price = Economy.ItemPrices[8], Count = () => Save.D.shovels, Give = () => { Save.D.shovels = 2; Save.NotePassive(8); }, Take = () => { Save.D.shovels = 0; Save.NotePassive(8); } },
+            new ShopItem { Id = 9, Name = "攻速符", Desc = "点一下，出手快四成，管十二秒，满级也算", Rarity = "史诗", Icon = "it_fu", Active = true, Price = Economy.ItemPrices[9], Count = () => Save.D.fu, Give = () => { Save.D.fu++; Save.NoteActive(9); }, Take = () => { Save.D.fu = Mathf.Max(0, Save.D.fu - 1); Save.NoteActive(9); } },
+            new ShopItem { Id = 10, Name = "御敌千里", Desc = "弓和枪射程翻倍，刀和马不加，整场都算", Rarity = "稀有", Icon = "it_far", Price = Economy.ItemPrices[10], Count = () => B(Save.D.far), Give = () => { Save.D.far = true; Save.NotePassive(10); }, Take = () => { Save.D.far = false; Save.NotePassive(10); } },
+            new ShopItem { Id = 11, Name = "陷阱", Desc = "点一下，官兵被推回去，还得愣一会儿", Rarity = "稀有", Icon = "it_trap", Active = true, Price = Economy.ItemPrices[11], Count = () => Save.D.trap, Give = () => { Save.D.trap++; Save.NoteActive(11); }, Take = () => { Save.D.trap = Mathf.Max(0, Save.D.trap - 1); Save.NoteActive(11); } },
+            new ShopItem { Id = 12, Name = "十字坡灶", Desc = "开局占一块空地自己出炊饼，天书能升灶", Rarity = "卓越", Icon = "it_stove", Price = Economy.ItemPrices[12], Count = () => B(Save.D.stove), Give = () => { Save.D.stove = true; Save.NotePassive(12); }, Take = () => { Save.D.stove = false; Save.NotePassive(12); } },
+            new ShopItem { Id = 13, Name = "招贤酒", Desc = "聚义时更容易出好汉的字，小兵还是多", Rarity = "史诗", Icon = "it_wine", Price = Economy.ItemPrices[13], Count = () => B(Save.D.wine), Give = () => { Save.D.wine = true; Save.NotePassive(13); }, Take = () => { Save.D.wine = false; Save.NotePassive(13); } },
+            new ShopItem { Id = 14, Name = "萧让代笔", Desc = "拖到单字上补缺的字，拖到兵上把兵变成字", Rarity = "史诗", Icon = "wp_fan", Active = true, Price = Economy.ItemPrices[14], Count = () => Save.D.pen, Give = () => { Save.D.pen++; Save.NoteActive(14); }, Take = () => { Save.D.pen = Mathf.Max(0, Save.D.pen - 1); Save.NoteActive(14); } },
         };
     }
 
@@ -96,6 +97,7 @@ namespace Rescue
             _reloadBoard = null;
             _authHit = null;
             WxSession.HideProfileButton();
+            WxSession.CloseGameClub();
             if (_root) Destroy(_root.gameObject);
         }
 
@@ -126,9 +128,23 @@ namespace Rescue
             MedalBtn(tl, "音", null, new Vector2(80, -226), 92, ToggleSound);
             MedalBtn(tl, "告", "公告", new Vector2(80, -372), 108, ShowNotice);
             _codexDot = MedalBtn(tl, "谱", "好汉谱", new Vector2(80, -534), 108, ShowCodex);
-            MedalBtn(tl, "回", "回目", new Vector2(80, -696), 108, ShowChapters);
+            _chaptersDot = MedalBtn(tl, "回", "回目讲堂", new Vector2(80, -696), 108, ShowChapters);
             _dailyDot = MedalBtn(tl, "战", "每日一战", new Vector2(80, -858), 108, ShowDailyBattle);
             if (!Save.DailyOpen) _dailyDot.transform.parent.GetComponent<Image>().color = new Color(0.62f, 0.6f, 0.58f);
+            if (WxSession.InWeChat)
+            {
+                // 和上面几颗同一间距：圆心每隔 162。点按区域另算，把名字牌也包进去，不把圆心往上抬。
+                const float clubY = -1020f;
+                MedalBtn(tl, "圈", "游戏圈", new Vector2(80, clubY), 108, () =>
+                {
+                    if (WxSession.Devtools) Toast("开发者工具里打不开游戏圈，请用手机预览");
+                    else if (!WxSession.GameClubReady) Toast("游戏圈暂时打不开，退出重进再试");
+                    else Toast("没点到游戏圈按钮，退出重进再试");
+                });
+                _clubHit = Ui.Rect(tl, "gameClub");
+                _clubHit.sizeDelta = new Vector2(168, 156);
+                _clubHit.anchoredPosition = new Vector2(80, clubY - 16f);
+            }
 
             var tr = Corner(1f, 1f, "topRight");
             Ui.Medal(tr, 128, new Vector2(-88, -250), "shopDisc");
@@ -157,6 +173,13 @@ namespace Rescue
             Refresh();
             LiveConfig.Refresh();
             LiveConfig.SubmitRank();
+            if (!Save.Volatile && Save.ConsumeCarryNotice(out var keptName, out var carryCoins))
+            {
+                string msg = keptName.Length > 0 && carryCoins > 0 ? $"跨日护航：保留「{keptName}」，余货折铜钱 +{carryCoins}"
+                    : keptName.Length > 0 ? $"跨日护航：压寨底牌「{keptName}」继续随行"
+                    : $"昨日余货折算铜钱 +{carryCoins}";
+                Toast(msg);
+            }
             if (!Save.Volatile && Save.RollDaily()) ShowDaily();
         }
 
@@ -290,7 +313,8 @@ namespace Rescue
             Ui.Label(parent, text, font, Ui.GoldText, pos + new Vector2(0, 1), new Vector2(w, font + 16), TextAnchor.MiddleCenter, Fonts.Brush, "labelText");
         }
 
-        Image _codexDot, _dailyDot;
+        Image _codexDot, _chaptersDot, _dailyDot;
+        RectTransform _clubHit;
 
         void SideBigIcon(RectTransform parent, string glyph, string text, Vector2 pos, Action onClick)
         {
@@ -469,6 +493,8 @@ namespace Rescue
                     case "daily":
                     case "armory":
                     case "forge":
+                    case "board":
+                    case "itemRead":
                         return true;
                 }
             }
@@ -519,19 +545,29 @@ namespace Rescue
 
         void Fight() => Fight(_selected);
 
+        public void StartSlot(int slot)
+        {
+            _selected = Mathf.Clamp(slot, 0, ChapterDef.StoryCount);
+            RefreshChapter();
+            Fight(_selected);
+        }
+
         void Fight(int slot)
         {
-            if (!Stamina.Spend())
+            bool freeDaily = slot == ChapterDef.DailySlot && Save.DailyFreeToday;
+            if (!freeDaily && !Stamina.Spend())
             {
+                string freeWay = Save.DailyFreeToday ? "\n（提示：左侧「每日一战」今日首局免体力！）"
+                    : Save.LoreQuizPending > 0 ? $"\n（提示：左侧「回目讲堂」还有 {Save.LoreQuizPending} 卷免费考校赏钱可领）" : "";
                 int left = AdStub.Left("补充体力");
                 if (left == 0)
                 {
                     int sec = Stamina.SecondsToNext;
-                    Nope($"体力不够，今天的补体力广告也看完了。{sec / 60}分{sec % 60:00}秒后回 1 点");
+                    Nope($"体力不够，{sec / 60}分{sec % 60:00}秒后回 1 点" + freeWay);
                     return;
                 }
                 string more = left > 0 ? $"\n今天还能补 {left} 次" : "";
-                Confirm("体力不够了", "看段广告，补 5 点体力？" + more, "看广告", () => AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); }));
+                Confirm("体力不够了", "看段广告，补 5 点体力？" + more + freeWay, "看广告", () => AdStub.Show("补充体力", () => { Stamina.Add(5); Refresh(); }));
                 return;
             }
             _onFight?.Invoke(slot);
@@ -545,11 +581,19 @@ namespace Rescue
             _refreshT -= Time.unscaledDeltaTime;
             if (_refreshT <= 0) { _refreshT = 1f; Refresh(); }
             SyncProfileButton();
+            if (_clubHit) WxSession.SyncGameClub(_clubHit, !WxSession.PrivacyShowing && !AvatarBlocked());
         }
 
         void Refresh()
         {
+            bool anyBioOpenNew = false;
+            for (int i = 0; i < ChapterDef.Bios.Length && !anyBioOpenNew; i++)
+                if (Save.BioOpen(i) && !Save.BioCleared(i)) anyBioOpenNew = true;
+            bool anyCamOpenNew = false;
+            for (int i = 0; i < ChapterDef.Campaigns.Length && !anyCamOpenNew; i++)
+                if (Save.CampaignOpen(i) && !Save.CampaignCleared(i)) anyCamOpenNew = true;
             if (_codexDot) _codexDot.gameObject.SetActive(Save.CodexPending > 0);
+            if (_chaptersDot) _chaptersDot.gameObject.SetActive(Save.LoreQuizPending > 0 || anyBioOpenNew || anyCamOpenNew);
             if (_dailyDot) _dailyDot.gameObject.SetActive(Save.DailyOpen && !Save.DailyWonToday);
             _coins.text = Save.D.coins.ToString();
             _stamina.text = StaminaText();

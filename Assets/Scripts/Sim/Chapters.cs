@@ -63,7 +63,67 @@ namespace Rescue.Sim
             for (int i = 0; i < skills.Length; i++) parts[i] = SkillName(skills[i]) + "：" + SkillDesc(skills[i], nemesis);
             return string.Join("；", parts);
         }
+
+        /// <summary>头目解法提示：供局内「军情密报」明牌展示，不让玩家摸黑试错。</summary>
+        public static string CounterTip(BossSkill s) => s switch
+        {
+            BossSkill.Summon => "架穿透长枪或范围好汉，连小兵带头目一并扫清",
+            BossSkill.Haste => "备蒙汗药、陷阱或钩镰枪绊住冲阵脚步",
+            BossSkill.Resist => "务必凑出本回克星好汉（无视铁布衫且5倍重创）",
+            BossSkill.Daze => "多铺中阶副手分摊火力，勿把身家全压单格",
+            BossSkill.Fog => "提前把核心好汉摆在远离中路的净土或水寨",
+            BossSkill.Seal => "留一两格备用白地，封条七秒散去即复原",
+            BossSkill.Rain => "用攻速符、吴用或戴宗加速抵消满场妖雨",
+            BossSkill.Charge => "路口摆骑兵与重杖击退小兵，留绝技截杀头目",
+            BossSkill.Crush => "优先凑成好汉（头目砸字只降普通小兵阶数）",
+            BossSkill.Steal => "炊饼攒够即点聚义，勿留巨款给贼人强抢",
+            BossSkill.Devour => "抢在头目近身前清光周围小卒，断其回血口粮",
+            _ => "速战速决压低血线，用范围绝技震散借尸小卒",
+        };
+
+        /// <summary>克星好汉在场撞见宿敌头目时的原著宿命交锋台词。</summary>
+        public string DuelShout()
+        {
+            var hero = HeroDef.Get(Nemesis);
+            if (Nemesis == HeroId.LinChong && Name == "陆谦") return "林冲挺矛怒喝：奸贼陆谦，还我草料场命来！";
+            if (Nemesis == HeroId.LinChong && Name == "王伦") return "林冲拍案拔刀：嫉贤妒能之辈，留你何用！";
+            if (Nemesis == HeroId.WuSong && Name == "大虫") return "武松双拳生风：景阳冈大虫，吃俺老武几拳！";
+            if (Nemesis == HeroId.WuSong && Name == "西门庆") return "武松目眦欲裂：西门贼子，拿命祭我哥哥！";
+            if (Nemesis == HeroId.WuSong && Name == "蒋门神") return "武松醉步欺身：玉环步鸳鸯脚，叫你认得武二郎！";
+            if (Nemesis == HeroId.LuZhiShen && Name == "郑屠") return "鲁提辖怒目圆睁：镇关西，洒家教你尝尝三拳滋味！";
+            if (Nemesis == HeroId.LuZhiShen && Name == "方腊") return "花和尚禅杖生风：逢夏而擒，遇腊而执，哪里走！";
+            if (Nemesis == HeroId.HuaRong) return $"小李广挽雕弓：贼将{Name}看箭，弦响处休想逃生！";
+            if (Nemesis == HeroId.LiKui) return $"黑旋风抡双斧：杀千刀的{Name}，吃铁牛一板斧！";
+            if (Nemesis == HeroId.ZhangShun) return $"浪里白条翻江而起：{Name}老贼，下水吃个饱吧！";
+            if (Nemesis == HeroId.GongSunSheng) return $"入云龙仗松纹剑：旁门左道{Name}，看贫道五雷正法！";
+            if (Nemesis == HeroId.YangZhi) return $"青面兽掣祖传宝刀：{Name}休狂，杨家将刀法在此！";
+            if (Nemesis == HeroId.XuNing) return "金枪手挺钩镰枪：连环甲马，一钩便破！";
+            return $"{hero.Nick}{hero.Name}怒喝：{Name}休走，今日新仇旧恨一并算清！";
+        }
     }
+
+    /// <summary>宿敌原著用兵流派：明牌取代假真人黑盒，让每回对手贴合原著身份。</summary>
+    public enum RivalStyle { Balanced, Vanguard, Marksman, Lancer, Strategist }
+
+    /// <summary>水泊名役（困难机制章）与演武场的战场天象/军令规则。</summary>
+    public enum BattleRule
+    {
+        None,
+        /// <summary>赤日炎炎：开局多25炊饼，官兵燥热疾行+15%，孙二娘/白胜/吴用等智取系攻速+20%。</summary>
+        ScorchingSun,
+        /// <summary>铁甲连环：每波必刷重甲大汉，枪系小兵与长枪/鞭锏好汉伤害+35%。</summary>
+        IronCavalry,
+        /// <summary>水漫梁山：官兵趟水减速15%，水军与水上格好汉伤害+35%。</summary>
+        FloodedMarsh,
+        /// <summary>风雪严寒：全场妖雨寒风更密，近战刀/斧/杖好汉伤害+35%。</summary>
+        Blizzard,
+        /// <summary>盘陀迷阵：出怪更快但每斩杀5名官兵额外赏1炊饼，弓/暗器射程+25%。</summary>
+        Labyrinth,
+        /// <summary>梁山军司演武（每日轮换）：当日点名军司的好汉伤害+25%。</summary>
+        CorpsFocus,
+    }
+
+    public enum CorpsKind { None, Cavalry, Infantry, Navy, Mystic }
 
     /// <summary>Grass/Marsh 未开垦不能摆；Tile/Water 是开好的地。</summary>
     public enum Cell { Grass, Path, Water, Tile, Rock, Marsh }
@@ -93,13 +153,96 @@ namespace Rescue.Sim
         public string RivalName;
         /// <summary>聚义厅第几阵；0 表示剧情回。</summary>
         public int Round;
+        /// <summary>限波速战回（前两回新手节奏）：撑满并肃清第 MaxWaves 波头目即胜；0 表示常规对弈直到一方宋江倒下。</summary>
+        public int MaxWaves;
+        /// <summary>战场词缀/军令规则。</summary>
+        public BattleRule Rule;
+        /// <summary>每日演武点名的梁山军司。</summary>
+        public CorpsKind Corps;
+        /// <summary>好汉列传序号 0..35；-1 表示非列传。</summary>
+        public int BioIndex = -1;
+        /// <summary>水泊名役序号 0..11；-1 表示非名役。</summary>
+        public int CampaignIndex = -1;
 
         public bool IsEndless => Round > 0;
+        public bool IsBio => BioIndex >= 0;
+        public bool IsCampaign => CampaignIndex >= 0;
+
+        public static string CorpsName(CorpsKind c) => c switch
+        {
+            CorpsKind.Cavalry => "马军诸将",
+            CorpsKind.Infantry => "步军头领",
+            CorpsKind.Navy => "水军八寨",
+            CorpsKind.Mystic => "军师奇门",
+            _ => "",
+        };
+
+        public static bool InCorps(HeroDef d, CorpsKind c)
+        {
+            if (d == null || c == CorpsKind.None) return false;
+            var p = d.Post ?? "";
+            return c switch
+            {
+                CorpsKind.Cavalry => p.Contains("马军") || p.Contains("总兵"),
+                CorpsKind.Infantry => p.Contains("步军") || p.Contains("中军"),
+                CorpsKind.Navy => p.Contains("水军") || d.WaterBonus > 1.05f,
+                CorpsKind.Mystic => d.Look == Look.Magic || d.Look == Look.Support || d.WKind == WeaponKind.Relic || d.WKind == WeaponKind.Cannon || d.WKind == WeaponKind.Stone,
+                _ => false,
+            };
+        }
+
+        public string RuleTitle => Rule switch
+        {
+            BattleRule.ScorchingSun => "赤日炎炎",
+            BattleRule.IronCavalry => "铁甲洪流",
+            BattleRule.FloodedMarsh => "水漫苇荡",
+            BattleRule.Blizzard => "风雪奇寒",
+            BattleRule.Labyrinth => "盘陀迷阵",
+            BattleRule.CorpsFocus => CorpsName(Corps) + "当值",
+            _ => "",
+        };
+
+        public string RuleDesc => Rule switch
+        {
+            BattleRule.ScorchingSun => "开局多 25 个炊饼；官兵走得快 15%，用毒与辅助好汉出手快 20%",
+            BattleRule.IronCavalry => "每波必混入重甲兵；枪兵与使枪、鞭的好汉伤害高 35%",
+            BattleRule.FloodedMarsh => "官兵趟水慢 15%；水军与站在水上的好汉伤害高 35%",
+            BattleRule.Blizzard => "寒风急促；使刀、斧、禅杖与拳脚的好汉伤害高 35%",
+            BattleRule.Labyrinth => "每斩 5 名官兵多掉 1 个炊饼；弓兵与使弓、飞石的好汉射程加 25%",
+            BattleRule.CorpsFocus => $"今日「{CorpsName(Corps)}」领军出征，所属好汉伤害高 25%",
+            _ => "",
+        };
+
+        /// <summary>按原著对手身份映射用兵门道，开场与军情面板明牌告知。</summary>
+        public RivalStyle RivalStyleOf()
+        {
+            if (string.IsNullOrEmpty(RivalName)) return RivalStyle.Balanced;
+            if (RivalName.Contains("吴用") || RivalName.Contains("晁盖") || RivalName.Contains("王伦") || RivalName.Contains("蒋敬") || RivalName.Contains("裴宣") || RivalName.Contains("蔡京"))
+                return RivalStyle.Strategist;
+            if (RivalName.Contains("黄信") || RivalName.Contains("吕方") || RivalName.Contains("祝彪") || RivalName.Contains("曾") || RivalName.Contains("花荣"))
+                return RivalStyle.Marksman;
+            if (RivalName.Contains("高俅") || RivalName.Contains("童贯") || RivalName.Contains("梁中书") || RivalName.Contains("慕容") || RivalName.Contains("辽主") || RivalName.Contains("王进"))
+                return RivalStyle.Lancer;
+            if (Index % 4 == 1) return RivalStyle.Vanguard;
+            if (Index % 4 == 2) return RivalStyle.Marksman;
+            if (Index % 4 == 3) return RivalStyle.Lancer;
+            return RivalStyle.Balanced;
+        }
+
+        public string RivalStyleLabel => RivalStyleOf() switch
+        {
+            RivalStyle.Vanguard => "近战刀阵·贴路猛劈",
+            RivalStyle.Marksman => "飞矢封路·远程攒射",
+            RivalStyle.Lancer => "长枪铁骑·贯阵冲杀",
+            RivalStyle.Strategist => "广聚名讳·攒字唤将",
+            _ => "四平八稳·步步为营",
+        };
 
         // ─────────────────────────── 地图模板 ───────────────────────────
 
         public static readonly Dictionary<string, string[]> Maps = new Dictionary<string, string[]>
         {
+            ["shijia"] = new[] { "xS######", ".ooooo.#", ".#######", ".#ooooo.", "x#####G." },
             ["qingfeng"] = new[] { "S######.", ".ooo..#.", ".######.", ".#ooo...", ".######G" },
             ["jiangzhou"] = new[] { "S######.", ".ooo..#.", ".###G.#.", ".#oo.o#.", ".######." },
             ["bailong"] = new[] { "~~~~~~~S", "########", "#.ooooo.", "########", ".......G" },
@@ -110,9 +253,13 @@ namespace Rescue.Sim
             ["zigzag"] = new[] { "S###..o.", ".oo####.", "xx.ooo#.", "...####.", "G###...." },
             ["plain"] = new[] { "....o...", "S#######", ".oo.ooo#", "G#######", "........" },
             ["river"] = new[] { "S.....#G", "#o###.#.", "#o#o#o#.", "###.###.", "~~~ww~~~" },
+            ["bagua"] = new[] { "S######.", ".oo.o.#.", ".###G.#.", ".#oo..#.", ".######." },
+            ["ferry"] = new[] { "xS######", "~ww.oo.#", "~#######", "~#w.oo~~", "~######G" },
+            ["pass"] = new[] { "xS#####x", "xoo...#.", ".####.#.", ".#oo#o#.", ".G..###." },
+            ["imperial"] = new[] { "S#.###.G", ".#.#o#o#", ".#.#o#o#", ".#o#.#.#", ".###.###" },
         };
 
-        static readonly string[] EndlessMaps = { "qingfeng", "jiangzhou", "bailong", "snake", "ring", "jiuqu", "marsh", "zigzag", "plain", "river" };
+        static readonly string[] EndlessMaps = { "qingfeng", "jiangzhou", "bailong", "snake", "ring", "jiuqu", "marsh", "zigzag", "plain", "river", "bagua", "ferry", "pass", "imperial" };
 
         // ─────────────────────────── 剧情 ───────────────────────────
 
@@ -140,7 +287,7 @@ namespace Rescue.Sim
         {
             var list = new[]
             {
-                C("史家村", "第二回 王教头私走延安府 九纹龙大闹史家村", "引首", "snake",
+                C("史家村", "第二回 王教头私走延安府 九纹龙大闹史家村", "引首", "shijia",
                     J(HeroId.ShiJin, HeroId.ZhuWu, HeroId.ChenDa, HeroId.YangChun), J(),
                     "县尉", "华阴县", B(BossSkill.Summon), HeroId.ShiJin, "王进",
                     "少华山的跳涧虎陈达要借道华阴县，被九纹龙史进活捉。朱武、杨春负荆请罪，史进敬他们义气，结为兄弟——官府却连夜围了史家庄！",
@@ -155,6 +302,16 @@ namespace Rescue.Sim
                     "崔道成", "生铁佛", B(BossSkill.Resist), HeroId.ShiJin, "刘太公",
                     "鲁智深大闹五台山被打发去东京，路过桃花村，醉打要强娶民女的小霸王周通；转到瓦罐寺，又撞上恶僧生铁佛崔道成。",
                     "鲁智深醉打周通之后，周通与李忠占的桃花山，后来也成了梁山的一支人马。"),
+                C("倒拔垂杨柳", "第七回 花和尚倒拔垂杨柳 豹子头误入白虎堂", "鲁达篇", "bagua",
+                    J(), J(HeroId.LuZhiShen, HeroId.LinChong, HeroId.ShiJin),
+                    "张三", "过街老鼠", B(BossSkill.Steal), HeroId.LuZhiShen, "李四",
+                    "东京大相国寺的菜园里，泼皮张三、李四想给新来的鲁智深一个下马威。绿杨树上乌鸦聒噪，鲁智深脱下直裰，抱住碗口粗的垂杨柳一声大吼——",
+                    "鲁智深连根拔起垂杨柳，泼皮们磕头如捣蒜；八十万禁军教头林冲正好从墙外经过，两人一见如故，结为生死弟兄。"),
+                C("误入白虎堂", "第七回 花和尚倒拔垂杨柳 豹子头误入白虎堂", "林冲篇", "imperial",
+                    J(), J(HeroId.LinChong, HeroId.LuZhiShen, HeroId.LiZhong),
+                    "富安", "太尉府干办", B(BossSkill.Seal), HeroId.LinChong, "高衙内",
+                    "高衙内调戏林娘子不成，干办富安献出毒计：诓林冲买下一口宝刀，再假传高太尉军令请他进府比看——待他踏入白虎节堂，四面伏兵齐出！",
+                    "宋代军机重地「白虎节堂」严禁携刃擅入。高俅借商议军机之名陷害林冲，将其脊杖二十、刺配沧州牢城。"),
                 C("野猪林", "第八回 林教头刺配沧州道 鲁智深大闹野猪林", "林冲篇", "ring",
                     J(HeroId.LinChong), J(HeroId.LuZhiShen, HeroId.ShiJin, HeroId.LiZhong),
                     "薛霸", "押解公人", B(BossSkill.Daze), HeroId.LuZhiShen, "董超",
@@ -230,6 +387,11 @@ namespace Rescue.Sim
                     "张都监", "孟州兵马都监", B(BossSkill.Summon, BossSkill.Seal), HeroId.WuSong, "张团练",
                     "张都监设计陷害武松，又派人在飞云浦害他。武松杀回孟州城，血溅鸳鸯楼，扮作行者连夜出逃，在孔家庄醉打孔亮。",
                     "血溅鸳鸯楼后，武松蘸血在白粉墙上写下八个大字：「杀人者，打虎武松也。」"),
+                C("夜走蜈蚣岭", "第三十二回 武行者醉打孔亮 锦毛虎义释宋江", "武松篇", "pass",
+                    J(), J(HeroId.WuSong, HeroId.SunErNiang, HeroId.ZhangQingY),
+                    "王道人", "飞天蜈蚣", B(BossSkill.Charge, BossSkill.Resist), HeroId.WuSong, "道童",
+                    "十字坡孙二娘替武松戴上铁戒箍、换上行者衣裳，赠了一对雪花镔铁戒刀。月黑风高夜过蜈蚣岭，庵中恶道飞天蜈蚣正强掳民女——正好拿他试刀！",
+                    "武松这双雪花镔铁戒刀，传说是用头陀留下的好铁打成，夜里在刀鞘中会铮铮作响，从此伴他走完半生。"),
                 C("清风寨", "第三十三回 宋江夜看小鳌山 花荣大闹清风寨", "清风山篇", "river",
                     J(HeroId.HuaRong, HeroId.YanShun, HeroId.WangYing, HeroId.ZhengTianShou), J(),
                     "刘高", "清风寨文知寨", B(BossSkill.Summon, BossSkill.Daze), HeroId.HuaRong, "黄信",
@@ -275,6 +437,11 @@ namespace Rescue.Sim
                     "欧鹏", "摩云金翅", B(BossSkill.Charge, BossSkill.Haste), HeroId.HuaRong, "蒋敬",
                     "回梁山的路上，黄门山四个头领拦住去路。一问来的是及时雨宋公明，四人当即下山相迎。",
                     "蒋敬是梁山的「账房」，书中说他「精通书算，积万累千，纤毫不差」。"),
+                C("玄女授天书", "第四十二回 还道村受三卷天书 宋公明遇九天玄女", "宋江篇", "bagua",
+                    J(), J(HeroId.SongJiang, HeroId.HuaRong, HeroId.LiKui, HeroId.DaiZong),
+                    "赵能", "郓城都头", B(BossSkill.Seal, BossSkill.Fog), HeroId.SongJiang, "赵得",
+                    "宋江回郓城接老父，被都头赵能、赵得连夜追捕，慌不择路躲进还道村古庙神厨。官兵搜到神帐前，一阵狂风飞沙走石，九天玄女娘娘显圣相召……",
+                    "九天玄女赐宋江三枣三杯仙酒，授以三卷无字天书，嘱他「替天行道，辅国安民」——这正是山寨道具「天书」的来历。"),
                 C("沂岭杀四虎", "第四十三回 假李逵剪径劫单人 黑旋风沂岭杀四虎", "李逵篇", "ring",
                     J(HeroId.ZhuFu, HeroId.LiYun), J(HeroId.LiKui, HeroId.ZhuGui),
                     "大虫", "沂岭", B(BossSkill.Devour, BossSkill.Charge), HeroId.LiKui, "李鬼",
@@ -315,6 +482,16 @@ namespace Rescue.Sim
                     "高廉", "高唐州知府", B(BossSkill.Rain, BossSkill.Summon), HeroId.GongSunSheng, "殷天锡",
                     "柴进被高俅的堂弟高廉关进死牢。高廉会妖法，梁山连败两阵。李逵、戴宗去蓟州请回公孙胜，路上又结识了铁匠汤隆。",
                     "公孙胜的师父罗真人曾把李逵丢到半空，摔进蓟州府牢里，吓得铁牛再不敢胡来。"),
+                C("五雷破兽阵", "第五十四回 入云龙斗法破高廉 黑旋风探穴救柴进", "高唐州篇", "bagua",
+                    J(), J(HeroId.GongSunSheng, HeroId.LinChong, HeroId.HuaRong, HeroId.LiKui),
+                    "神兵兽", "高廉飞天神兵", B(BossSkill.Fog, BossSkill.Charge), HeroId.GongSunSheng, "高廉",
+                    "高廉披发仗剑，敲响聚兽铜牌，狂风黑雾中窜出无数豺狼虎豹直扑宋军！公孙胜立于阵前，掣出松纹古定剑指天喝道：疾！",
+                    "公孙胜使出「五雷天罡正法」，半空霹雳震碎妖雾，高廉的三百飞天神兵瞬间现出纸人草马原形。"),
+                C("轰天炮震泽", "第五十五回 高太尉大兴三路兵 呼延灼摆布连环马", "连环马篇", "ferry",
+                    J(), J(HeroId.LiJun, HeroId.ZhangShun, HeroId.RuanXiaoEr, HeroId.RuanXiaoQi),
+                    "凌振", "甲仗库副使", B(BossSkill.Crush, BossSkill.Rain), HeroId.ZhangShun, "韩滔",
+                    "东京第一炮手轰天雷凌振在鸭嘴滩架起风火炮、金轮炮、子母炮，隔水轰击水泊鸭嘴滩。吴用微微笑道：岸上炮凶，引他下水便成哑炮！",
+                    "阮氏兄弟与张顺凿翻炮船，水底生擒凌振。宋江亲解其缚，梁山自此有了威震州府的火炮营。"),
                 C("连环马", "第五十七回 徐宁教使钩镰枪 宋江大破连环马", "连环马篇", "plain",
                     J(HeroId.XuNing, HeroId.HanTao, HeroId.PengQi, HeroId.LingZhen), J(HeroId.TangLong, HeroId.ShiQian),
                     "呼延灼", "双鞭", B(BossSkill.Charge, BossSkill.Haste), HeroId.XuNing, "高俅",
@@ -330,6 +507,11 @@ namespace Rescue.Sim
                     "樊瑞", "混世魔王", B(BossSkill.Rain, BossSkill.Fog), HeroId.GongSunSheng, "项充",
                     "芒砀山混世魔王樊瑞扬言要吞并梁山。他会呼风唤雨，手下项充、李衮团牌飞刀密不透风。",
                     "樊瑞被公孙胜破了妖法，心悦诚服，拜公孙胜为师。"),
+                C("盗御马起衅", "第六十回 公孙胜芒砀山降魔 晁天王曾头市中箭", "曾头市篇", "pass",
+                    J(), J(HeroId.YangLin, HeroId.ShiXiu, HeroId.LinChong, HeroId.DaiZong),
+                    "曾索", "曾家五虎", B(BossSkill.Steal, BossSkill.Haste), HeroId.LinChong, "曾升",
+                    "金毛犬段景住从塞北盗来日行千里的「照夜玉狮子马」献与梁山，路经曾头市却被曾家五虎强行夺去，还张榜叫嚣要荡平水泊！",
+                    "照夜玉狮子马通体雪白无一根杂毛，这一桩夺马公案彻底激怒了晁盖，引出两打曾头市的大战。"),
                 C("曾头市", "第六十回 晁天王曾头市中箭", "曾头市篇", "jiangzhou",
                     J(HeroId.DuanJingZhu), J(HeroId.LinChong, HeroId.HuYanZhuo, HeroId.HuaRong),
                     "史文恭", "曾头市教师", B(BossSkill.Resist, BossSkill.Daze), HeroId.HuaRong, "曾长官",
@@ -381,26 +563,56 @@ namespace Rescue.Sim
                     "东昌府守将没羽箭张清，一颗颗石子飞出，连伤梁山十五员大将。吴用说：岸上打不过，就引他到水边。",
                     "张清被擒后，宋江惜才不杀，又让他举荐了兽医皇甫端。至此一百单八将全部聚齐。"),
 
+                C("忠义菊花会", "第七十一回 忠义堂石碣受天文 梁山泊英雄排座次", "排座次篇", "bagua",
+                    J(), J(HeroId.SongJiang, HeroId.WuSong, HeroId.LiKui, HeroId.LuZhiShen, HeroId.WuYong),
+                    "崔太尉", "招安天使", B(BossSkill.Seal, BossSkill.Steal), HeroId.LiKui, "陈宗善",
+                    "重阳佳节，忠义堂前黄菊盛开，百八兄弟把酒言欢。宋江酒酣赋《满江红》流露招安之意，武松拍案叫绝，李逵一脚踢翻桌案；山下朝廷天使却带着假诏书到了……",
+                    "阮小七偷把御赐好酒喝光，灌上两瓶酸苦村醪；李逵当堂扯碎诏书，第一次招安不欢而散。"),
+                C("元夜闹东京", "第七十二回 柴进簪花入禁苑 李逵元夜闹东京", "排座次篇", "imperial",
+                    J(), J(HeroId.LiKui, HeroId.YanQing, HeroId.ChaiJin, HeroId.ShiQian, HeroId.WuSong),
+                    "杨太尉", "禁军统制", B(BossSkill.Summon, BossSkill.Haste), HeroId.YanQing, "高俅",
+                    "正月十五元宵夜，东京汴梁火树银花。宋江带柴进、燕青微服入京赏灯，柴进簪花混入睿思殿撕下御书「山东宋江」四字，城门口李逵双斧早已按捺不住！",
+                    "宋徽宗在屏风上亲笔写下四大寇姓名，柴进机敏剜走「山东宋江」四字，留下了宋代元宵鳌山灯会的千古奇景。"),
                 C("智扑擎天柱", "第七十四回 燕青智扑擎天柱 李逵寿张乔坐衙", "排座次篇", "jiuqu",
                     J(), J(HeroId.YanQing, HeroId.LiKui, HeroId.LuJunYi, HeroId.SongJiang),
                     "任原", "擎天柱", B(BossSkill.Crush, BossSkill.Resist), HeroId.YanQing, "部署",
                     "忠义堂上排定座次之后，浪子燕青独自下山，要在泰安州的相扑擂台上，摔下两年无敌的擎天柱任原。",
                     "忠义堂前天降石碣，上刻三十六天罡、七十二地煞的星号与姓名，这就是「梁山泊英雄排座次」。"),
+                C("两赢童贯", "第七十六回 吴加亮布四斗五方旗 宋公明排九宫八卦阵", "招安篇", "bagua",
+                    J(), J(HeroId.QinMing, HeroId.GuanSheng, HeroId.LinChong, HeroId.HuaRong, HeroId.WuYong),
+                    "童贯", "枢密使", B(BossSkill.Charge, BossSkill.Fog), HeroId.QinMing, "酆美",
+                    "枢密使童贯统领十万禁军杀奔梁山。吴用摇动羽扇，按九宫八卦布开大阵，霹雳火秦明跃马当先，一棒砸碎官军先锋帅旗！",
+                    "梁山军以九宫八卦阵与十面埋伏两败童贯，打得十万禁军丢盔弃甲，震动朝野。"),
                 C("三败高俅", "第八十回 张顺凿漏海鳅船 宋江三败高太尉", "招安篇", "marsh",
                     J(), J(HeroId.ZhangShun, HeroId.RuanXiaoEr, HeroId.RuanXiaoWu, HeroId.RuanXiaoQi, HeroId.LiJun, HeroId.LinChong),
                     "高俅", "殿帅太尉", B(BossSkill.Summon, BossSkill.Seal), HeroId.ZhangShun, "童贯",
                     "高俅亲率大军和海鳅大船来攻梁山。张顺带水军潜到船底，一凿一凿……",
                     "高俅落水被擒，林冲恨不得生吃了他，宋江却亲自松绑——一心只想招安。"),
+                C("智拜李师师", "第八十一回 燕青月夜遇道君 戴宗定计出乐和", "招安篇", "imperial",
+                    J(), J(HeroId.YanQing, HeroId.DaiZong, HeroId.ChaiJin, HeroId.SongJiang),
+                    "杨戬", "殿前太尉", B(BossSkill.Seal, BossSkill.Daze), HeroId.YanQing, "高衙内",
+                    "高俅回京扣下招安奏章。浪子燕青携黄金美玉夜访东京花魁李师师，吹箫唱曲深得青睐，终在烛影下见到微服出宫的宋徽宗，当面呈上梁山血书！",
+                    "燕青凭一口清亮小曲与机敏谈吐打动李师师，更求得徽宗亲笔赦书，促成宿太尉上梁山宣诏招安。"),
                 C("征辽", "第八十三回 宋公明奉诏破大辽", "征辽篇", "plain",
                     J(), J(HeroId.GuanSheng, HeroId.LinChong, HeroId.QinMing, HeroId.HuYanZhuo, HeroId.DongPing, HeroId.HuaRong),
                     "兀颜光", "辽国统军", B(BossSkill.Fog, BossSkill.Resist), HeroId.GuanSheng, "辽主",
                     "梁山全伙受了招安，改称宋军。第一仗就是北上征辽，辽国统军兀颜光摆下了太乙混天象阵。",
                     "五虎上将关胜、林冲、秦明、呼延灼、董平，征辽时各领一军，杀得辽兵望风而逃。"),
+                C("破混天象阵", "第八十九回 宋公明破阵成功 宿太尉颁恩降诏", "征辽篇", "bagua",
+                    J(), J(HeroId.GongSunSheng, HeroId.HuaRong, HeroId.LuJunYi, HeroId.HuSanNiang, HeroId.ZhangQing),
+                    "贺重宝", "辽国副统军", B(BossSkill.Fog, BossSkill.Rain), HeroId.GongSunSheng, "兀颜光",
+                    "辽军排出二十八宿与太乙混天象阵，黑云蔽日、妖气冲天。宋江夜梦九天玄女指点破阵秘诀，公孙胜仗剑登坛，花荣、张清弓石齐发直捣中军！",
+                    "破太乙混天象阵是梁山一百单八将最齐整的巅峰决战，大破辽军直抵燕京城下，迫使辽主奉表投降。"),
                 C("征田虎", "第九十一回起 征田虎", "征田虎篇", "zigzag",
                     J(), J(HeroId.GongSunSheng, HeroId.FanRui, HeroId.LuJunYi, HeroId.YanQing),
                     "乔道清", "幻魔君", B(BossSkill.Rain, BossSkill.Revive), HeroId.GongSunSheng, "田虎",
                     "河北田虎造反，他手下的幻魔君乔道清会妖法，宋军接连吃亏。公孙胜仗剑出阵。",
                     "征田虎、征王庆是一百二十回本才有的情节；这两路征战中，一百单八将无一阵亡。"),
+                C("飞石结良缘", "第九十八回 张清缘配琼郡主 吴用计鸩邬梨", "征田虎篇", "pass",
+                    J(), J(HeroId.ZhangQing, HeroId.AnDaoQuan, HeroId.SunXin, HeroId.LuJunYi),
+                    "琼英", "田虎郡主", B(BossSkill.Daze, BossSkill.Haste), HeroId.ZhangQing, "邬梨",
+                    "田虎麾下女将琼英梦中曾受神人传授飞石绝技，阵前飞石连挫宋军。没羽箭张清拍马出阵，两颗飞石在半空撞出火星——竟是一对梦中宿缘！",
+                    "张清与神医安道全假扮全羽夫妻潜入敌营，与琼英结成连理，里应外合生擒田虎，留下水浒最浪漫的一段佳话。"),
                 C("征王庆", "第一百零一回起 征王庆", "征王庆篇", "bailong",
                     J(), J(HeroId.LiJun, HeroId.ZhangHeng, HeroId.ZhangShun, HeroId.TongWei, HeroId.TongMeng),
                     "王庆", "淮西反王", B(BossSkill.Haste, BossSkill.Steal), HeroId.LiJun, "段三娘",
@@ -411,11 +623,21 @@ namespace Rescue.Sim
                     "方天定", "方腊太子", B(BossSkill.Resist, BossSkill.Summon), HeroId.ZhangHeng, "石宝",
                     "征方腊打到杭州，城高难攻。张顺说：我从西湖水底潜到涌金门，放火为号——",
                     "张顺在涌金门被乱箭射死，魂魄附在哥哥张横身上，亲手杀了方天定。"),
+                C("血战昱岭关", "第一百一十八回 卢俊义大战昱岭关 宋公明智取清溪洞", "征方腊篇", "pass",
+                    J(), J(HeroId.LuJunYi, HeroId.HuaRong, HeroId.ShiJin, HeroId.ShiXiu, HeroId.LinChong),
+                    "庞万春", "小养由基", B(BossSkill.Crush, BossSkill.Daze), HeroId.HuaRong, "雷炯",
+                    "昱岭关险峻异常，方腊神箭手小养由基庞万春埋伏关上，乱箭害了史进、石秀等六员兄弟！卢俊义率军强攻破关，小李广花荣含泪拈弓，誓报兄弟血仇！",
+                    "昱岭关一役折损史进、石秀等六将，梁山健儿无不恸哭；卢俊义破关活捉庞万春，剖心沥血祭奠亡魂。"),
                 C("乌龙岭", "第一百一十七回 睦州城箭射邓元觉 乌龙岭神助宋公明", "征方腊篇", "jiuqu",
                     J(), J(HeroId.HuaRong, HeroId.XieZhen, HeroId.XieBao, HeroId.SongJiang, HeroId.WuYong),
                     "邓元觉", "宝光国师", B(BossSkill.Crush, BossSkill.Revive), HeroId.HuaRong, "方腊",
                     "乌龙岭山高路险，解珍、解宝扮作猎户攀崖探路，再没回来。睦州城下，宝光国师邓元觉挥着禅杖杀出……",
                     "征方腊一路，梁山好汉死伤大半，是全书最悲壮的一段。"),
+                C("单臂战石宝", "第一百一十九回 鲁智深浙江坐化 宋公明衣锦还乡", "征方腊篇", "ferry",
+                    J(), J(HeroId.WuSong, HeroId.GuanSheng, HeroId.LuZhiShen, HeroId.YanQing),
+                    "石宝", "南离大将军", B(BossSkill.Resist, BossSkill.Charge), HeroId.WuSong, "包道乙",
+                    "南离大将军石宝使劈风刀与流星锤，连斩梁山多员战将；妖道包道乙暗算伤了武松左臂。武行者咬牙扯断血衣，独臂提戒刀再冲敌阵！",
+                    "武松痛失一臂后看破红尘，班师路过杭州六和寺时不再回京受封，留在寺中出家，活到八十善终。"),
                 C("擒方腊", "第一百一十八回 卢俊义大战昱岭关 宋公明智取清溪洞", "征方腊篇", "ring",
                     J(), J(HeroId.LuZhiShen, HeroId.WuSong, HeroId.LuJunYi, HeroId.SongJiang, HeroId.YanQing),
                     "方腊", "圣公", B(BossSkill.Summon, BossSkill.Daze), HeroId.LuZhiShen, "方杰",
@@ -431,13 +653,42 @@ namespace Rescue.Sim
             for (int i = 0; i < n; i++)
             {
                 list[i].Index = i;
-                float k = Math.Min(1f, i / 45f);
-                list[i].RivalSkill = 0.55f + 0.45f * Math.Min(1f, i / 12f);
-                list[i].RivalIncome = Math.Min(0.95f + 0.08f * k, 0.82f + 0.03f * i);
+                float k = Math.Min(1f, i / 50f);
+                list[i].RivalSkill = i == 0 ? 0.42f : i == 1 ? 0.50f : 0.55f + 0.45f * Math.Min(1f, i / 12f);
+                list[i].RivalIncome = i == 0 ? 0.78f : Math.Min(0.95f + 0.08f * k, 0.82f + 0.03f * i);
                 list[i].RivalFoeHp = 1f;
-                list[i].FoeHp = 1f + 0.15f * k;
+                list[i].FoeHp = 1f + 0.16f * k;
             }
+            // 前两回做成紧凑速战（第1回5波约80秒、第2回6波约95秒），击退头目即胜，避免新手首局被拖进三四分钟拉锯。
+            list[0].MaxWaves = 5;
+            list[1].MaxWaves = 6;
             return list;
+        }
+
+        /// <summary>旧版 57 回主线逐回对应的新 72 回序号（供线上老玩家存档无损迁移）。</summary>
+        public static readonly int[] Legacy57To72 =
+        {
+            0, 1, 2,
+            5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+            21, 22, 23, 24, 25, 26, 27, 28, 29,
+            31, 32, 33, 34, 35, 36, 37, 38,
+            41, 42, 43,
+            45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+            57,
+            59,
+            61,
+            63,
+            65, 66,
+            68,
+            70, 71,
+        };
+
+        /// <summary>把旧版 57 回的 unlocked 进度无损映射到新 72 回：老玩家正在推的那一回不变，打穿 57 回的直接对齐到 72。</summary>
+        public static int MigrateUnlocked57To72(int oldUnlocked)
+        {
+            if (oldUnlocked <= 0) return 0;
+            if (oldUnlocked >= Legacy57To72.Length) return All.Length;
+            return Legacy57To72[oldUnlocked];
         }
 
         /// <summary>某好汉在哪一回入伙；-1 表示剧情里不入伙。</summary>
@@ -502,19 +753,47 @@ namespace Rescue.Sim
             };
         }
 
-        // ─────────────────────────── 每日一战 ───────────────────────────
+        // ─────────────────────────── 每日一战（附梁山军司轮换） ───────────────────────────
 
         /// <summary>每日一战用的回目序号。不是剧情回，也不是聚义厅。</summary>
         public const int DailySlot = 1000;
+        /// <summary>好汉列传用的槽位起点：2000..2035 对应 36 折列传。</summary>
+        public const int BioSlotBase = 2000;
+        /// <summary>水泊名役用的槽位起点：3000..3011 对应 12 幕名役。</summary>
+        public const int CampaignSlotBase = 3000;
+        /// <summary>「一横两纵」百二十回立体内容总体量（72 主线 + 36 列传 + 12 名役 = 120）。</summary>
+        public static int GrandTotalCount => StoryCount + Bios.Length + Campaigns.Length;
+
+        static readonly CorpsKind[] DailyCorpsRotation =
+        {
+            CorpsKind.Cavalry, CorpsKind.Infantry, CorpsKind.Navy, CorpsKind.Mystic,
+        };
 
         /// <summary>
         /// 每日一战：同一天所有人同一张图、同一个头目、同一池好汉、同一个种子。
-        /// 难度固定在前中期，第五回之后的玩家都能打；头目多一门当天抽的绝技。
+        /// 难度固定在前中期，第五回之后的玩家都能打；头目多一门当天抽的绝技，并每日轮换当值梁山军司（对应军司好汉伤害+25%）。
         /// </summary>
         public static ChapterDef Daily(int day)
         {
             var rng = new Rng((uint)day * 2246822519u + 3266489917u);
+            var corps = DailyCorpsRotation[Math.Abs(day) % DailyCorpsRotation.Length];
             var src = All[rng.Range(0, All.Length)];
+            var pool = new List<HeroId>(src.Pool);
+            // 确保当天点名的军司至少有一位能打的好汉在池子里，让玩家每天都有新鲜主角能爽
+            bool hasCorps = false;
+            foreach (var id in pool)
+                if (InCorps(HeroDef.Get(id), corps) && !HeroDef.Get(id).NoAttack) { hasCorps = true; break; }
+            if (!hasCorps && pool.Count < 6)
+            {
+                HeroId pick = corps switch
+                {
+                    CorpsKind.Cavalry => HeroId.LinChong,
+                    CorpsKind.Infantry => HeroId.WuSong,
+                    CorpsKind.Navy => HeroId.ZhangShun,
+                    _ => HeroId.GongSunSheng,
+                };
+                if (!pool.Contains(pick)) pool.Add(pick);
+            }
             var skills = new List<BossSkill>(src.Boss.Skills);
             int kinds = Enum.GetValues(typeof(BossSkill)).Length;
             if (skills.Count < 2)
@@ -524,7 +803,11 @@ namespace Rescue.Sim
             }
             var c = (ChapterDef)src.MemberwiseClone();
             c.IsDaily = true;
+            c.MaxWaves = 0;
             c.Seed = (uint)day;
+            c.Rule = BattleRule.CorpsFocus;
+            c.Corps = corps;
+            c.Pool = pool.ToArray();
             c.Name = "每日一战·" + src.Name;
             c.Act = "每日一战";
             c.Map = Maps[EndlessMaps[rng.Range(0, EndlessMaps.Length)]];
@@ -532,9 +815,227 @@ namespace Rescue.Sim
             c.Joins = new HeroId[0];
             c.RivalSkill = 0.72f;
             c.RivalIncome = 1f;
-            c.FoeHp = All[Math.Min(10, All.Length - 1)].FoeHp;
+            c.FoeHp = All[Math.Min(12, All.Length - 1)].FoeHp;
             return c;
         }
+
+        // ─────────────────────────── 纵线一：好汉列传（36 折 · 12 位主角 × 3 折小池专场） ───────────────────────────
+
+        public sealed class HeroEpitaph
+        {
+            public readonly HeroId Hero;
+            public readonly string Title;
+            public readonly string Poem;
+            public HeroEpitaph(HeroId h, string title, string poem) { Hero = h; Title = title; Poem = poem; }
+        }
+
+        public static readonly HeroEpitaph[] BioHeroes =
+        {
+            new HeroEpitaph(HeroId.LuZhiShen, "禅心侠骨·花和尚传", "平生不修善果，只爱杀人放火。忽地顿开金绳，这里扯断玉锁。钱塘江上潮信来，今日方知我是我。"),
+            new HeroEpitaph(HeroId.LinChong, "风雪孤枪·豹子头传", "仗义是林冲，为人最朴忠。江湖驰誉望，京国显英雄。身世悲浮梗，功名类转蓬。"),
+            new HeroEpitaph(HeroId.WuSong, "行者无疆·天伤星传", "景阳冈上千钟酒，鸳鸯楼头三尺刀。独臂犹擒溪洞寇，六和听涛伴青灯。"),
+            new HeroEpitaph(HeroId.YangZhi, "天波遗烈·青面兽传", "祖传宝刀耀汴梁，半生落魄走他乡。二龙宝珠风云聚，不负天波万里长。"),
+            new HeroEpitaph(HeroId.SongJiang, "及时甘霖·呼保义传", "刀笔小吏重义名，散尽千金结豪英。替天行道杏黄展，聚散风云百八星。"),
+            new HeroEpitaph(HeroId.HuaRong, "惊鸿神箭·小李广传", "银盔白马雕弓满，射断红绦落雁行。生死相随蓼儿洼，千秋忠义共斜阳。"),
+            new HeroEpitaph(HeroId.LiKui, "赤子雷霆·黑旋风传", "手提双斧走风雷，快意恩仇任性为。一片痴心唯敬兄，生同聚义死同归。"),
+            new HeroEpitaph(HeroId.ZhangShun, "西湖水魂·浪里白条传", "雪练肌肤水底眠，凿穿巨舰浪滔天。涌金门外忠魂在，化作钱塘万里烟。"),
+            new HeroEpitaph(HeroId.GongSunSheng, "太乙闲云·入云龙传", "松纹古剑破妖氛，五雷正法动乾坤。功成不受朝廷禄，笑指二仙山外云。"),
+            new HeroEpitaph(HeroId.HuSanNiang, "红锦双刀·一丈青传", "玉雪肌肤锦绣装，双刀骏马冠群芳。红绵套索擒骁将，巾帼威名满大荒。"),
+            new HeroEpitaph(HeroId.LuJunYi, "河北绝艺·玉麒麟传", "目炯双瞳美丰仪，杆棒无双世所稀。活捉文恭雪前恨，忠魂长伴淮水西。"),
+            new HeroEpitaph(HeroId.YanQing, "风流百巧·浪子传", "唇若涂朱鬓插花，吹箫相扑俱名家。急流勇退秋风里，一叶扁舟天际涯。"),
+        };
+
+        public static readonly ChapterDef[] Bios = BuildBios();
+
+        static ChapterDef Bio(int idx, HeroId hero, int actNo, string name, string hui, string map, HeroId partner,
+            string boss, string bTitle, BossSkill[] skills, string rival, string story)
+        {
+            var hDef = HeroDef.Get(hero);
+            var pool = partner == hero ? new[] { hero } : new[] { hero, partner };
+            if (HeroDef.Get(hero).NoAttack) pool = new[] { hero, partner, HeroId.LiKui };
+            else if (HeroDef.Get(partner).NoAttack) pool = new[] { hero, partner, HeroId.ShiJin };
+            int unlockAt = Math.Max(0, JoinChapter(hero));
+            int tierRef = Math.Min(All.Length - 1, unlockAt + (actNo - 1) * 8);
+            var nem = HeroDef.Get(hero).NoAttack ? pool[pool.Length - 1] : hero;
+            return new ChapterDef
+            {
+                Index = tierRef,
+                BioIndex = idx,
+                Name = name,
+                Hui = $"{hDef.Name}列传·第{actNo}折 · {hui}",
+                Act = hDef.Name + "列传",
+                Map = Maps[map],
+                Pool = pool,
+                Joins = new HeroId[0],
+                Boss = new BossDef { Name = boss, Title = bTitle, Skills = skills, Nemesis = nem, SkillText = BossDef.Describe(skills, nem) },
+                RivalName = rival,
+                Story = story,
+                Lore = BioHeroes[idx / 3].Poem,
+                RivalSkill = Math.Min(0.95f, 0.56f + actNo * 0.11f + unlockAt * 0.004f),
+                RivalIncome = 0.90f + actNo * 0.06f,
+                FoeHp = 1f + 0.05f * (actNo - 1) + 0.12f * (tierRef / 60f),
+            };
+        }
+
+        static ChapterDef[] BuildBios()
+        {
+            var list = new ChapterDef[36];
+            int k = 0;
+            // 01 鲁智深（3折）
+            list[k] = Bio(k++, HeroId.LuZhiShen, 1, "状元桥三拳", "拳打镇关西", "qingfeng", HeroId.ShiJin, "郑屠", "镇关西", B(BossSkill.Haste), "金老汉", "渭州状元桥下，鲁提辖只带九纹龙助阵，三拳要教恶霸郑屠知晓厉害！");
+            list[k] = Bio(k++, HeroId.LuZhiShen, 2, "菜园拔垂柳", "大相国寺显神力", "bagua", HeroId.LinChong, "张三", "菜园泼皮", B(BossSkill.Steal, BossSkill.Summon), "李四", "酸枣门外菜园子里，六十二斤水磨禅杖舞动如风，林教头在墙外抚掌喝彩！");
+            list[k] = Bio(k++, HeroId.LuZhiShen, 3, "松林擒方腊", "六和听潮圆寂前", "pass", HeroId.WuSong, "方腊", "江南圣公", B(BossSkill.Resist, BossSkill.Daze), "方杰", "乌龙深山松林间，花和尚与武行者双僧并肩，一禅杖了却「遇腊而执」古偈！");
+            // 02 林冲（3折）
+            list[k] = Bio(k++, HeroId.LinChong, 1, "白虎节堂冤", "带刀误入重地", "imperial", HeroId.LuZhiShen, "富安", "太尉府干办", B(BossSkill.Seal), "高衙内", "八十万禁军教头蒙冤受缚，好兄弟鲁智深暗护左右，杀出重围！");
+            list[k] = Bio(k++, HeroId.LinChong, 2, "山神庙雪恨", "风雪草料场", "zigzag", HeroId.ChaiJin, "陆谦", "陆虞候", B(BossSkill.Fog, BossSkill.Haste), "差拨", "漫天大雪压塌草厅，花枪挑着酒葫芦，今夜把昔日仇寇一枪算清！");
+            list[k] = Bio(k++, HeroId.LinChong, 3, "水寨并王伦", "断金亭立新纲", "ferry", HeroId.LiuTang, "王伦", "白衣秀士", B(BossSkill.Seal, BossSkill.Steal), "杜迁", "断金亭上王伦百般推诿，豹子头怒拔腰刀，替梁山劈开八方共聚的新天地！");
+            // 03 武松（3折）
+            list[k] = Bio(k++, HeroId.WuSong, 1, "景阳十八碗", "赤手伏大虫", "zigzag", HeroId.ChaiJin, "大虫", "吊睛白额虎", B(BossSkill.Charge), "酒家", "透瓶香连干十八碗，哨棒虽折，一双铁拳照样打服景阳冈山君！");
+            list[k] = Bio(k++, HeroId.WuSong, 2, "飞云断木枷", "血溅鸳鸯楼前夜", "ferry", HeroId.ShiEn, "蒋门神", "快活林恶霸", B(BossSkill.Steal, BossSkill.Daze), "张都监", "飞云浦窄桥之上四名杀手围拢，武都头一声断喝拗碎木枷，反杀回孟州城！");
+            list[k] = Bio(k++, HeroId.WuSong, 3, "蜈蚣试双刀", "夜走蜈蚣岭", "pass", HeroId.SunErNiang, "王道人", "飞天蜈蚣", B(BossSkill.Charge, BossSkill.Resist), "张团练", "雪花镔铁双戒刀初出刀鞘，月冷山高，正好斩除岭上害人妖道！");
+            // 04 杨志（3折）
+            list[k] = Bio(k++, HeroId.YangZhi, 1, "天波试宝刀", "汴京城卖刀", "imperial", HeroId.LinChong, "牛二", "没毛大虫", B(BossSkill.Steal), "高俅", "祖传宝刀吹毛得过、杀人不见血，泼皮牛二步步紧逼，青面兽再难隐忍！");
+            list[k] = Bio(k++, HeroId.YangZhi, 2, "大名校场斗", "五十合战急先锋", "plain", HeroId.SuoChao, "闻达", "大名府都监", B(BossSkill.Charge, BossSkill.Haste), "梁中书", "北京大名府演武场上旌旗猎猎，杨家枪刀会一会金蘸斧急先锋！");
+            list[k] = Bio(k++, HeroId.YangZhi, 3, "双夺宝珠寺", "威震二龙山", "jiangzhou", HeroId.LuZhiShen, "邓龙", "宝珠寺寨主", B(BossSkill.Resist, BossSkill.Summon), "曹正", "青面兽联手花和尚智破天险，二龙山宝珠寺从此竖起替天大旗！");
+            // 05 宋江（3折）
+            list[k] = Bio(k++, HeroId.SongJiang, 1, "星夜放天王", "东溪村传信", "snake", HeroId.ZhuTong, "何涛", "缉捕观察", B(BossSkill.Summon), "雷横", "郓城押司冒死飞马报信，美髯公仗义殿后，力保七星弟兄平安脱险！");
+            list[k] = Bio(k++, HeroId.SongJiang, 2, "浔阳题反诗", "白龙庙小聚义", "bailong", HeroId.LiKui, "蔡九", "江州知府", B(BossSkill.Seal, BossSkill.Summon), "黄文炳", "浔阳楼醉题敢笑黄巢，黑旋风双斧劫法场，江边古庙二十九雄拜哥哥！");
+            list[k] = Bio(k++, HeroId.SongJiang, 3, "还道受天书", "玄女庙定天命", "bagua", HeroId.HuaRong, "赵能", "追捕都头", B(BossSkill.Fog, BossSkill.Seal), "赵得", "古庙神厨九天玄女授三卷天书，宋公明仗剑树起替天行道杏黄旗！");
+            // 06 花荣（3折）
+            list[k] = Bio(k++, HeroId.HuaRong, 1, "清风救义兄", "大闹清风寨", "river", HeroId.QinMing, "刘高", "清风文知寨", B(BossSkill.Summon, BossSkill.Daze), "黄信", "一张雕弓百步穿杨，小李广单骑劫囚车，连珠神箭射退追兵！");
+            list[k] = Bio(k++, HeroId.HuaRong, 2, "对影射双戟", "辕门射绒绦", "zigzag", HeroId.LvFang, "郭盛", "赛仁贵", B(BossSkill.Resist, BossSkill.Crush), "吕方", "两枝方天画戟豹尾绒绦死死缠住，花荣挽弓搭箭，弦响处两将俱服！");
+            list[k] = Bio(k++, HeroId.HuaRong, 3, "昱岭复血仇", "泣血诛庞万春", "pass", HeroId.LuJunYi, "庞万春", "小养由基", B(BossSkill.Crush, BossSkill.Daze), "雷炯", "为报史进、石秀六兄弟昱岭血仇，小李广含泪开满月雕弓，一箭穿喉！");
+            // 07 李逵（3折）
+            list[k] = Bio(k++, HeroId.LiKui, 1, "十字街双斧", "江州独劫法场", "jiangzhou", HeroId.DaiZong, "刽子手", "江州行刑官", B(BossSkill.Haste, BossSkill.Summon), "蔡九", "茶楼上一声怒吼，黑旋风赤膊提双板斧跳入人丛，排头砍去救哥哥！");
+            list[k] = Bio(k++, HeroId.LiKui, 2, "沂岭劈四虎", "为母报深仇", "ring", HeroId.ZhuGui, "老母大虫", "沂岭猛虎", B(BossSkill.Devour, BossSkill.Charge), "李鬼", "沂岭窝中连扑出四头猛虎，铁牛双目泣血，朴刀板斧齐下尽诛恶虎！");
+            list[k] = Bio(k++, HeroId.LiKui, 3, "元宵闹汴京", "灯市劈衙役", "imperial", HeroId.YanQing, "杨太尉", "禁军统制", B(BossSkill.Summon, BossSkill.Seal), "高俅", "东京元宵鳌山灯下，黑旋风发作起来，浪子燕青一旁巧箭护航杀出城门！");
+            // 08 张顺（3折）
+            list[k] = Bio(k++, HeroId.ZhangShun, 1, "浔阳淹铁牛", "浪里斗黑旋风", "marsh", HeroId.ZhangHeng, "李逵", "黑旋风", B(BossSkill.Charge, BossSkill.Haste), "戴宗", "岸上打不过莽铁牛，拖进浔阳江心白浪里，教他尝尝灌水饱的滋味！");
+            list[k] = Bio(k++, HeroId.ZhangShun, 2, "江心报血冤", "千里请安道全", "ferry", HeroId.WangDingLiu, "张旺", "截江鬼", B(BossSkill.Steal, BossSkill.Fog), "孙五", "水底咬断麻绳脱死劫，星夜请得神医归，浔阳江上亲手擒贼雪恨！");
+            list[k] = Bio(k++, HeroId.ZhangShun, 3, "水底凿海鳅", "三败高太尉", "marsh", HeroId.RuanXiaoQi, "高俅", "殿帅太尉", B(BossSkill.Summon, BossSkill.Seal), "牛邦喜", "梁山泊万顷芦荡，浪里白条携活阎罗潜入船底，凿沉朝廷海鳅巨舰！");
+            // 09 公孙胜（3折）
+            list[k] = Bio(k++, HeroId.GongSunSheng, 1, "七星聚黄冈", "道助生辰纲", "ring", HeroId.LiuTang, "老都管", "梁府都管", B(BossSkill.Summon, BossSkill.Steal), "梁中书", "一清道人下山献大富贵，黄泥冈松林设伏，七星同心夺金银！");
+            list[k] = Bio(k++, HeroId.GongSunSheng, 2, "五雷破妖州", "斗法破高廉", "bagua", HeroId.LiKui, "高廉", "高唐州知府", B(BossSkill.Rain, BossSkill.Fog), "殷天锡", "松纹古定剑指苍穹，五雷天罡正法劈碎妖云，助铁牛下井救出柴大官人！");
+            list[k] = Bio(k++, HeroId.GongSunSheng, 3, "八阵收魔王", "芒砀山斗法", "bagua", HeroId.FanRui, "项充", "八臂哪吒", B(BossSkill.Fog, BossSkill.Charge), "李衮", "诸葛八阵图飞沙走石，不动刀兵困住飞刀团牌，收服混世魔王拜入玄门！");
+            // 10 扈三娘（3折）
+            list[k] = Bio(k++, HeroId.HuSanNiang, 1, "独龙冈红索", "单捉王矮虎", "ring", HeroId.LinChong, "祝彪", "祝家三杰", B(BossSkill.Daze, BossSkill.Charge), "王英", "青骢马快、日月刀寒，红锦套索随手一抛，阵前生擒敌将不费吹灰！");
+            list[k] = Bio(k++, HeroId.HuSanNiang, 2, "锦索擒天目", "破连环先锋", "plain", HeroId.XuNing, "彭玘", "天目将", B(BossSkill.Charge, BossSkill.Resist), "韩滔", "天目将横刀跃马来战，一丈青佯败回马，红绵套索凌空罩落！");
+            list[k] = Bio(k++, HeroId.HuSanNiang, 3, "双姝破阴阵", "大战混天象", "bagua", HeroId.SunErNiang, "琼妖纳延", "辽国番将", B(BossSkill.Fog, BossSkill.Haste), "寇镇远", "太乙混天象阵前，一丈青与母夜叉巾帼双姝齐出，刀光套索大破番兵！");
+            // 11 卢俊义（3折）
+            list[k] = Bio(k++, HeroId.LuJunYi, 1, "金沙渡遭算", "河北玉麒麟蒙难", "ferry", HeroId.YanQing, "李固", "背主恶奴", B(BossSkill.Steal, BossSkill.Seal), "贾氏", "河北第一杆棒遭奸人算计，忠仆浪子燕青放冷箭救主，杀出芦苇荡！");
+            list[k] = Bio(k++, HeroId.LuJunYi, 2, "活捉史文恭", "夜破曾头市", "plain", HeroId.LinChong, "史文恭", "曾头市教师", B(BossSkill.Resist, BossSkill.Daze), "曾涂", "千里照夜玉狮子踏碎贼营，点钢枪寒星一点，生擒史文恭告慰晁天王！");
+            list[k] = Bio(k++, HeroId.LuJunYi, 3, "独战四辽将", "幽州显神威", "pass", HeroId.GuanSheng, "耶律宗云", "辽国四皇子", B(BossSkill.Charge, BossSkill.Summon), "耶律宗霖", "卢员外陷身辽军重围毫无惧色，一条点钢枪力敌耶律四将，斩首破阵！");
+            // 12 燕青（3折）
+            list[k] = Bio(k++, HeroId.YanQing, 1, "冷箭救卢主", "野林射公人", "qingfeng", HeroId.ShiXiu, "薛霸", "押解恶吏", B(BossSkill.Daze, BossSkill.Haste), "董超", "小小川弩百步无虚发，林间两枝冷箭射翻公人，拼命三郎同来接应！");
+            list[k] = Bio(k++, HeroId.YanQing, 2, "泰安扑擎天", "鹁鸽旋摔任原", "jiuqu", HeroId.LiKui, "任原", "擎天柱", B(BossSkill.Crush, BossSkill.Resist), "部署", "泰安州岱庙香火鼎盛，浪子展露遍体花绣，一招鹁鸽旋把巨人掀下擂台！");
+            list[k] = Bio(k++, HeroId.YanQing, 3, "月夜会道君", "东京访李师师", "imperial", HeroId.DaiZong, "杨戬", "殿前太尉", B(BossSkill.Seal, BossSkill.Fog), "高俅", "汴梁花街箫声婉转，巧借佳人引见微服天子，谈笑间办成招安大事！");
+            return list;
+        }
+
+        // ─────────────────────────── 纵线二：水泊名役（12 幕 · 天象地形词缀挑战 · 首通必掉神兵） ───────────────────────────
+
+        public sealed class CampaignMeta
+        {
+            public readonly int UnlockStoryIndex;
+            public readonly HeroId RewardWeaponHero;
+            public CampaignMeta(int unlockAt, HeroId weaponHero) { UnlockStoryIndex = unlockAt; RewardWeaponHero = weaponHero; }
+        }
+
+        public static readonly CampaignMeta[] CampaignMetas =
+        {
+            new CampaignMeta(2, HeroId.ShiJin),        // 00 少华初鸣（通桃花村解锁）-> 三尖两刃刀
+            new CampaignMeta(7, HeroId.LinChong),      // 01 风雪草料场（通风雪山神庙）-> 丈八蛇矛
+            new CampaignMeta(9, HeroId.YangZhi),       // 02 赤日黄泥冈（通智取生辰纲）-> 祖传宝刀
+            new CampaignMeta(19, HeroId.WuSong),       // 03 血月鸳鸯楼（通血溅鸳鸯楼）-> 雪花戒刀
+            new CampaignMeta(23, HeroId.HuaRong),      // 04 飞矢清风山（通对影山）-> 银鹊弓
+            new CampaignMeta(28, HeroId.LiKui),        // 05 怒涛浔阳江（通白龙庙）-> 双板斧
+            new CampaignMeta(37, HeroId.HuSanNiang),   // 06 盘陀祝家庄（通三打祝家庄）-> 红锦套索
+            new CampaignMeta(41, HeroId.XuNing),       // 07 铁甲连环马（通连环马）-> 钩镰枪
+            new CampaignMeta(51, HeroId.GuanSheng),    // 08 冰封大名府（通水火二将）-> 青龙偃月刀
+            new CampaignMeta(59, HeroId.ZhangShun),    // 09 水淹海鳅船（通三败高俅）-> 鱼叉/分水刺（李俊/张顺）
+            new CampaignMeta(62, HeroId.GongSunSheng), // 10 太乙破辽阵（通破混天象阵）-> 松纹古定剑
+            new CampaignMeta(70, HeroId.LuZhiShen),    // 11 绝壁乌龙岭（通擒方腊）-> 水磨禅杖
+        };
+
+        public static readonly ChapterDef[] Campaigns = BuildCampaigns();
+
+        static ChapterDef Cam(int idx, string name, string hui, string map, BattleRule rule, HeroId[] pool,
+            string boss, string bTitle, BossSkill[] skills, HeroId nemesis, string rival, string story)
+        {
+            int unlockAt = CampaignMetas[idx].UnlockStoryIndex;
+            float k = Math.Min(1f, (unlockAt + 10f) / 68f);
+            return new ChapterDef
+            {
+                Index = Math.Min(All.Length - 1, unlockAt + 4),
+                CampaignIndex = idx,
+                Rule = rule,
+                Name = name,
+                Hui = $"水泊名役·第{idx + 1}幕 · {hui}",
+                Act = "水泊名役",
+                Map = Maps[map],
+                Pool = pool,
+                Joins = new HeroId[0],
+                Boss = new BossDef { Name = boss, Title = bTitle, Skills = skills, Nemesis = nemesis, SkillText = BossDef.Describe(skills, nemesis) },
+                RivalName = rival,
+                Story = story,
+                Lore = "名役推演：顺应战场天象与兵种克制排兵布阵，首通必缴获镇寨名兵器！",
+                RivalSkill = Math.Min(0.98f, 0.65f + 0.30f * k),
+                RivalIncome = 1.02f + 0.14f * k,
+                FoeHp = 1.08f + 0.18f * k,
+            };
+        }
+
+        static ChapterDef[] BuildCampaigns() => new[]
+        {
+            Cam(0, "少华初鸣", "烈日围庄", "shijia", BattleRule.ScorchingSun,
+                J(HeroId.ShiJin, HeroId.LuZhiShen, HeroId.ZhuWu, HeroId.ChenDa),
+                "县尉", "华阴精锐", B(BossSkill.Summon, BossSkill.Haste), HeroId.ShiJin, "王进",
+                "酷暑烈日下官军急攻史家庄，善用朱武军师加速与史进、鲁达近战横扫！"),
+            Cam(1, "风雪草料场", "奇寒死斗", "zigzag", BattleRule.Blizzard,
+                J(HeroId.LinChong, HeroId.LuZhiShen, HeroId.ChaiJin, HeroId.ShiJin),
+                "陆谦", "火烧草场", B(BossSkill.Fog, BossSkill.Charge), HeroId.LinChong, "富安",
+                "朔风凛冽大雪封山，近战禅杖与刀法威力暴涨，迎战纵火仇敌陆虞候！"),
+            Cam(2, "赤日黄泥冈", "炎天智取", "ring", BattleRule.ScorchingSun,
+                J(HeroId.YangZhi, HeroId.WuYong, HeroId.LiuTang, HeroId.BaiSheng, HeroId.GongSunSheng),
+                "老都管", "押纲精兵", B(BossSkill.Summon, BossSkill.Steal), HeroId.YangZhi, "梁中书",
+                "赤日炎炎似火烧！开局重金在握，借吴用与白胜奇谋截下生辰纲铁卫！"),
+            Cam(3, "血月鸳鸯楼", "寒刃连斩", "imperial", BattleRule.Blizzard,
+                J(HeroId.WuSong, HeroId.SunErNiang, HeroId.ZhangQingY, HeroId.ShiEn),
+                "张都监", "孟州重兵", B(BossSkill.Seal, BossSkill.Resist), HeroId.WuSong, "蒋门神",
+                "孟州寒夜杀气如霜，武松双戒刀寒芒大盛，十字坡夫妇蒸包犒军助阵！"),
+            Cam(4, "飞矢清风山", "百步封喉", "pass", BattleRule.Labyrinth,
+                J(HeroId.HuaRong, HeroId.QinMing, HeroId.LvFang, HeroId.GuoSheng),
+                "慕容知府", "青州铁骑", B(BossSkill.Charge, BossSkill.Daze), HeroId.HuaRong, "黄信",
+                "清风山口险径盘桓，弓箭与飞石射程远扬，小李广据险一夫当关！"),
+            Cam(5, "怒涛浔阳江", "白浪滔天", "ferry", BattleRule.FloodedMarsh,
+                J(HeroId.LiKui, HeroId.ZhangShun, HeroId.LiJun, HeroId.ZhangHeng, HeroId.DaiZong),
+                "黄文炳", "江州水师", B(BossSkill.Rain, BossSkill.Summon), HeroId.ZhangShun, "蔡九",
+                "浔阳江潮水暴涨，官兵寸步难行，混江龙与浪里白条翻江倒海痛击水师！"),
+            Cam(6, "盘陀祝家庄", "迷林暗哨", "bagua", BattleRule.Labyrinth,
+                J(HeroId.HuSanNiang, HeroId.SunLi, HeroId.LiYing, HeroId.ShiXiu, HeroId.YangXiong),
+                "栾廷玉", "铁棒教师", B(BossSkill.Resist, BossSkill.Fog), HeroId.SunLi, "祝彪",
+                "盘陀石路九曲回肠，扑天雕飞刀远程狙杀，病尉迟同门破铁布衫！"),
+            Cam(7, "铁甲连环马", "钩镰破甲", "plain", BattleRule.IronCavalry,
+                J(HeroId.XuNing, HeroId.LinChong, HeroId.HuYanZhuo, HeroId.LingZhen, HeroId.TangLong),
+                "呼延灼", "连环铁骑", B(BossSkill.Charge, BossSkill.Haste), HeroId.XuNing, "韩滔",
+                "三十连环重甲铁骑波波压境！架起长枪阵与金枪手钩镰枪，专破铁甲洪流！"),
+            Cam(8, "冰封大名府", "踏雪攻坚", "imperial", BattleRule.Blizzard,
+                J(HeroId.GuanSheng, HeroId.SuoChao, HeroId.YangZhi, HeroId.LuJunYi, HeroId.ShiXiu),
+                "梁中书", "留守禁军", B(BossSkill.Seal, BossSkill.Crush), HeroId.GuanSheng, "李成",
+                "大名府天降暴雪，青龙偃月刀与金蘸斧借寒威横扫千军，直捣留守司！"),
+            Cam(9, "水淹海鳅船", "苇荡伏兵", "marsh", BattleRule.FloodedMarsh,
+                J(HeroId.ZhangShun, HeroId.RuanXiaoEr, HeroId.RuanXiaoWu, HeroId.RuanXiaoQi, HeroId.LiJun),
+                "高俅", "十路统帅", B(BossSkill.Summon, BossSkill.Seal), HeroId.ZhangShun, "牛邦喜",
+                "八百里水泊烟波浩渺，水军五头领齐聚水格，凿穿海鳅巨舰生擒高太尉！"),
+            Cam(10, "太乙破辽阵", "天象玄雷", "bagua", BattleRule.IronCavalry,
+                J(HeroId.GongSunSheng, HeroId.GuanSheng, HeroId.LinChong, HeroId.HuaRong, HeroId.ZhangQing),
+                "兀颜光", "辽国都统军", B(BossSkill.Fog, BossSkill.Resist), HeroId.GuanSheng, "贺重宝",
+                "辽国铁骑布下太乙混天象阵，五虎长枪撕裂重甲，入云龙天雷轰顶！"),
+            Cam(11, "绝壁乌龙岭", "血战江南", "pass", BattleRule.Labyrinth,
+                J(HeroId.LuZhiShen, HeroId.WuSong, HeroId.HuaRong, HeroId.XieZhen, HeroId.LuJunYi),
+                "邓元觉", "宝光国师", B(BossSkill.Crush, BossSkill.Revive), HeroId.HuaRong, "石宝",
+                "乌龙天险山高路窄，以远程雕弓压制国师禅杖，鲁智深武松死守最后关隘！"),
+        };
 
         /// <summary>每日一战；剧情回、聚义厅为假。</summary>
         public bool IsDaily;

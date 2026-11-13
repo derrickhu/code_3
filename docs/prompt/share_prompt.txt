@@ -1,0 +1,11 @@
+Horizontal 4:3 key visual for the WeChat share card of 营救宋江. Same painter and the same three characters as the loading screen: chibi cel-shaded, thick clean outlines.
+
+Left: the green-robed young hero with a red headband, charging with a curved saber.
+Center: Song Jiang in a green robe and black official hat, gripping the bars of a wooden prison cart that is being smashed open, splinters and dust flying.
+Right: Li Kui, shirtless with blue swirl tattoos, white pants, red sash, roaring and swinging a big axe.
+
+Characters large, filling the frame left to right, feet near the bottom. Leave a calm cream sky band across the top for the title. Background is the same ink-wash dawn: misty mountains, the Liangshan stockade small on a cliff with a blank red banner, a few red maple leaves.
+
+NO TEXT, no letters, no calligraphy, no seals, no logo, no age badge, no watermark. The title 「营救宋江」 is composited afterwards from Assets/Resources/Art/home_logo.png (tools/build_share_art.py), so the image model must not draw Chinese.
+
+Output of the script: tools/share/share.jpg is 1000x800 (5:4, share to a friend) and tools/share/share_sq.jpg is 800x800 (1:1, Moments).

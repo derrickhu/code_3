@@ -121,13 +121,22 @@ namespace Rescue.Sim
                         if (Side.CanMerge(p, b.Pieces[c, r])) return _s.CampToCell(slot, c, r);
 
             var cov = _coverage[(int)p.Kind];
+            float styleBonus = 0f;
+            if (_s.Index == 1 && _s.M?.Chapter != null)
+            {
+                var st = _s.M.Chapter.RivalStyleOf();
+                if ((st == RivalStyle.Vanguard && p.Kind == UnitKind.Dao) ||
+                    (st == RivalStyle.Marksman && p.Kind == UnitKind.Gong) ||
+                    (st == RivalStyle.Lancer && (p.Kind == UnitKind.Qiang || p.Kind == UnitKind.Qi)))
+                    styleBonus = 1.6f;
+            }
             int bc = -1, br = -1;
             float best = -1;
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
                 {
                     if (!b.Placeable(c, r) || b.Pieces[c, r] != null) continue;
-                    float s = cov[c, r] + _rng.Next01() * (1f - _skill) * 12f;
+                    float s = cov[c, r] + styleBonus + _rng.Next01() * (1f - _skill) * 12f;
                     if (s > best) { best = s; bc = c; br = r; }
                 }
             return bc >= 0 && _s.CampToCell(slot, bc, br);

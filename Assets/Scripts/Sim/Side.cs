@@ -44,6 +44,8 @@ namespace Rescue.Sim
         public int Shovels;
         public int Fu;
         public int Trap;
+        /// <summary>萧让代笔：拖到孤字上定向招来配对好汉字，拖到普通小兵上当场点化为所缺配对字。</summary>
+        public int Pen;
         public bool Far;
         /// <summary>十字坡灶：开局摆一张灶，慢慢出炊饼。</summary>
         public bool Stove;
@@ -77,6 +79,8 @@ namespace Rescue.Sim
         /// <summary>山寨塞不下的铲子先存着，有空位自动补进去。</summary>
         public int ShovelStock;
         public bool RescueUsed;
+        /// <summary>第一回新手引导对局：前两手聚义保底发成对的「史进」「朱武」与同级刀兵，手把手教会凑好汉与合兵。</summary>
+        public bool TutorialScript;
         public float ShieldT;
         HeroInstance _curHero;
         public int Rains;
@@ -90,17 +94,23 @@ namespace Rescue.Sim
         public float HasteAllT;
         public float ItemHasteT;
         /// <summary>主动道具各自的冷却，转完才能再放一次。</summary>
-        public float MengCd, BaoziCd, ShuCd, FuCd, TrapCd;
+        public float MengCd, BaoziCd, ShuCd, FuCd, TrapCd, PenCd;
         float _steleCd;
 
         readonly Rng _rng;
         readonly Dictionary<int, float> _unitCd = new Dictionary<int, float>();
         readonly List<KeyValuePair<char, float>> _charWeights = new List<KeyValuePair<char, float>>();
         float[,] _aura = NewAura();
+        int[,] _orphanCount = new int[Board.Cols, Board.Rows];
         float _teamCd = 1f;
         int _sinceGold;
         readonly List<HeroInstance> _bunsHeroes = new List<HeroInstance>();
         readonly Dictionary<HeroId, float> _bondDmg = new Dictionary<HeroId, float>();
+        readonly Dictionary<HeroId, HashSet<BondTrait>> _bondTraits = new Dictionary<HeroId, HashSet<BondTrait>>();
+        readonly Dictionary<HeroId, int> _bondKillAcc = new Dictionary<HeroId, int>();
+        int _ruleKillAcc;
+        readonly HashSet<HeroId> _dueledNemesis = new HashSet<HeroId>();
+        readonly Dictionary<HeroId, float> _duelHaste = new Dictionary<HeroId, float>();
         /// <summary>谁领了兵器架上的第几件。</summary>
         readonly Dictionary<HeroId, int> _wear = new Dictionary<HeroId, int>();
         /// <summary>当前凑齐的羁绊。</summary>
@@ -140,6 +150,7 @@ namespace Rescue.Sim
             _charWeights.Sort((a, b) => a.Key.CompareTo(b.Key));
 
             if (Items.Gang) Buns += 30;
+            if (m.Chapter.Rule == BattleRule.ScorchingSun) Buns += 25;
             if (Items.Xuming) AddMaxHp(Tuning.XumingHearts);
             ShovelStock = Items.Shovels;
             FillShovels();
@@ -222,15 +233,14 @@ namespace Rescue.Sim
             }
         }
 
-        /// <summary>有官兵走到宋江跟前。「危」字和救命广告都看这个。</summary>
+        /// <summary>有官兵沿路快走到宋江跟前。「危」字和救命广告都看这个。柴进庄这类图路口就在宋江头顶，直线很近，但要绕完整条路，不能按直线算。</summary>
         public bool AtTheGate
         {
             get
             {
                 if (Dead || M.Over) return false;
-                var goal = Board.Goal.Center;
                 foreach (var e in Enemies)
-                    if (!e.Dead && V2.Dist(e.Pos, goal) < 2.2f) return true;
+                    if (!e.Dead && !e.InBrush && Board.PathLength - e.Progress < Tuning.GateRange) return true;
                 return false;
             }
         }
@@ -255,7 +265,13 @@ namespace Rescue.Sim
             return false;
         }
 
-        /// <summary>看广告请公孙胜作法：场上官兵原样推回路口，血量不动，再走一遍。一局一次。</summary>
+        public bool HasAliveEnemy()
+        {
+            foreach (var e in Enemies) if (!e.Dead) return true;
+            return false;
+        }
+
+        /// <summary>请公孙胜作法：场上官兵推回路口定住片刻、宋江金光护体、补炊饼并助至多两员在场兵丁升一阶，确保翻盘。一局一次。</summary>
         public bool Rescue()
         {
             if (RescueUsed || Dead || M.Over) return false;
@@ -275,10 +291,32 @@ namespace Rescue.Sim
                     e.Pos = Board.PosAt(e.Progress);
                     e.HasteT = 0f;
                 }
+                e.StunT = Math.Max(e.StunT, 1.3f);
                 cursor += 0.32f;
             }
+            ShieldT = Math.Max(ShieldT, 4f);
+            Buns += 12;
+            PromoteUnitsOnBoard(2);
             Emit(new SimEvent { Type = Ev.Rescue, P = Board.Goal.Center, Val = alive.Count });
             return true;
+        }
+
+        void PromoteUnitsOnBoard(int maxCount)
+        {
+            var units = new List<(Piece p, CellPos pos)>();
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var p = Board.Pieces[c, r];
+                    if (p != null && p.Type == PieceType.Unit && p.Level < UnitDef.MaxLevel)
+                        units.Add((p, new CellPos(c, r)));
+                }
+            units.Sort((a, b) => a.p.Level.CompareTo(b.p.Level));
+            for (int i = 0; i < units.Count && i < maxCount; i++)
+            {
+                units[i].p.Level++;
+                Emit(new SimEvent { Type = Ev.Merge, A = units[i].p.Id, Val = units[i].p.Level, P = units[i].pos.Center });
+            }
         }
 
         /// <summary>孙二娘的包子：五成五回一颗心，四成五吃坏肚子掉一颗心（不会因此丧命）。</summary>
@@ -325,10 +363,27 @@ namespace Rescue.Sim
                 }
             }
             else FillShovels();
-            for (int i = 0; i < Camp.Length; i++)
+            if (TutorialScript && Index == 0 && Recruits == 0 && Pool.Exists(h => h.Id == HeroId.ShiJin))
             {
-                if (!replaceAll && Camp[i] != null) continue;
-                Camp[i] = Roll(!replaceAll);
+                Camp[0] = Piece.Hero('史');
+                Camp[1] = Piece.Hero('进');
+                Camp[2] = Piece.Unit(UnitKind.Dao);
+                Camp[3] = Piece.Unit(UnitKind.Dao);
+                Camp[4] = Piece.Unit(UnitKind.Gong);
+            }
+            else if (TutorialScript && Index == 0 && Recruits == 1 && Pool.Exists(h => h.Id == HeroId.ZhuWu) && !FormedEver.Contains(HeroId.ZhuWu))
+            {
+                Camp[0] = Piece.Hero('朱');
+                Camp[1] = Piece.Hero('武');
+                for (int i = 2; i < Camp.Length; i++) Camp[i] = Roll(true);
+            }
+            else
+            {
+                for (int i = 0; i < Camp.Length; i++)
+                {
+                    if (!replaceAll && Camp[i] != null) continue;
+                    Camp[i] = Roll(!replaceAll);
+                }
             }
             Recruits++;
             RecruitCost += Tuning.CostStep;
@@ -629,7 +684,12 @@ namespace Rescue.Sim
         {
             if (def == null || def.NoAttack) return 0f;
             float range = def.RangeWith(Items.Far);
-            if (range < 50f) range += AffixOf(def).Range;
+            if (range < 50f)
+            {
+                range += AffixOf(def).Range;
+                if (M.Chapter.Rule == BattleRule.Labyrinth && (def.Look == Look.Bow || def.Look == Look.Dart || def.WKind == WeaponKind.Bow || def.WKind == WeaponKind.Stone))
+                    range *= 1.25f;
+            }
             return range;
         }
 
@@ -648,17 +708,40 @@ namespace Rescue.Sim
             return w == null ? WeaponAffix.Bare : Weapons.Affix(w, wearer);
         }
 
-        /// <summary>普攻 / 大招共用的伤害：等级、水上、兵器、羁绊。</summary>
+        /// <summary>战场词缀/演武军令对这名好汉的伤害倍率。</summary>
+        public float RuleHeroDamageMul(HeroDef def, bool onWater)
+        {
+            if (def == null) return 1f;
+            return M.Chapter.Rule switch
+            {
+                BattleRule.IronCavalry when def.WKind == WeaponKind.Spear || def.WKind == WeaponKind.Whip || def.WKind == WeaponKind.Halberd => 1.35f,
+                BattleRule.FloodedMarsh when onWater || ChapterDef.InCorps(def, CorpsKind.Navy) => 1.35f,
+                BattleRule.Blizzard when def.WKind == WeaponKind.Blade || def.WKind == WeaponKind.Axe || def.WKind == WeaponKind.Staff || def.WKind == WeaponKind.Fist || def.WKind == WeaponKind.Club => 1.35f,
+                BattleRule.CorpsFocus when ChapterDef.InCorps(def, M.Chapter.Corps) => 1.25f,
+                _ => 1f,
+            };
+        }
+
+        /// <summary>普攻 / 大招共用的伤害：等级、水上、兵器、羁绊、战场规则。</summary>
         float HeroDamage(HeroInstance h, in WeaponAffix aff)
         {
             var def = h.Def;
             float dmg = def.DamageAt(h.Level) * WeaponMul(def) * aff.Dmg;
             if (h.OnWater) dmg *= def.WaterBonus * aff.Water;
+            else if (def.WaterBonus > 1f && HasBondTrait(def.Id, BondTrait.WaveWater))
+                dmg *= 1f + (def.WaterBonus - 1f) * 0.4f;
             if (_bondDmg.TryGetValue(def.Id, out var b)) dmg *= 1f + b;
+            dmg *= RuleHeroDamageMul(def, h.OnWater);
             return dmg;
         }
 
         public float BondBonus(HeroId id) => _bondDmg.TryGetValue(id, out var b) ? b : 0f;
+
+        public bool HasBondTrait(HeroId id, BondTrait t) =>
+            _bondTraits.TryGetValue(id, out var set) && set != null && set.Contains(t);
+
+        public int OrphanBoostersNear(int c, int r) =>
+            Board.InBounds(c, r) ? _orphanCount[c, r] : 0;
 
         public bool UseMengHan()
         {
@@ -710,6 +793,287 @@ namespace Rescue.Sim
             return true;
         }
 
+        // ───────────── 萧让代笔（反卡单字核心道具） ─────────────
+
+        /// <summary>萧让代笔可落点：场上尚未成名的孤字，或任意普通小兵。</summary>
+        public bool PenTarget(int c, int r)
+        {
+            if (!Board.InBounds(c, r)) return false;
+            var p = Board.Pieces[c, r];
+            if (p == null) return false;
+            if (p.Type == PieceType.Unit) return true;
+            if (p.Type == PieceType.HeroChar && HeroAt(c, r) == null)
+                return ResolveOrphanPartner(c, r, out _, out _, out _);
+            return false;
+        }
+
+        /// <summary>预览萧让代笔落在 (c,r) 会写出哪个字、凑哪位好汉。</summary>
+        public bool PreviewPen(int c, int r, out char written, out HeroDef hero, out bool isUnitConvert)
+        {
+            written = '\0';
+            hero = null;
+            isUnitConvert = false;
+            if (!Board.InBounds(c, r)) return false;
+            var p = Board.Pieces[c, r];
+            if (p == null) return false;
+            if (p.Type == PieceType.HeroChar && HeroAt(c, r) == null)
+                return ResolveOrphanPartner(c, r, out written, out hero, out _);
+            if (p.Type == PieceType.Unit)
+            {
+                isUnitConvert = true;
+                return ResolveUnitConvertChar(c, r, out written, out hero);
+            }
+            return false;
+        }
+
+        /// <summary>使用萧让代笔：点孤字则补齐配对字（紧邻有空直接落笔成将，否则入山寨）；点小兵则原地点化为急需金字（保留兵等级）。</summary>
+        public bool UsePen(int c, int r)
+        {
+            if (Items.Pen <= 0 || PenCd > 0f || M.Over) return false;
+            if (!Board.InBounds(c, r)) return false;
+            var p = Board.Pieces[c, r];
+            if (p == null) return false;
+
+            if (p.Type == PieceType.HeroChar && HeroAt(c, r) == null)
+            {
+                if (!ResolveOrphanPartner(c, r, out char need, out var hero, out var adjEmpty)) return false;
+                var made = Piece.Hero(need, p.Level);
+                V2 fxAt;
+                if (adjEmpty is CellPos spot)
+                {
+                    Board.Pieces[spot.c, spot.r] = made;
+                    fxAt = spot.Center;
+                }
+                else if (!TryPutIntoCampOrReplaceWeakUnit(made))
+                {
+                    return false;
+                }
+                else fxAt = new CellPos(c, r).Center;
+
+                Items.Pen--;
+                PenCd = Tuning.CdPen;
+                RecomputeHeroes();
+                Emit(new SimEvent { Type = Ev.ItemUsed, Text = "萧让代笔", P = fxAt, Flag = 5 });
+                return true;
+            }
+
+            if (p.Type == PieceType.Unit)
+            {
+                if (!ResolveUnitConvertChar(c, r, out char need, out _)) return false;
+                Board.Pieces[c, r] = Piece.Hero(need, p.Level);
+                Items.Pen--;
+                PenCd = Tuning.CdPen;
+                RecomputeHeroes();
+                Emit(new SimEvent { Type = Ev.ItemUsed, Text = "萧让代笔", P = new CellPos(c, r).Center, Flag = 5 });
+                return true;
+            }
+
+            return false;
+        }
+
+        bool TryPutIntoCampOrReplaceWeakUnit(Piece piece)
+        {
+            for (int i = 0; i < Camp.Length; i++)
+                if (Camp[i] == null) { Camp[i] = piece; return true; }
+            int worst = -1, worstLv = int.MaxValue;
+            for (int i = 0; i < Camp.Length; i++)
+            {
+                var q = Camp[i];
+                if (q != null && q.Type == PieceType.Unit && q.Level < worstLv)
+                {
+                    worstLv = q.Level;
+                    worst = i;
+                }
+            }
+            if (worst >= 0) { Camp[worst] = piece; return true; }
+            return false;
+        }
+
+        List<HeroDef> OrderedCandidates()
+        {
+            var defs = new List<HeroDef>();
+            var nem = M?.Chapter?.Boss?.Nemesis;
+            foreach (var h in Pool) if (!h.Hidden) defs.Add(h);
+            foreach (var h in Pool) if (h.Hidden) defs.Add(h);
+            defs.Sort((a, b) =>
+            {
+                bool an = nem.HasValue && a.Id == nem.Value;
+                bool bn = nem.HasValue && b.Id == nem.Value;
+                if (an != bn) return bn.CompareTo(an);
+                if (a.Hidden != b.Hidden) return a.Hidden.CompareTo(b.Hidden);
+                return a.Rank.CompareTo(b.Rank);
+            });
+            return defs;
+        }
+
+        /// <summary>为 (c,r) 处的孤字挑出最该补的那一字，以及若紧邻有可直连成名的空格则一并返回。</summary>
+        bool ResolveOrphanPartner(int c, int r, out char need, out HeroDef pickedHero, out CellPos? directSpot)
+        {
+            need = '\0';
+            pickedHero = null;
+            directSpot = null;
+            var p = Board.Pieces[c, r];
+            if (p == null || p.Type != PieceType.HeroChar) return false;
+            NameMatcher.ReadDirs(Mirrored, out var dh, out var dv);
+            var dirs = new[] { dh, dv };
+            var defs = OrderedCandidates();
+
+            int bestScore = -1;
+            foreach (var def in defs)
+            {
+                int ix = def.Name.IndexOf(p.Char);
+                if (ix < 0 || def.Name.Length < 2) continue;
+                foreach (var d in dirs)
+                {
+                    int startC = c - d.c * ix, startR = r - d.r * ix;
+                    int have = 0;
+                    char missing = '\0';
+                    CellPos? emptyCell = null;
+                    bool blocked = false;
+                    for (int k = 0; k < def.Name.Length; k++)
+                    {
+                        int cc = startC + d.c * k, rr = startR + d.r * k;
+                        if (!Board.InBounds(cc, rr)) { blocked = true; break; }
+                        var q = Board.Pieces[cc, rr];
+                        if (q != null && q.Type == PieceType.HeroChar && q.Char == def.Name[k] && HeroAt(cc, rr) == null)
+                        {
+                            have++;
+                            continue;
+                        }
+                        if (Board.Placeable(cc, rr) && q == null)
+                        {
+                            if (missing == '\0') { missing = def.Name[k]; emptyCell = new CellPos(cc, rr); }
+                            continue;
+                        }
+                        blocked = true;
+                        break;
+                    }
+                    if (!blocked && missing != '\0')
+                    {
+                        int score = 100 + have * 30 + (M?.Chapter?.Boss != null && def.Id == M.Chapter.Boss.Nemesis ? 15 : 0);
+                        if (score > bestScore)
+                        {
+                            bestScore = score;
+                            need = missing;
+                            pickedHero = def;
+                            directSpot = emptyCell;
+                        }
+                    }
+                }
+
+                // 兜底：哪怕周围格子暂时满了，只要山寨能装，也按名字挑它还没齐的另一字
+                if (bestScore < 0)
+                {
+                    var owned = CountLooseChars();
+                    char fallback = '\0';
+                    for (int k = 0; k < def.Name.Length; k++)
+                    {
+                        if (k == ix) continue;
+                        if (!owned.Contains(def.Name[k])) { fallback = def.Name[k]; break; }
+                        if (fallback == '\0') fallback = def.Name[k];
+                    }
+                    if (fallback != '\0')
+                    {
+                        need = fallback;
+                        pickedHero = def;
+                        bestScore = 10;
+                    }
+                }
+            }
+            return pickedHero != null && need != '\0';
+        }
+
+        /// <summary>把 (c,r) 处的小兵点化成金字：若紧挨孤字能直接拼出好汉则优先写那一字；否则补场上/山寨孤字的缺字；都没有就写克星首字。</summary>
+        bool ResolveUnitConvertChar(int c, int r, out char need, out HeroDef pickedHero)
+        {
+            need = '\0';
+            pickedHero = null;
+            NameMatcher.ReadDirs(Mirrored, out var dh, out var dv);
+            var dirs = new[] { dh, dv };
+            var defs = OrderedCandidates();
+
+            // 1. 最高优先：如果把 (c,r) 改成某个字，当场就能和紧邻孤字连成好汉！
+            int bestScore = -1;
+            foreach (var def in defs)
+            {
+                for (int k = 0; k < def.Name.Length; k++)
+                {
+                    foreach (var d in dirs)
+                    {
+                        int startC = c - d.c * k, startR = r - d.r * k;
+                        int have = 0;
+                        bool allMatch = true;
+                        for (int i = 0; i < def.Name.Length; i++)
+                        {
+                            int cc = startC + d.c * i, rr = startR + d.r * i;
+                            if (!Board.InBounds(cc, rr)) { allMatch = false; break; }
+                            if (i == k) continue;
+                            var q = Board.Pieces[cc, rr];
+                            if (q != null && q.Type == PieceType.HeroChar && q.Char == def.Name[i] && HeroAt(cc, rr) == null)
+                                have++;
+                            else allMatch = false;
+                        }
+                        if (have > 0)
+                        {
+                            int score = (allMatch ? 200 : 80) + have * 25 + (M?.Chapter?.Boss != null && def.Id == M.Chapter.Boss.Nemesis ? 15 : 0);
+                            if (score > bestScore)
+                            {
+                                bestScore = score;
+                                need = def.Name[k];
+                                pickedHero = def;
+                            }
+                        }
+                    }
+                }
+            }
+            if (bestScore >= 0) return true;
+
+            // 2. 次优先：场上或山寨有孤字，补它缺的配对字
+            for (int bc = 0; bc < Board.Cols; bc++)
+                for (int br = 0; br < Board.Rows; br++)
+                {
+                    var q = Board.Pieces[bc, br];
+                    if (q != null && q.Type == PieceType.HeroChar && HeroAt(bc, br) == null &&
+                        ResolveOrphanPartner(bc, br, out need, out pickedHero, out _))
+                        return true;
+                }
+            foreach (var q in Camp)
+            {
+                if (q == null || q.Type != PieceType.HeroChar) continue;
+                foreach (var def in defs)
+                {
+                    int ix = def.Name.IndexOf(q.Char);
+                    if (ix < 0 || def.Name.Length < 2) continue;
+                    need = def.Name[ix == 0 ? 1 : 0];
+                    pickedHero = def;
+                    return true;
+                }
+            }
+
+            // 3. 全场无孤字：直接点化为本回首选克星好汉的第一字
+            if (defs.Count > 0)
+            {
+                pickedHero = defs[0];
+                need = pickedHero.Name[0];
+                return true;
+            }
+            return false;
+        }
+
+        HashSet<char> CountLooseChars()
+        {
+            var set = new HashSet<char>();
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var q = Board.Pieces[c, r];
+                    if (q != null && q.Type == PieceType.HeroChar && HeroAt(c, r) == null) set.Add(q.Char);
+                }
+            foreach (var q in Camp)
+                if (q != null && q.Type == PieceType.HeroChar) set.Add(q.Char);
+            return set;
+        }
+
         // ───────────── 好汉识别 ─────────────
 
         public void RecomputeHeroes()
@@ -720,12 +1084,16 @@ namespace Rescue.Sim
             AssignGear(before);
 
             _aura = NewAura();
+            _orphanCount = new int[Board.Cols, Board.Rows];
             _teamCd = 1f;
             _bunsHeroes.Clear();
             var teamSeen = new HashSet<HeroId>();
+            var inHero = new bool[Board.Cols, Board.Rows];
             foreach (var h in Heroes)
             {
                 var d = h.Def;
+                foreach (var cell in h.Cells)
+                    if (Board.InBounds(cell.c, cell.r)) inHero[cell.c, cell.r] = true;
                 if (!before.Contains(h.Id))
                 {
                     FormedEver.Add(d.Id);
@@ -740,6 +1108,31 @@ namespace Rescue.Sim
                                 if (Board.InBounds(cell.c + dc, cell.r + dr))
                                     _aura[cell.c + dc, cell.r + dr] = Math.Min(_aura[cell.c + dc, cell.r + dr], d.Aura);
             }
+
+            // 孤字助威光环：未成名的举牌义士鼓舞周围八格友军（每枚加速约6%，叠乘保底0.85，不盖过吴用/朱武强光环）
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var p = Board.Pieces[c, r];
+                    if (p == null || p.Type != PieceType.HeroChar || inHero[c, r]) continue;
+                    for (int dc = -1; dc <= 1; dc++)
+                        for (int dr = -1; dr <= 1; dr++)
+                        {
+                            if (dc == 0 && dr == 0) continue;
+                            int nc = c + dc, nr = r + dr;
+                            if (!Board.InBounds(nc, nr)) continue;
+                            _orphanCount[nc, nr]++;
+                        }
+                }
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    int oc = _orphanCount[c, r];
+                    if (oc <= 0) continue;
+                    float orphanMul = Math.Max(Tuning.OrphanAuraFloor, (float)Math.Pow(Tuning.OrphanAura, oc));
+                    _aura[c, r] = Math.Min(_aura[c, r], orphanMul);
+                }
+
             RecomputeBonds();
         }
 
@@ -748,6 +1141,7 @@ namespace Rescue.Sim
             var on = new HashSet<HeroId>();
             foreach (var h in Heroes) on.Add(h.Def.Id);
             _bondDmg.Clear();
+            _bondTraits.Clear();
             ActiveBonds.Clear();
             foreach (var b in Bond.All)
             {
@@ -760,12 +1154,16 @@ namespace Rescue.Sim
                     if (!on.Contains(id)) continue;
                     _bondDmg.TryGetValue(id, out var v);
                     _bondDmg[id] = v + b.Dmg;
+                    if (!_bondTraits.TryGetValue(id, out var set))
+                        _bondTraits[id] = set = new HashSet<BondTrait>();
+                    set.Add(b.Trait);
                 }
                 if (BondsEver.Add(b.Name))
                 {
+                    if (b.Trait == BondTrait.SwornGuard) ShieldT = Math.Max(ShieldT, 2.5f);
                     var at = new V2();
                     foreach (var h in Heroes) if (Array.IndexOf(b.Members, h.Def.Id) >= 0) { at = h.Pos; break; }
-                    Emit(new SimEvent { Type = Ev.Bond, P = at, Val = b.Dmg, Text = b.Name });
+                    Emit(new SimEvent { Type = Ev.Bond, P = at, Val = b.Dmg, Flag = (int)b.Trait, Text = b.Name });
                 }
             }
         }
@@ -797,6 +1195,17 @@ namespace Rescue.Sim
             ShuCd = Math.Max(0, ShuCd - dt);
             FuCd = Math.Max(0, FuCd - dt);
             TrapCd = Math.Max(0, TrapCd - dt);
+            PenCd = Math.Max(0, PenCd - dt);
+            if (_duelHaste.Count > 0)
+            {
+                var keys = new List<HeroId>(_duelHaste.Keys);
+                foreach (var k in keys)
+                {
+                    float left = _duelHaste[k] - dt;
+                    if (left <= 0f) _duelHaste.Remove(k);
+                    else _duelHaste[k] = left;
+                }
+            }
             RallyT = Math.Max(0, RallyT - dt);
             _steleCd = Math.Max(0, _steleCd - dt);
             ShieldT = Math.Max(0, ShieldT - dt);
@@ -813,6 +1222,7 @@ namespace Rescue.Sim
 
             MoveEnemies(dt);
             if (Dead) return;
+            CheckNemesisDuel();
             TickBosses(dt);
             TickUnits(dt);
             TickHeroes(dt);
@@ -823,7 +1233,8 @@ namespace Rescue.Sim
 
         void MoveEnemies(float dt)
         {
-            float globalMul = (EnemySlowT > 0 ? 0.5f : 1f) * (Items.Marsh ? 0.75f : 1f);
+            float ruleMul = M.Chapter.Rule == BattleRule.ScorchingSun ? 1.15f : M.Chapter.Rule == BattleRule.FloodedMarsh ? 0.85f : 1f;
+            float globalMul = (EnemySlowT > 0 ? 0.5f : 1f) * (Items.Marsh ? 0.75f : 1f) * ruleMul;
             foreach (var e in Enemies)
             {
                 if (e.Dead) continue;
@@ -861,6 +1272,36 @@ namespace Rescue.Sim
                 Buns += gift;
                 Rains++;
                 Emit(new SimEvent { Type = Ev.Rain, Val = gift, P = Board.Goal.Center });
+            }
+        }
+
+        void CheckNemesisDuel()
+        {
+            if (Heroes.Count == 0 || Enemies.Count == 0) return;
+            foreach (var e in Enemies)
+            {
+                if (e.Boss == null || e.Dead || e.InBrush) continue;
+                var nem = e.Boss.Nemesis;
+                if (_dueledNemesis.Contains(nem)) continue;
+                foreach (var h in Heroes)
+                {
+                    if (h.Def.Id != nem) continue;
+                    _dueledNemesis.Add(nem);
+                    _duelHaste[nem] = Tuning.NemesisDuelT;
+                    h.Cd = 0f;
+                    if (h.UltCd < 100f) h.UltCd *= 0.5f;
+                    Emit(new SimEvent
+                    {
+                        Type = Ev.NemesisDuel,
+                        A = h.Id,
+                        B = (int)nem,
+                        P = h.Pos,
+                        Q = e.Pos,
+                        Val = Tuning.NemesisDuelT,
+                        Text = e.Boss.DuelShout(),
+                    });
+                    break;
+                }
             }
         }
 
@@ -1104,11 +1545,11 @@ namespace Rescue.Sim
                     if (cd > 0) { _unitCd[p.Id] = cd; continue; }
                     var def = UnitDef.Get(p.Kind);
                     var pos = new CellPos(c, r).Center;
-                    float range = def.RangeWith(Items.Far);
+                    float range = def.RangeWith(Items.Far) * (M.Chapter.Rule == BattleRule.Labyrinth && p.Kind == UnitKind.Gong ? 1.25f : 1f);
                     var target = FindTarget(pos, range, false);
                     if (target == null) { _unitCd[p.Id] = 0; continue; }
                     _unitCd[p.Id] = def.CooldownAt(p.Level) * CdMul(c, r);
-                    float dmg = def.DamageAt(p.Level);
+                    float dmg = def.DamageAt(p.Level) * (M.Chapter.Rule == BattleRule.IronCavalry && p.Kind == UnitKind.Qiang ? 1.35f : 1f);
                     Emit(new SimEvent { Type = Ev.Attack, A = p.Id, B = (int)p.Kind, P = pos, Q = target.Pos, Val = p.Level });
 
                     if (def.Pierce > 1) PierceLine(pos, target.Pos, range, def.Pierce, dmg, null);
@@ -1147,8 +1588,9 @@ namespace Rescue.Sim
             get { var h = LeadHero; return h != null && h.UltCd <= 0; }
         }
 
-        /// <summary>这名好汉大招转满一圈要多久。兵器会把这一圈缩短。</summary>
-        public float UltMax(HeroInstance h) => h.Def.UltCooldown * AffixOf(h.Def).UltCd;
+        /// <summary>这名好汉大招转满一圈要多久。兵器与奇门羁绊会把这一圈缩短。</summary>
+        public float UltMax(HeroInstance h) =>
+            h.Def.UltCooldown * AffixOf(h.Def).UltCd * (HasBondTrait(h.Def.Id, BondTrait.MysticUlt) ? 0.8f : 1f);
 
         /// <summary>玩家点技能钮放带头好汉的大招。没有目标时不进冷却。</summary>
         public bool CastLeadUlt()
@@ -1160,7 +1602,7 @@ namespace Rescue.Sim
             var aff = AffixOf(h.Def);
             bool ok = TryUlt(h, h.Pos, aff);
             _curHero = null;
-            if (ok) h.UltCd = h.Def.UltCooldown * aff.UltCd;
+            if (ok) h.UltCd = UltMax(h);
             return ok;
         }
 
@@ -1177,19 +1619,21 @@ namespace Rescue.Sim
                 var aff = AffixOf(def);
                 if (Disabled(h)) continue;
 
-                if (h != lead && h.UltCd <= 0 && TryUlt(h, pos, aff)) h.UltCd = def.UltCooldown * aff.UltCd;
+                if (h != lead && h.UltCd <= 0 && TryUlt(h, pos, aff)) h.UltCd = UltMax(h);
 
                 if (def.NoAttack) GainXp(h, dt * 0.35f);
                 if (def.NoAttack || h.Cd > 0) continue;
-                float range = def.RangeWith(Items.Far);
-                if (range < 50f) range += aff.Range;
+                float range = ShownRange(def);
                 var target = FindTarget(pos, range, def.PreferBig);
                 if (target == null) { h.Cd = 0; continue; }
                 var move = Weapons.MoveOf(GearOf(def));
-                h.Cd = def.CooldownAt(h.Level) * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd * (move == WeaponMove.WideAxe ? Weapons.AxeCdMul : 1f);
+                float bondCd = HasBondTrait(def.Id, BondTrait.SwornGuard) ? 0.85f : 1f;
+                float duelCd = _duelHaste.ContainsKey(def.Id) ? Tuning.NemesisDuelCd : 1f;
+                float ruleCd = M.Chapter.Rule == BattleRule.ScorchingSun && (def.Look == Look.Poison || def.Look == Look.Magic) ? 0.8f : 1f;
+                h.Cd = def.CooldownAt(h.Level) * CdMul(h.Cells[0].c, h.Cells[0].r) * aff.Cd * bondCd * duelCd * ruleCd * (move == WeaponMove.WideAxe ? Weapons.AxeCdMul : 1f);
                 float dmg = HeroDamage(h, aff);
                 int crit = 0;
-                float critChance = def.CritChance + aff.Crit;
+                float critChance = def.CritChance + aff.Crit + (HasBondTrait(def.Id, BondTrait.PierceCrit) ? 0.12f : 0f);
                 if (critChance > 0 && _rng.Chance(critChance)) { dmg *= def.CritMul; crit = 1; }
                 if (move == WeaponMove.FarBow) dmg *= 1f + FarBowBonus(V2.Dist(pos, target.Pos));
                 Emit(new SimEvent { Type = Ev.HeroAttack, A = h.Id, B = (int)def.Id, P = pos, Q = target.Pos, Flag = crit });
@@ -1211,6 +1655,8 @@ namespace Rescue.Sim
                     if (move == WeaponMove.Snake && !target.IsBig) target.StunT = Math.Max(target.StunT, Weapons.SnakeStun);
                 }
                 if (move == WeaponMove.Hook && target.Boss == null) target.SlowT = Math.Max(target.SlowT, Weapons.HookSlowT);
+                if (h.OnWater && HasBondTrait(def.Id, BondTrait.WaveWater) && target.Boss == null)
+                    target.SlowT = Math.Max(target.SlowT, 1.2f);
                 float stun = def.HitStun + aff.Stun;
                 if (stun > 0) target.StunT = Math.Max(target.StunT, stun);
                 float knock = def.HitKnock + aff.Knock;
@@ -1527,6 +1973,8 @@ namespace Rescue.Sim
                 }
             }
             if (e.Def.Armor > 0 && src == null) dmg *= 1f - e.Def.Armor;
+            if (src != null && (e.Def.Armor > 0 || e.Boss != null) && HasBondTrait(src.Id, BondTrait.PierceCrit))
+                dmg *= 1.10f;
             e.Hp -= dmg;
             Emit(new SimEvent { Type = Ev.Hit, A = e.Id, B = src != null ? 1 : 0, Val = dmg, Flag = flag, P = e.Pos });
             if (e.Hp > 0) return;
@@ -1540,6 +1988,36 @@ namespace Rescue.Sim
             float raw = e.Def.Reward * e.RewardMul;
             foreach (var bh in _bunsHeroes)
                 if (V2.Dist(bh.Pos, e.Pos) <= bh.Def.KillBuns) { raw += 1; break; }
+            if (M.Chapter.Rule == BattleRule.Labyrinth)
+            {
+                _ruleKillAcc++;
+                if (_ruleKillAcc >= 5)
+                {
+                    _ruleKillAcc = 0;
+                    Buns += 1;
+                    Emit(new SimEvent { Type = Ev.Buns, Val = 1, P = e.Pos });
+                }
+            }
+            if (src != null && HasBondTrait(src.Id, BondTrait.BanditBuns))
+            {
+                if (e.Boss != null)
+                {
+                    Buns += 3;
+                    Emit(new SimEvent { Type = Ev.Buns, Val = 3, P = e.Pos });
+                }
+                else
+                {
+                    _bondKillAcc.TryGetValue(src.Id, out int kc);
+                    kc++;
+                    if (kc >= 5)
+                    {
+                        kc = 0;
+                        Buns += 1;
+                        Emit(new SimEvent { Type = Ev.Buns, Val = 1, P = e.Pos });
+                    }
+                    _bondKillAcc[src.Id] = kc;
+                }
+            }
             _incomeAcc += raw * IncomeMul;
             int reward = (int)_incomeAcc;
             _incomeAcc -= reward;

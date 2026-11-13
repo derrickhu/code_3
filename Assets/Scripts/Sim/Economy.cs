@@ -8,8 +8,8 @@ namespace Rescue.Sim
     /// </summary>
     public static class Economy
     {
-        /// <summary>商店货价，下标是货号：生辰纲、替天行道旗、水泊、石碣、蒙汗药、天书、包子、续命丹、方便铲、攻速符、御敌千里、陷阱、十字坡灶、招贤酒。</summary>
-        public static readonly int[] ItemPrices = { 100, 240, 220, 340, 140, 360, 90, 320, 160, 220, 200, 80, 180, 220 };
+        /// <summary>商店货价，下标是货号：生辰纲、替天行道旗、水泊、石碣、蒙汗药、天书、包子、续命丹、方便铲、攻速符、御敌千里、陷阱、十字坡灶、招贤酒、萧让代笔。</summary>
+        public static readonly int[] ItemPrices = { 100, 240, 220, 340, 140, 360, 90, 320, 160, 220, 200, 80, 180, 220, 200 };
 
         /// <summary>方便铲、十字坡灶、招贤酒、蒙汗药。</summary>
         public static readonly int[] CoreItems = { 8, 12, 13, 4 };

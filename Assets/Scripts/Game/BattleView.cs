@@ -59,20 +59,25 @@ namespace Rescue
         readonly Dictionary<int, FrameView> _frames = new Dictionary<int, FrameView>();
         readonly GoalView[] _goals = new GoalView[2];
         readonly List<Fx> _fx = new List<Fx>();
+        readonly Stack<SpriteRenderer> _spriteFxPool = new Stack<SpriteRenderer>();
+        const int MaxPooledSprites = 180;
+        int _minorDmgSkip;
+        bool LowFxLoad => M != null && (M.Wave >= 12 || _fx.Count >= 85);
+        bool HeavyFxLoad => M != null && (M.Wave >= 16 || _fx.Count >= 125);
         readonly SpriteRenderer[] _campSlots = new SpriteRenderer[Tuning.CampSlots];
 
-        SpriteRenderer _recruitBtn, _recruitFill, _pauseBtn, _mengBtn, _shuBtn, _baoziBtn, _fuBtn, _trapBtn, _rescueBtn;
+        SpriteRenderer _recruitBtn, _recruitFill, _pauseBtn, _mengBtn, _shuBtn, _baoziBtn, _fuBtn, _trapBtn, _penBtn, _rescueBtn;
         Transform _recruitRim, _recruitBun;
         bool _recruitDown, _pauseDown, _shovelDown, _rescueDown;
         int _passiveDown = -1;
         Vector3 _pauseRest = Vector3.one, _shovelRest = Vector3.one;
-        readonly CooldownRing[] _itemCd = new CooldownRing[5];
-        readonly TextMesh[] _itemCdText = new TextMesh[5];
-        readonly bool[] _itemCooling = new bool[5];
-        readonly float[] _itemFlash = new float[5];
+        readonly CooldownRing[] _itemCd = new CooldownRing[6];
+        readonly TextMesh[] _itemCdText = new TextMesh[6];
+        readonly bool[] _itemCooling = new bool[6];
+        readonly float[] _itemFlash = new bool[6].Length > 0 ? new float[6] : null;
         readonly List<SpriteRenderer> _passiveBtns = new List<SpriteRenderer>();
         readonly List<ShopItem> _passiveItems = new List<ShopItem>();
-        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _fuText, _trapText, _titleText;
+        TextMesh _recruitCost, _recruitLabel, _bunsText, _waveText, _midText, _mengText, _shuText, _baoziText, _fuText, _trapText, _penText, _titleText;
         Transform _shovelRoot;
         float _shovelSlide;
         bool _shovelForce;
@@ -382,9 +387,17 @@ namespace Rescue
             _rescueBtn = Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.GoldBright, Vector2.zero, new Vector2(0.84f, 1.08f), 50);
             Gfx.Sprite(_rescueRoot, Art.Frame, Pal.Gold, Vector2.zero, new Vector2(0.84f, 1.08f), 51);
             Gfx.Text(_rescueRoot, "救", Fonts.Brush, 0.5f, Pal.RedDeep, new Vector2(0, 0.12f), 52);
-            Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Red, new Vector2(0, -0.34f), new Vector2(0.78f, 0.28f), 52);
-            Gfx.Sprite(_rescueRoot, Art.Img("ui_video"), Color.white, new Vector2(-0.2f, -0.34f), Vector2.one * 0.26f, 53);
-            Gfx.Text(_rescueRoot, "广告", Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0.12f, -0.34f), 53);
+            if (FreeRescue)
+            {
+                Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Willow, new Vector2(0, -0.34f), new Vector2(0.78f, 0.28f), 52);
+                Gfx.Text(_rescueRoot, "免费", Fonts.Kai, 0.18f, Pal.Paper, new Vector2(0, -0.34f), 53);
+            }
+            else
+            {
+                Gfx.Sprite(_rescueRoot, Art.Rounded, Pal.Red, new Vector2(0, -0.34f), new Vector2(0.78f, 0.28f), 52);
+                Gfx.Sprite(_rescueRoot, Art.Img("ui_video"), Color.white, new Vector2(-0.2f, -0.34f), Vector2.one * 0.26f, 53);
+                Gfx.Text(_rescueRoot, "广告", Fonts.Kai, 0.17f, Pal.Paper, new Vector2(0.12f, -0.34f), 53);
+            }
             _rescueRoot.gameObject.SetActive(false);
 
             _shovelRoot = new GameObject("shovelOffer").transform;
@@ -463,6 +476,7 @@ namespace Rescue
             _shuBtn = ItemButton(2, ItemSlot(2), "it_tianshu", "天书", Pal.Hex("F6C46B"), out _shuText);
             _fuBtn = ItemButton(3, ItemSlot(3), "it_fu", "攻速符", Pal.Hex("C9A6EE"), out _fuText);
             _trapBtn = ItemButton(4, ItemSlot(3), "it_trap", "陷阱", Pal.Hex("C5E08A"), out _trapText);
+            _penBtn = ItemButton(5, ItemSlot(3), "wp_fan", "代笔", Pal.Hex("C9A6EE"), out _penText);
             BuildPassives();
 
             _pauseBtn = Gfx.Sprite(_root, Art.Img("ui_pause"), Color.white, new Vector2(-3.5f, TopY), new Vector2(0.8f, 0.8f), 50, "pause");
@@ -596,9 +610,9 @@ namespace Rescue
         {
             var p = M.Player;
             _bunsText.text = p.Buns.ToString();
-            bool dismiss = _drag != null && _dragMoved;
-            bool over = dismiss && OverRecruit(PointerWorld());
-            bool can = p.CanPay && !dismiss;
+            bool dragging = _drag != null && _dragMoved;
+            bool over = dragging && OverRecruit(DragAim(PointerWorld()));
+            bool can = p.CanPay && !dragging;
             float ratio = p.RecruitCost <= 0 ? 0f : Mathf.Clamp01(p.Buns / (float)p.RecruitCost);
             if (ratio < _recruitShown - 0.02f) _recruitShown = ratio;
             else _recruitShown = Mathf.MoveTowards(_recruitShown, ratio, Time.deltaTime * 2.4f);
@@ -615,9 +629,9 @@ namespace Rescue
             _recruitCost.transform.localPosition = new Vector2(0.32f, ButtonY - 0.27f + sink);
             _recruitBun.localPosition = new Vector2(-0.06f, ButtonY - 0.27f + sink);
             _recruitBtn.size = new Vector2(RecruitW, RecruitH) * pulse * squash;
-            var face = dismiss ? (over ? Pal.Ink : Pal.InkSoft) : Pal.Hex("3A342C");
+            var face = over ? Pal.Ink : Pal.Hex("3A342C");
             _recruitBtn.color = _recruitDown ? face * 0.82f : face;
-            _recruitFill.enabled = !dismiss && _recruitShown > 0.02f;
+            _recruitFill.enabled = !over && _recruitShown > 0.02f;
             if (_recruitFill.enabled)
             {
                 var sprite = full ? Art.Rounded : Art.Progress;
@@ -633,14 +647,15 @@ namespace Rescue
                 float breathe = can ? 0.5f + 0.5f * Mathf.Sin(Time.time * 4.5f) : 0f;
                 _recruitFill.color = full ? Color.Lerp(ready, hot, Mathf.Max(_recruitFlash, breathe)) : body;
             }
-            _recruitLabel.text = dismiss ? "遣散" : "聚  义";
-            _recruitCost.text = dismiss ? "+" + Side.DismissRefund(_drag.Piece) : p.RecruitCost.ToString();
+            _recruitLabel.text = over ? "遣散" : "聚  义";
+            _recruitCost.text = over ? "+" + Side.DismissRefund(_drag.Piece) : p.RecruitCost.ToString();
 
             SyncItem(0, _mengBtn, _mengText, p.Items.MengHan, p.MengCd, Tuning.CdMeng);
             SyncItem(1, _baoziBtn, _baoziText, p.Items.Baozi, p.BaoziCd, Tuning.CdBaozi);
             SyncItem(2, _shuBtn, _shuText, p.Items.TianShu, p.ShuCd, Tuning.CdShu);
             SyncItem(3, _fuBtn, _fuText, p.Items.Fu, p.FuCd, Tuning.CdFu);
             SyncItem(4, _trapBtn, _trapText, p.Items.Trap, p.TrapCd, Tuning.CdTrap);
+            SyncItem(5, _penBtn, _penText, p.Items.Pen, p.PenCd, Tuning.CdPen);
             PlaceItems();
             PlacePassives();
 
@@ -653,9 +668,12 @@ namespace Rescue
             }
             if (rescue) _rescueRoot.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 8f) * 0.06f) * (_rescueDown ? 0.9f : 1f);
 
-            _waveText.text = (M.Wave > 0 ? $"第 {M.Wave} 波" : "备战") + " · 对手" + M.Chapter.RivalName;
+            _waveText.text = (M.Chapter.MaxWaves > 0
+                ? (M.Wave > 0 ? $"第 {M.Wave}/{M.Chapter.MaxWaves} 波" : $"共 {M.Chapter.MaxWaves} 波")
+                : (M.Wave > 0 ? $"第 {M.Wave} 波" : "备战")) + " · 宿敌" + M.Chapter.RivalName + " [军情]";
             float next = M.NextWaveIn;
             _midText.text = p.ShieldT > 0 ? $"宋江护体 {p.ShieldT:0} 秒"
+                : M.FinalWaveSpawned ? "肃清来敌即获大捷"
                 : M.Wave == 0 ? $"官兵 {next:0} 秒后到" : next > 0.1f ? $"下一波 {next:0} 秒" : $"第 {M.Wave} 波来袭";
 
             for (int s = 0; s < 2; s++) SyncSide(s, snap);
@@ -698,7 +716,7 @@ namespace Rescue
         /// <summary>主动道具和聚义同一行，靠左下角。一颗时放在聚义左边，多颗往聚义那边挤。</summary>
         void PlaceItems()
         {
-            var btns = new[] { _mengBtn, _baoziBtn, _shuBtn, _fuBtn, _trapBtn };
+            var btns = new[] { _mengBtn, _baoziBtn, _shuBtn, _fuBtn, _trapBtn, _penBtn };
             int shown = 0;
             foreach (var b in btns) if (b.gameObject.activeSelf) shown++;
             shown = Mathf.Min(shown, 2);
@@ -764,6 +782,8 @@ namespace Rescue
                 case 7: return l.Xuming;
                 case 8: return l.Shovels > 0;
                 case 10: return l.Far;
+                case 12: return l.Stove;
+                case 13: return l.Wine;
                 default: return false;
             }
         }
@@ -1090,6 +1110,17 @@ namespace Rescue
                     if (!mine) FloatText(at + new Vector2(0, -0.7f), "对手羁绊 " + ev.Text, Pal.RedDeep, 0.28f, 1.4f);
                     break;
                 }
+                case Ev.NemesisDuel:
+                {
+                    var from = World(ev.Side, ev.P);
+                    var to = World(ev.Side, ev.Q);
+                    Ring(from, 2.8f, Pal.GoldBright, 0.55f, 46);
+                    Streak(from, to, 0.2f, 0.12f, Pal.Red, Pal.GoldBright, 0.35f, 47);
+                    FloatText(from + Vector2.up * 0.72f, "宿命克星！", Pal.Red, mine ? 0.38f : 0.28f, 1.2f);
+                    if (_frames.TryGetValue(ev.A, out var dfv)) dfv.Glow();
+                    if (mine) _shake = Mathf.Max(_shake, 0.65f);
+                    break;
+                }
                 case Ev.Dismiss:
                     if (mine)
                     {
@@ -1137,6 +1168,7 @@ namespace Rescue
                 case "蒙汗药": icon = "it_menghan"; btn = _mengBtn; break;
                 case "陷阱": icon = "it_trap"; btn = _trapBtn; break;
                 case "天书": icon = "it_tianshu"; btn = _shuBtn; break;
+                case "萧让代笔": icon = "wp_fan"; btn = _penBtn; break;
                 default: return;
             }
             Vector2 from = btn.transform.localPosition;
@@ -1184,9 +1216,36 @@ namespace Rescue
 
         Fx NewSpriteFx(Sprite s, Color c, Vector2 pos, Vector2 size, int order, float life, Action<Fx, float> step)
         {
-            var fx = new Fx { Life = life, Step = step, C = c };
-            fx.Sr = Gfx.Sprite(_fxRoot, s, c, pos, size, order, "fx");
-            fx.Go = fx.Sr.gameObject;
+            SpriteRenderer sr = null;
+            while (_spriteFxPool.Count > 0 && sr == null)
+                sr = _spriteFxPool.Pop();
+            if (sr != null)
+            {
+                var go = sr.gameObject;
+                go.SetActive(true);
+                var tr = go.transform;
+                tr.localPosition = pos;
+                tr.localRotation = Quaternion.identity;
+                sr.sprite = s;
+                sr.color = c;
+                sr.sortingOrder = order;
+                if (s != null && s.border != Vector4.zero)
+                {
+                    sr.drawMode = SpriteDrawMode.Sliced;
+                    tr.localScale = Vector3.one;
+                    sr.size = size;
+                }
+                else
+                {
+                    sr.drawMode = SpriteDrawMode.Simple;
+                    tr.localScale = new Vector3(size.x, size.y, 1f);
+                }
+            }
+            else
+            {
+                sr = Gfx.Sprite(_fxRoot, s, c, pos, size, order, "fx");
+            }
+            var fx = new Fx { Life = life, Step = step, C = c, Sr = sr, Go = sr.gameObject };
             _fx.Add(fx);
             return fx;
         }
@@ -1199,10 +1258,15 @@ namespace Rescue
                 f.Age += dt;
                 float k = Mathf.Clamp01(f.Age / f.Life);
                 if (f.Go == null) { _fx.RemoveAt(i); continue; }
-                f.Step(f, k);
+                f.Step?.Invoke(f, k);
                 if (k >= 1f)
                 {
-                    Destroy(f.Go);
+                    if (f.Sr != null && f.Tm == null && f.Go.transform.childCount == 0 && _spriteFxPool.Count < MaxPooledSprites)
+                    {
+                        f.Go.SetActive(false);
+                        _spriteFxPool.Push(f.Sr);
+                    }
+                    else Destroy(f.Go);
                     _fx.RemoveAt(i);
                 }
             }
@@ -1230,9 +1294,11 @@ namespace Rescue
             fx.Go.transform.localRotation = Quaternion.Euler(0, 0, UnityEngine.Random.Range(0, 360f));
         }
 
-        /// <summary>击杀时飞溅的墨点。</summary>
+        /// <summary>击杀时飞溅的墨点（高波次自动限流防掉帧）。</summary>
         void InkDrops(Vector2 pos, int n)
         {
+            if (HeavyFxLoad) return;
+            if (LowFxLoad) n = Mathf.Max(1, n / 2);
             for (int i = 0; i < n; i++)
             {
                 var dir = UnityEngine.Random.insideUnitCircle.normalized * UnityEngine.Random.Range(0.3f, 0.75f);
@@ -1353,10 +1419,15 @@ namespace Rescue
             _fx.Add(fx);
         }
 
-        /// <summary>伤害数字。好汉打的用金字、大一号、描暗红边，和小兵的墨字分开。</summary>
+        /// <summary>伤害数字。好汉打的用金字、大一号、描暗红边；高波次对小兵普通微伤自动节流，暴击/克星/好汉金字照常全出。</summary>
         void DamageNumber(Vector2 pos, float val, int flag, bool hero = false)
         {
             int n = Mathf.Max(1, Mathf.RoundToInt(val));
+            if (!hero && flag == 0 && n < 18 && LowFxLoad)
+            {
+                _minorDmgSkip++;
+                if (HeavyFxLoad ? (_minorDmgSkip % 3 != 0) : (_minorDmgSkip % 2 != 0)) return;
+            }
             bool big = flag > 0 || n >= 18 || hero;
             float h = flag == 2 || n >= 40 ? 0.52f : flag > 0 ? 0.38f : hero ? 0.34f : big ? 0.38f : 0.26f;
             if (hero) h *= 1.1f;
@@ -1519,6 +1590,12 @@ namespace Rescue
                     OnPauseClicked?.Invoke();
                     return;
                 }
+                if (In(w, new Vector2(0.15f, TopY), new Vector2(3.4f, 0.78f)) || In(w, new Vector2(0f, WallY), new Vector2(3.3f, 0.42f)))
+                {
+                    Sfx.Play(Snd.Tap, 0.7f);
+                    ShowChapterIntel();
+                    return;
+                }
                 for (int i = 0; i < _passiveBtns.Count; i++)
                 {
                     if (!HitItem(_passiveBtns[i], w, new Vector2(0.78f, 0.78f))) continue;
@@ -1564,7 +1641,7 @@ namespace Rescue
             if (_drag != null)
             {
                 if ((w - _downPos).magnitude > 0.18f) _dragMoved = true;
-                if (_dragMoved) { _drag.Target = w + new Vector2(0, 0.55f); HideCard(); }
+                if (_dragMoved) { _drag.Target = DragAim(w); HideCard(); }
                 ShowHighlights(_drag.Piece, w);
 
                 if (Input.GetMouseButtonUp(0)) EndDrag(w);
@@ -1607,11 +1684,12 @@ namespace Rescue
             var p = M.Player;
             _actives = new[]
             {
-                new ActiveItem { Btn = _mengBtn, Use = p.UseMengHan, Cd = () => p.MengCd, Max = Tuning.CdMeng, Count = () => p.Items.MengHan, Name = "蒙汗药", Desc = "全场官兵昏睡 3 秒", Icon = "it_menghan", Disc = Pal.Hex("C9A6EE") },
-                new ActiveItem { Btn = _baoziBtn, Use = p.UseBaozi, Cd = () => p.BaoziCd, Max = Tuning.CdBaozi, Count = () => p.Items.Baozi, Name = "包子", Desc = "五成半回一颗心，否则掉一颗", Icon = "bun", Disc = Pal.Hex("A4D8F2") },
-                new ActiveItem { Btn = _shuBtn, UseAt = p.UseTianShu, CanAt = p.ShuTarget, Cd = () => p.ShuCd, Max = Tuning.CdShu, Count = () => p.Items.TianShu, Name = "天书", Desc = "拖到哪个兵身上，哪个升一级；灶也能升", Icon = "it_tianshu", Disc = Pal.Hex("F6C46B") },
-                new ActiveItem { Btn = _fuBtn, Use = p.UseFu, Cd = () => p.FuCd, Max = Tuning.CdFu, Count = () => p.Items.Fu, Name = "攻速符", Desc = "全军攻速 +40%，持续十二秒", Icon = "it_fu", Disc = Pal.Hex("C9A6EE") },
-                new ActiveItem { Btn = _trapBtn, Use = p.UseTrap, Cd = () => p.TrapCd, Max = Tuning.CdTrap, Count = () => p.Items.Trap, Name = "陷阱", Desc = "官兵跌回去，一时爬不上来", Icon = "it_trap", Disc = Pal.Hex("C5E08A") },
+                new ActiveItem { Btn = _mengBtn, Use = p.UseMengHan, Cd = () => p.MengCd, Max = Tuning.CdMeng, Count = () => p.Items.MengHan, Name = "蒙汗药", Desc = "官兵停住3秒，不走也不打", Icon = "it_menghan", Disc = Pal.Hex("C9A6EE") },
+                new ActiveItem { Btn = _baoziBtn, Use = p.UseBaozi, Cd = () => p.BaoziCd, Max = Tuning.CdBaozi, Count = () => p.Items.Baozi, Name = "包子", Desc = "多半给宋江加一颗心，不成就掉一颗", Icon = "bun", Disc = Pal.Hex("A4D8F2") },
+                new ActiveItem { Btn = _shuBtn, UseAt = p.UseTianShu, CanAt = p.ShuTarget, Cd = () => p.ShuCd, Max = Tuning.CdShu, Count = () => p.Items.TianShu, Name = "天书", Desc = "拖到兵或灶上升一级，满级的不行", Icon = "it_tianshu", Disc = Pal.Hex("F6C46B") },
+                new ActiveItem { Btn = _fuBtn, Use = p.UseFu, Cd = () => p.FuCd, Max = Tuning.CdFu, Count = () => p.Items.Fu, Name = "攻速符", Desc = "出手快四成，管十二秒，满级也算", Icon = "it_fu", Disc = Pal.Hex("C9A6EE") },
+                new ActiveItem { Btn = _trapBtn, Use = p.UseTrap, Cd = () => p.TrapCd, Max = Tuning.CdTrap, Count = () => p.Items.Trap, Name = "陷阱", Desc = "官兵被推回去，还得愣一会儿", Icon = "it_trap", Disc = Pal.Hex("C5E08A") },
+                new ActiveItem { Btn = _penBtn, UseAt = p.UsePen, CanAt = p.PenTarget, Cd = () => p.PenCd, Max = Tuning.CdPen, Count = () => p.Items.Pen, Name = "萧让代笔", Desc = "拖到单字上补缺的字，拖到兵上把兵变成字", Icon = "wp_fan", Disc = Pal.Hex("C9A6EE") },
             };
 
             float fieldY = MyBottom + Board.Rows * 0.5f;
@@ -1713,14 +1791,16 @@ namespace Rescue
             _zoneRim.color = (cooling ? Pal.Ink : Pal.GoldBright).A(0.55f + 0.35f * pulse);
         }
 
-        /// <summary>点名的道具：能落的格子描金标「升」，指到的那格更亮；字写在指到的格子上方。</summary>
+        /// <summary>点名的道具（天书/萧让代笔）：能落的格子描金标「升/配/化」，指到的那格更亮；字写在指到的格子上方。</summary>
         void DrawTargets(ActiveItem a, Vector2 w, bool field, bool cooling, float pulse)
         {
             _zone.enabled = false;
             _zoneRim.enabled = false;
+            bool isPen = a.Name == "萧让代笔";
             bool hover = TryMyCell(w + new Vector2(0, 0.55f), out var hc, out var hr);
             bool hit = false;
             int any = 0;
+            string hoverPenLine = "";
             for (int c = 0; c < Board.Cols; c++)
                 for (int r = 0; r < Board.Rows; r++)
                 {
@@ -1731,17 +1811,33 @@ namespace Rescue
                     _aimRim[c, r].enabled = _aimTag[c, r].enabled = ok;
                     _aimText[c, r].gameObject.SetActive(ok);
                     if (!ok) continue;
+                    if (isPen)
+                    {
+                        bool hasPrev = M.Player.PreviewPen(c, r, out char ch, out var hd, out bool isUnit);
+                        _aimText[c, r].text = isUnit ? "化" : "配";
+                        if (on && hasPrev)
+                            hoverPenLine = isUnit
+                                ? $"松手化为「{ch}」（凑{hd.Name}）"
+                                : $"松手补「{ch}」凑{hd.Name}";
+                    }
+                    else _aimText[c, r].text = "升";
                     _aimRim[c, r].color = on ? Pal.GoldBright : Pal.GoldBright.A(0.55f + 0.4f * pulse);
                     _aimRim[c, r].transform.localScale = Vector3.one * (on ? 1.08f : 1f);
                     _aimTag[c, r].color = on ? Pal.RedDeep : Pal.Gold;
                 }
             _zonePill.enabled = field;
             if (!field) { _zoneText.text = ""; return; }
-            _zoneText.text = cooling ? $"还要 {Mathf.CeilToInt(a.Cd())} 秒"
-                : hit ? "松手升一级"
-                : any == 0 ? "场上没有能升级的" : "拖到发光的兵或灶上";
+            if (cooling) _zoneText.text = $"还要 {Mathf.CeilToInt(a.Cd())} 秒";
+            else if (isPen)
+                _zoneText.text = hit && hoverPenLine.Length > 0 ? hoverPenLine
+                    : any == 0 ? "先摆孤字或兵上场" : "拖到孤字补配对，或拖到兵上化金字";
+            else
+                _zoneText.text = hit ? "松手升一级"
+                    : any == 0 ? "场上没有能升级的" : "拖到发光的兵或灶上";
+            _zonePill.size = new Vector2(Mathf.Clamp(_zoneText.text.Length * 0.40f + 0.65f, 3.2f, 7.2f), 0.66f);
             var at = hit ? CellWorld(0, hc, hr) + new Vector2(0, 1.25f) : new Vector2(0, MyBottom + Board.Rows * 0.5f);
-            at.x = Mathf.Clamp(at.x, Left + 1.7f, -Left - 1.7f);
+            float halfW = _zonePill.size.x * 0.5f + 0.1f;
+            at.x = Mathf.Clamp(at.x, Left + halfW, -Left - halfW);
             _zoneText.transform.localPosition = at;
             _zonePill.transform.localPosition = at;
         }
@@ -1821,7 +1917,10 @@ namespace Rescue
                 if (!TryMyCell(w + new Vector2(0, 0.55f), out var c, out var r) || !a.UseAt(c, r))
                 {
                     Sfx.Play(Snd.Deny);
-                    Tip(at, AnyTarget(a) ? "拖到兵或灶上才算数，这本没用掉" : "场上没有能升级的");
+                    string failTip = a.Name == "萧让代笔"
+                        ? (AnyTarget(a) ? "拖到孤字或小兵身上才落笔，这支没用掉" : "场上还没有孤字或小兵")
+                        : (AnyTarget(a) ? "拖到兵或灶上才算数，这本没用掉" : "场上没有能升级的");
+                    Tip(at, failTip);
                     return;
                 }
                 Ring(CellWorld(0, c, r), 0.9f, a.Disc, 0.4f, 46);
@@ -1888,7 +1987,7 @@ namespace Rescue
         void ShowBubble(float anchorX, string title, string state, string body, string icon, float dur)
         {
             HideCard();
-            string text = FitLines(14, 3, body);
+            string text = WrapChars(body, 14, 4);
             int lines = 1;
             foreach (var ch in text) if (ch == '\n') lines++;
             float h = 0.74f + lines * 0.3f;
@@ -1944,12 +2043,24 @@ namespace Rescue
             });
         }
 
+        public bool FreeRescue => M.Chapter.Index == 0 && !M.Chapter.IsDaily && !M.Chapter.IsEndless;
+
         public void RescueAd()
         {
             var p = M.Player;
             if (p.RescueUsed || M.Over) return;
+            if (FreeRescue)
+            {
+                Analytics.TutorialStep("free_rescue");
+                p.Rescue();
+                return;
+            }
             ShowAd("公孙胜作法", () => p.Rescue());
         }
+
+        /// <summary>拖动时棋子画在手指上方。落点、高亮、遣散都认这块棋子的中心，不认被棋子挡住的手指。</summary>
+        const float DragLift = 0.55f;
+        static Vector2 DragAim(Vector2 finger) => finger + new Vector2(0f, DragLift);
 
         bool OverRecruit(Vector2 w) => In(w, _recruitBtn.transform.localPosition, new Vector2(2.9f, 1.3f));
 
@@ -1977,34 +2088,34 @@ namespace Rescue
                 return;
             }
 
-            var drop = w + new Vector2(0, 0.35f);
-            bool ok = false;
-            if (OverRecruit(w))
-            {
-                ok = _dragCamp >= 0 ? p.DismissCamp(_dragCamp) : p.DismissCell(_dragCell.c, _dragCell.r);
-                if (ok) return;
-            }
-            int slot = CampAt(drop);
-            if (slot < 0) slot = CampAt(w);
-            if (v.Piece.Type == PieceType.Stove && (slot >= 0 || OverRecruit(w)))
+            var aim = DragAim(w);
+            bool onCell = TryMyCell(aim, out var c, out var r);
+            int slot = onCell ? -1 : CampAt(aim);
+            if (v.Piece.Type == PieceType.Stove && (slot >= 0 || OverRecruit(aim)))
             {
                 Sfx.Play(Snd.Deny);
                 v.Punch(0.1f);
                 Tip(new Vector2(0, CampY + 1.1f), "灶搬不回山寨，只能在场上挪");
                 return;
             }
-            if (slot >= 0)
-            {
-                ok = _dragCamp >= 0 ? p.CampToCamp(_dragCamp, slot) : p.CellToCamp(_dragCell.c, _dragCell.r, slot);
-            }
-            else if (TryMyCell(drop, out var c, out var r) || TryMyCell(w, out c, out r))
+            bool ok = false;
+            if (onCell)
             {
                 ok = _dragCamp >= 0 ? p.CampToCell(_dragCamp, c, r) : p.CellToCell(_dragCell.c, _dragCell.r, c, r);
                 if (ok) { Sfx.Play(Snd.Place, 0.8f); OnPlaced?.Invoke(); }
                 else if (v.Piece.Type == PieceType.Shovel) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "铲子只能挖草地");
                 else if (p.Board.Diggable(c, r)) Tip(CellWorld(0, c, r) + Vector2.up * 0.9f, "这块是草地，先用铲子开荒");
             }
-            if (ok && slot >= 0) Sfx.Play(Snd.Tap, 0.7f);
+            else if (slot >= 0)
+            {
+                ok = _dragCamp >= 0 ? p.CampToCamp(_dragCamp, slot) : p.CellToCamp(_dragCell.c, _dragCell.r, slot);
+                if (ok) Sfx.Play(Snd.Tap, 0.7f);
+            }
+            else if (OverRecruit(aim))
+            {
+                ok = _dragCamp >= 0 ? p.DismissCamp(_dragCamp) : p.DismissCell(_dragCell.c, _dragCell.r);
+                if (ok) return;
+            }
             if (!ok) { Sfx.Play(Snd.Deny); v.Punch(0.1f); }
         }
 
@@ -2012,7 +2123,7 @@ namespace Rescue
         {
             var p = M.Player;
             var b = p.Board;
-            bool hasHover = TryMyCell(w + new Vector2(0, 0.35f), out var hc, out var hr);
+            bool hasHover = TryMyCell(DragAim(w), out var hc, out var hr);
             var nameTargets = piece.Type == PieceType.HeroChar ? NameTargets(piece.Char) : null;
             float blink = 0.5f + 0.5f * Mathf.Sin(Time.time * 8);
 
@@ -2066,7 +2177,7 @@ namespace Rescue
                 return;
             }
             var from = _dragCamp >= 0 ? CampWorld(_dragCamp) : CellWorld(0, _dragCell.c, _dragCell.r);
-            var to = w + new Vector2(0, 0.55f);
+            var to = DragAim(w);
             var d = to - from;
             float len = d.magnitude;
             if (len < 0.25f) { HideDragLine(); return; }
@@ -2158,6 +2269,54 @@ namespace Rescue
 
         // ─────────────────────────── 属性卡 ───────────────────────────
 
+        bool TryFindBoardPos(Piece target, out int bc, out int br)
+        {
+            var pcs = M.Player.Board.Pieces;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (ReferenceEquals(pcs[c, r], target)) { bc = c; br = r; return true; }
+            bc = br = -1;
+            return false;
+        }
+
+        /// <summary>点击顶栏回目名或「[军情]」，随时明牌查看本回好汉池、头目绝技解法、克星×5与宿敌流派。</summary>
+        public void ShowChapterIntel()
+        {
+            if (_card != null && _card.gameObject.activeSelf && _cardKey == "intel")
+            {
+                HideCard();
+                return;
+            }
+            SetPicked(null);
+            HideRange();
+            var ch = M.Chapter;
+            var names = new List<string>();
+            foreach (var id in ch.Pool)
+            {
+                var hd = HeroDef.Get(id);
+                if (!hd.Hidden) names.Add(hd.Name);
+            }
+            var nem = HeroDef.Get(ch.Boss.Nemesis).Name;
+            var tips = new List<string>();
+            foreach (var sk in ch.Boss.Skills)
+            {
+                string tip = BossDef.CounterTip(sk);
+                if (!tips.Contains(tip)) tips.Add(tip);
+            }
+            string ruleLine = M.Chapter.Rule == BattleRule.None ? "" : $"战场规则：【{M.Chapter.RuleTitle}】{M.Chapter.RuleDesc}";
+            string body = Lines(
+                $"本回好汉：{string.Join("、", names)}",
+                ruleLine,
+                $"头目：{ch.Boss.Title}{ch.Boss.Name}",
+                $"克星：{nem}（伤×5+宿命加速）",
+                $"绝技：{ch.Boss.SkillText}",
+                $"破阵良策：{tips[0]}",
+                $"宿敌：{ch.RivalName}（{ch.RivalStyleLabel}）");
+            _cardKey = "intel";
+            PlaceCard("军情密报　" + ch.Name, ch.MaxWaves > 0 ? $"共{ch.MaxWaves}波" : "点空白收起", body, "密", Pal.TileHero, null);
+            _cardT = 7f;
+        }
+
         void ShowInfo(PieceView v)
         {
             var piece = v.Piece;
@@ -2166,13 +2325,16 @@ namespace Rescue
             var style = RangeStyle.Unit;
             Vector2 center = v.Root.localPosition;
             Color seal = Pal.Tile;
+            bool onBoard = TryFindBoardPos(piece, out int pc, out int pr);
+            int orphanNear = onBoard ? M.Player.OrphanBoostersNear(pc, pr) : 0;
             if (piece.Type == PieceType.Unit)
             {
                 var d = UnitDef.Get(piece.Kind);
                 title = d.Glyph + "兵";
                 level = $"Lv.{piece.Level}";
                 range = d.RangeWith(M.Player.Items.Far);
-                body = $"类型：{d.TypeLabel}　射程：{range:0.#}格\n攻击力：{d.DamageAt(piece.Level):0.#}　攻速：{1f / d.CooldownAt(piece.Level):0.0}次/秒\n满级{UnitDef.MaxLevel}级 · {d.Role}";
+                string orphanLine = orphanNear > 0 ? $"受周围 {orphanNear} 枚孤字助威：出手速度提升" : "";
+                body = Lines($"类型：{d.TypeLabel}", $"射程：{range:0.#}格", $"攻击力：{d.DamageAt(piece.Level):0.#}", $"攻速：{1f / d.CooldownAt(piece.Level):0.0}次/秒", $"满级{UnitDef.MaxLevel}级", d.Role, orphanLine);
             }
             else if (piece.Type == PieceType.Stove)
             {
@@ -2184,7 +2346,7 @@ namespace Rescue
                 seal = Pal.Hex("F6D3A8");
                 string state = made >= cap ? "这一局的面用完了" : $"这一局已出 {made}/{cap} 个";
                 string up = lv >= Tuning.StoveMaxLevel ? "火已经最旺了" : $"天书升 {lv + 1} 级：{Tuning.StoveGap[lv]:0.#} 秒出 {Tuning.StoveYield[lv]} 个，最多 {Side.StoveCapAt(lv + 1)} 个";
-                body = FitLines(26, 5, $"每 {Tuning.StoveGap[lv - 1]:0.#} 秒出 {Tuning.StoveYield[lv - 1]} 个炊饼　{state}", up, "能在场上挪，不能收回山寨");
+                body = Lines($"每 {Tuning.StoveGap[lv - 1]:0.#} 秒出 {Tuning.StoveYield[lv - 1]} 个炊饼", state, up, "能在场上挪，不能收回山寨");
             }
             else if (piece.Type == PieceType.Shovel)
             {
@@ -2206,26 +2368,40 @@ namespace Rescue
                 int wlv = gearDef == null ? 1 : M.Player.GearRank(d);
                 float wmul = M.Player.GearMul(d);
                 float bond = M.Player.BondBonus(d.Id);
-                float water = h.OnWater ? d.WaterBonus * aff.Water : 1f;
+                float water = h.OnWater ? d.WaterBonus * aff.Water
+                    : (d.WaterBonus > 1f && M.Player.HasBondTrait(d.Id, BondTrait.WaveWater) ? 1f + (d.WaterBonus - 1f) * 0.4f : 1f);
                 float power = d.DamageAt(h.Level) * water * wmul * aff.Dmg * (1f + bond);
-                float cd = d.CooldownAt(h.Level) * (aff.Cd <= 0f ? 1f : aff.Cd);
-                string xp = h.Level >= UnitDef.MaxLevel ? "已满级" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}　满级{UnitDef.MaxLevel}级";
-                string atk = d.NoAttack ? "不出手" : $"攻击力：{power:0.#}　攻速：{1f / cd:0.0}次/秒";
-                string gear = "";
+                float cd = d.CooldownAt(h.Level) * (aff.Cd <= 0f ? 1f : aff.Cd) * (M.Player.HasBondTrait(d.Id, BondTrait.SwornGuard) ? 0.85f : 1f);
+                string xp = h.Level >= UnitDef.MaxLevel ? "已满级（仍享攻速符加成）" : $"经验值 {Mathf.FloorToInt(h.Xp)}/{HeroInstance.XpNeed(h.Level)}";
+                string xpCap = h.Level >= UnitDef.MaxLevel ? "" : $"满级{UnitDef.MaxLevel}级";
+                string atk = d.NoAttack ? "不出手" : $"攻击力：{power:0.#}";
+                string spd = d.NoAttack ? "" : $"攻速：{1f / cd:0.0}次/秒";
+                string ult = d.NoAttack ? "" : $"绝技：{M.Player.UltMax(h):0.#}秒";
+                string gearName = "", gearGrade = "", gearFrom = "", gearDmg = "";
                 if (gearDef != null)
                 {
                     int pct = Mathf.RoundToInt((wmul - 1f) * 100f);
-                    string from = gearDef.Id == d.Id ? "原主　" : "出自" + gearDef.Name + "　";
-                    gear = $"兵器 {gearDef.Weapon}　{Weapons.Grades[Mathf.Clamp(gearDef.WGrade, 0, 3)]} {wlv}阶　{from}伤害 +{pct}%";
+                    gearName = "兵器 " + gearDef.Weapon;
+                    gearGrade = $"{Weapons.Grades[Mathf.Clamp(gearDef.WGrade, 0, 3)]} {wlv}阶";
+                    gearFrom = gearDef.Id == d.Id ? "原主" : "出自" + gearDef.Name;
+                    gearDmg = $"伤害 +{pct}%";
                 }
                 string bonds = "";
-                foreach (var bd in M.Player.ActiveBonds) if (System.Array.IndexOf(bd.Members, d.Id) >= 0) bonds += (bonds.Length > 0 ? "、" : "") + bd.Name;
-                if (bonds.Length > 0) bonds = $"羁绊 {bonds}　伤害 +{Mathf.RoundToInt(bond * 100f)}%";
-                string star = d.Rank > 0 ? d.Star : "隐藏好汉";
+                var traitNames = new List<string>();
+                foreach (var bd in M.Player.ActiveBonds)
+                    if (System.Array.IndexOf(bd.Members, d.Id) >= 0)
+                    {
+                        bonds += (bonds.Length > 0 ? "、" : "") + bd.Name;
+                        string tn = Bond.TraitName(bd.Trait);
+                        if (!traitNames.Contains(tn)) traitNames.Add(tn);
+                    }
+                if (bonds.Length > 0)
+                    bonds = $"羁绊 {bonds}　伤+{Mathf.RoundToInt(bond * 100f)}%【{string.Join("/", traitNames)}】";
+                string star = d.Rank > 0 ? $"{d.Star}·{d.Nick}" : "隐藏好汉";
                 string affix = gearDef == null ? "" : Weapons.AffixText(gearDef.WKind);
                 var move = Weapons.MoveOf(gearDef);
                 string moveLine = move == WeaponMove.None ? "" : $"招式「{Weapons.MoveName(move)}」{Weapons.MoveText(move)}";
-                body = FitLines(26, 8, $"{star}·{d.Nick}　类型：{d.TypeLabel}", atk, xp, gear, affix, moveLine, d.Skill, bonds);
+                body = Lines(star, $"类型：{d.TypeLabel}", atk, spd, ult, xp, xpCap, gearName, gearGrade, gearFrom, gearDmg, affix, moveLine, d.Skill, bonds);
                 range = M.Player.ShownRange(d);
                 style = d.Disha ? RangeStyle.Disha : RangeStyle.Hero;
             }
@@ -2237,7 +2413,10 @@ namespace Rescue
                 title = "「" + piece.Char + "」";
                 level = $"Lv.{piece.Level}";
                 seal = Pal.Hex("F8E7B0");
-                body = FitLines(26, 5, "金字，还没成名", "可组成：" + string.Join("、", names), "按名字顺序左到右或上到下摆好", "凑成好汉后，击杀官兵才一起升级");
+                string auraLine = onBoard
+                    ? "孤字助威（生效中）：周围八格友军攻速 +6%"
+                    : "孤字助威：摆上场可令周围八格友军攻速 +6%";
+                body = Lines(auraLine, "可组成：" + string.Join("、", names), "按名字顺序左→右或上→下紧挨成将", "可用「萧让代笔」补齐缺字");
             }
 
             _cardKey = "piece";
@@ -2249,19 +2428,48 @@ namespace Rescue
             v.Punch(0.15f);
         }
 
-        /// <summary>纸签钉在山寨下沿。原点在纸签顶边中点，弹出时只往下长，不会拱进棋盘。</summary>
+        /// <summary>纸签宽。正文从印鉴右侧排到右内边，汉字按一格、数字按六成宽。</summary>
+        const float CardW = 7.56f;
+        const float CardBody0 = 0.22f;
+        const float CardSealS = 0.68f;
+
+        static float CardTextLeft => -CardW * 0.5f + 0.18f + CardSealS + 0.16f;
+        static float CardTextRight => CardW * 0.5f - 0.20f;
+
+        /// <summary>纸签顶到屏幕底边还剩多高。字再多也得收在这条里面。</summary>
+        float CardRoom()
+        {
+            if (_cam == null) return 2.05f;
+            float bottom = _cam.transform.position.y - _cam.orthographicSize;
+            float top = CampY - 0.66f;
+            return Mathf.Max(1.45f, top - bottom - 0.06f);
+        }
+
+        /// <summary>纸签钉在山寨下沿。原点在纸签顶边中点，只往下长。短句往右接，接不下再换行；仍超高就把字号收一档，保证最后一行落在框内。</summary>
         void PlaceCard(string title, string level, string body, string glyph, Color seal, Sprite icon)
         {
-            const float width = 7.56f;
-            const float pitch = 0.26f;
-            int lines = 1;
-            foreach (var ch in body) if (ch == '\n') lines++;
-            if (string.IsNullOrEmpty(body)) lines = 0;
-            float h = Mathf.Clamp(0.72f + lines * pitch, 1.28f, 2.81f);
+            float textL = CardTextLeft;
+            float room = CardRoom();
+            float size = CardBody0;
+            string shown = body ?? "";
+            float h = 1.28f;
+            for (int attempt = 0; attempt < 6; attempt++)
+            {
+                float em = (CardTextRight - textL) / size;
+                shown = PackEm(body, em);
+                int lines = string.IsNullOrEmpty(shown) ? 0 : 1;
+                foreach (var ch in shown) if (ch == '\n') lines++;
+                float pitch = size * 1.22f;
+                h = 0.62f + Mathf.Max(0, lines - 1) * pitch + (lines > 0 ? size : 0f) + 0.16f;
+                if (h < 1.28f) h = 1.28f;
+                if (h <= room + 0.01f || size <= 0.16f) break;
+                size = Mathf.Max(0.16f, size * room / h * 0.96f);
+            }
+            if (h > room) h = room;
 
             _card.gameObject.SetActive(true);
             _card.localPosition = new Vector2(0f, CampY - 0.66f);
-            _cardSize = new Vector2(width, h);
+            _cardSize = new Vector2(CardW, h);
             float cy = -h * 0.5f;
             _cardShadow.transform.localPosition = new Vector2(0.04f, cy - 0.05f);
             _cardShadow.size = _cardSize;
@@ -2270,11 +2478,10 @@ namespace Rescue
             _cardPaper.transform.localPosition = new Vector2(0f, cy);
             _cardPaper.size = _cardSize - new Vector2(0.1f, 0.1f);
 
-            const float sealS = 0.68f;
-            float sealX = -width * 0.5f + 0.18f + sealS * 0.5f;
-            float sealY = -0.18f - sealS * 0.5f;
+            float sealX = -CardW * 0.5f + 0.18f + CardSealS * 0.5f;
+            float sealY = -0.18f - CardSealS * 0.5f;
             _cardSeal.transform.localPosition = new Vector2(sealX, sealY);
-            _cardSeal.size = new Vector2(sealS, sealS);
+            _cardSeal.size = new Vector2(CardSealS, CardSealS);
             _cardSeal.color = seal;
             _cardGlyph.text = icon == null ? glyph : "";
             _cardGlyph.transform.localPosition = new Vector2(sealX, sealY - 0.02f);
@@ -2283,18 +2490,18 @@ namespace Rescue
             {
                 _cardIcon.sprite = icon;
                 _cardIcon.transform.localPosition = new Vector2(sealX, sealY);
-                _cardIcon.transform.localScale = Vector3.one * (sealS * 0.86f);
+                _cardIcon.transform.localScale = Vector3.one * (CardSealS * 0.86f);
             }
 
-            float textL = sealX + sealS * 0.5f + 0.16f;
             _cardTitle.text = title;
             _cardTitle.transform.localPosition = new Vector2(textL, -0.32f);
             _cardLevel.text = level;
-            _cardLevel.transform.localPosition = new Vector2(width * 0.5f - 0.2f, -0.32f);
-            float ruleW = width * 0.5f - 0.2f - textL;
+            _cardLevel.transform.localPosition = new Vector2(CardW * 0.5f - 0.2f, -0.32f);
+            float ruleW = CardW * 0.5f - 0.2f - textL;
             _cardRule.transform.localPosition = new Vector2(textL + ruleW * 0.5f, -0.54f);
             _cardRule.transform.localScale = new Vector3(Mathf.Max(0.4f, ruleW), 0.04f, 1f);
-            _cardBody.text = body;
+            Gfx.SetHeight(_cardBody, size);
+            _cardBody.text = shown;
             _cardBody.transform.localPosition = new Vector2(textL, -0.60f);
             _cardT = 4f;
             _cardFrame = _frame;
@@ -2320,40 +2527,85 @@ namespace Rescue
             return name.Substring(name.Length - 2);
         }
 
-        static string FitLines(int width, int maxLines, params string[] parts)
+        /// <summary>几段说明先用换行隔开，真正排进纸签时再按宽度接成行。</summary>
+        static string Lines(params string[] parts)
         {
             var sb = new System.Text.StringBuilder();
-            int lines = 0;
             foreach (var part in parts)
             {
                 if (string.IsNullOrEmpty(part)) continue;
-                int col = 0;
-                foreach (var ch in part)
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(part);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>汉字算 1，英文数字算 0.62。一行还有空就接下一句，接不下整句换行；一句比行还长才从中间断开。</summary>
+        static string PackEm(string body, float width)
+        {
+            if (string.IsNullOrEmpty(body)) return "";
+            width = Mathf.Max(6f, width);
+            var sb = new System.Text.StringBuilder();
+            float col = 0f;
+            foreach (var raw in body.Split('\n'))
+            {
+                if (raw.Length == 0) continue;
+                var segs = new List<string>();
+                int i = 0;
+                while (i < raw.Length)
                 {
-                    if (ch == '\n')
+                    float used = 0f;
+                    int j = i;
+                    while (j < raw.Length)
                     {
-                        if (lines + 1 >= maxLines) return sb.ToString();
-                        sb.Append('\n');
-                        lines++;
-                        col = 0;
-                        continue;
+                        float w = raw[j] < 128 ? 0.62f : 1f;
+                        if (used > 0.01f && used + w > width + 0.05f) break;
+                        used += w;
+                        j++;
                     }
-                    if (col >= width)
-                    {
-                        if (lines + 1 >= maxLines) return sb.ToString();
-                        sb.Append('\n');
-                        lines++;
-                        col = 0;
-                    }
-                    if (col == 0 && sb.Length > 0 && sb[sb.Length - 1] != '\n')
-                    {
-                        if (lines + 1 >= maxLines) return sb.ToString();
-                        sb.Append('\n');
-                        lines++;
-                    }
-                    sb.Append(ch);
-                    col++;
+                    if (j == i) j = i + 1;
+                    segs.Add(raw.Substring(i, j - i));
+                    i = j;
                 }
+                foreach (var seg in segs)
+                {
+                    float need = 0f;
+                    foreach (var ch in seg) need += ch < 128 ? 0.62f : 1f;
+                    if (col > 0.01f && col + 1f + need > width + 0.05f)
+                    {
+                        sb.Append('\n');
+                        col = 0f;
+                    }
+                    if (col > 0.01f)
+                    {
+                        sb.Append('　');
+                        col += 1f;
+                    }
+                    sb.Append(seg);
+                    col += need;
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>窄气泡按字数折行，超行数的丢掉。</summary>
+        static string WrapChars(string body, int width, int maxLines)
+        {
+            if (string.IsNullOrEmpty(body)) return "";
+            var sb = new System.Text.StringBuilder();
+            int col = 0, lines = 0;
+            foreach (var ch in body)
+            {
+                if (ch == '\n' || col >= width)
+                {
+                    if (lines + 1 >= maxLines) break;
+                    if (sb.Length > 0 && sb[sb.Length - 1] != '\n') sb.Append('\n');
+                    lines++;
+                    col = 0;
+                    if (ch == '\n') continue;
+                }
+                sb.Append(ch);
+                col++;
             }
             return sb.ToString();
         }
@@ -2566,6 +2818,33 @@ namespace Rescue
                     found = true;
                 }
             return found;
+        }
+
+        public bool TryFindEmptyPair(out Vector2 leftPos, out Vector2 rightPos)
+        {
+            var b = M.Player.Board;
+            // 优先挑靠上路边、横向相邻的两块空石板（如 (2,3)-(3,3)），直观演示左→右连读成名。
+            for (int r = Board.Rows - 1; r >= 0; r--)
+                for (int c = 0; c < Board.Cols - 1; c++)
+                {
+                    if (!b.Placeable(c, r) || !b.Placeable(c + 1, r)) continue;
+                    if (b.Pieces[c, r] != null || b.Pieces[c + 1, r] != null) continue;
+                    int pickC = c == 1 && c + 2 < Board.Cols && b.Placeable(c + 2, r) && b.Pieces[c + 2, r] == null ? c + 1 : c;
+                    leftPos = CellWorld(0, pickC, r);
+                    rightPos = CellWorld(0, pickC + 1, r);
+                    return true;
+                }
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = Board.Rows - 1; r >= 1; r--)
+                {
+                    if (!b.Placeable(c, r) || !b.Placeable(c, r - 1)) continue;
+                    if (b.Pieces[c, r] != null || b.Pieces[c, r - 1] != null) continue;
+                    leftPos = CellWorld(0, c, r);
+                    rightPos = CellWorld(0, c, r - 1);
+                    return true;
+                }
+            leftPos = rightPos = default;
+            return false;
         }
 
         // ─────────────────────────── 子视图 ───────────────────────────

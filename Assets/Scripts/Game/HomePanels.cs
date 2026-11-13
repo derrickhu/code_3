@@ -837,9 +837,9 @@ namespace Rescue
                 var face = Ui.Framed(content, new Vector2(900, 172), Ui.Top(content, 0, 10 + i * rowH + rowH * 0.5f),
                     ready ? Pal.Hex("F6E7C2") : Pal.Hex("D8CDB8"), ready ? Pal.Hex("D9822B") : Edge, ready ? 6f : 4f, "framedBond");
                 var t = face.transform;
-                Ui.Stroke(Ui.Label(t, b.Name, 46, ready ? Pal.Hex("B5651D") : Pal.InkSoft, new Vector2(-300, 40), new Vector2(280, 66), TextAnchor.MiddleCenter, Fonts.Brush), Pal.Hex("FFF6E2"), 2f);
-                Ui.Label(t, $"{b.Need}人同场 · 伤害 +{Mathf.RoundToInt(b.Dmg * 100)}%", 24, Pal.RedDeep, new Vector2(-300, -10), new Vector2(280, 34));
-                Ui.Label(t, b.Story, 26, Pal.Ink, new Vector2(140, 40), new Vector2(580, 60), TextAnchor.MiddleLeft);
+                Ui.Stroke(Ui.Label(t, b.Name, 44, ready ? Pal.Hex("B5651D") : Pal.InkSoft, new Vector2(-300, 46), new Vector2(280, 62), TextAnchor.MiddleCenter, Fonts.Brush), Pal.Hex("FFF6E2"), 2f);
+                Ui.Label(t, $"{b.Need}人同场 · 伤+{Mathf.RoundToInt(b.Dmg * 100)}% · {Bond.TraitName(b.Trait)}", 22, Pal.RedDeep, new Vector2(-300, -4), new Vector2(288, 32)).fontStyle = FontStyle.Bold;
+                Ui.Label(t, $"{b.Story}\n<color=#7A1F12>【{Bond.TraitName(b.Trait)}】{Bond.TraitDesc(b.Trait)}</color>", 23, Pal.Ink, new Vector2(145, 36), new Vector2(576, 76), TextAnchor.MiddleLeft).supportRichText = true;
                 var sb = new System.Text.StringBuilder();
                 foreach (var id in b.Members)
                 {

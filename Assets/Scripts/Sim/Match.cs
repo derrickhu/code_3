@@ -35,16 +35,20 @@ namespace Rescue.Sim
             Sides[0] = new Side(0, this, false, seed * 7 + 1, playerItems);
             Sides[1] = new Side(1, this, true, seed * 13 + 5, WeaponLadder.ForRival(chapter, WeaponLadder.Power(playerItems)));
             Sides[1].IncomeMul = chapter.RivalIncome;
+            if (chapter.MaxWaves > 0) _nextWaveT = 8.5f;
         }
 
-        public float NextWaveIn => _qi < _queue.Count ? 0 : Math.Max(0, _nextWaveT - Time);
+        public bool FinalWaveSpawned => Chapter.MaxWaves > 0 && Wave >= Chapter.MaxWaves && _qi >= _queue.Count;
+
+        public float NextWaveIn => _qi < _queue.Count || (Chapter.MaxWaves > 0 && Wave >= Chapter.MaxWaves) ? 0 : Math.Max(0, _nextWaveT - Time);
 
         public void Step(float dt)
         {
             if (Over || Hold) return;
             Time += dt;
 
-            if (_qi >= _queue.Count && Time >= _nextWaveT) StartWave();
+            bool canStartNext = Chapter.MaxWaves <= 0 || Wave < Chapter.MaxWaves;
+            if (canStartNext && _qi >= _queue.Count && Time >= _nextWaveT) StartWave();
             if (_qi < _queue.Count)
             {
                 _spawnT -= dt;
@@ -53,7 +57,8 @@ namespace Rescue.Sim
                     var kind = _queue[_qi++];
                     foreach (var s in Sides) SpawnOn(s, kind, 0);
                     _spawnT = _interval;
-                    if (_qi >= _queue.Count) _nextWaveT = Time + Tuning.WaveGap(Wave);
+                    if (_qi >= _queue.Count)
+                        _nextWaveT = Time + (Chapter.MaxWaves > 0 ? 5.2f : Tuning.WaveGap(Wave));
                 }
             }
 
@@ -65,6 +70,12 @@ namespace Rescue.Sim
                 Over = true;
                 Winner = p && r ? (Player.Kills >= Rival.Kills ? 0 : 1) : p ? 1 : 0;
                 Events.Add(new SimEvent { Type = Ev.End, A = Winner });
+            }
+            else if (FinalWaveSpawned && !Player.HasAliveEnemy())
+            {
+                Over = true;
+                Winner = 0;
+                Events.Add(new SimEvent { Type = Ev.End, A = 0 });
             }
         }
 
@@ -83,18 +94,19 @@ namespace Rescue.Sim
             for (int i = 0; i < n; i++)
             {
                 var k = EnemyKind.Zu;
-                if (Wave >= 3 && _waveRng.Chance(0.22f)) k = EnemyKind.Chai;
+                if (Chapter.Rule == BattleRule.IronCavalry && Wave >= 2 && _waveRng.Chance(0.32f)) k = EnemyKind.Jia;
+                else if (Wave >= 3 && _waveRng.Chance(0.22f)) k = EnemyKind.Chai;
                 else if (Wave >= 5 && _waveRng.Chance(0.22f)) k = EnemyKind.Jia;
                 _queue.Add(k);
             }
 
-            bool elite = Wave >= 6 && Wave % 3 == 0;
+            bool elite = Chapter.MaxWaves > 0 ? Wave == Chapter.MaxWaves - 1 : (Wave >= 6 && Wave % 3 == 0);
             if (elite)
             {
-                int bu = Wave / 6;
+                int bu = Math.Max(1, Wave / 6);
                 for (int i = 0; i < bu; i++) _queue.Insert(Math.Min(_queue.Count, (i + 1) * _queue.Count / (bu + 1)), EnemyKind.Bu);
             }
-            bool boss = Wave % 8 == 0;
+            bool boss = Chapter.MaxWaves > 0 ? Wave == Chapter.MaxWaves : Wave % 8 == 0;
             if (boss) _queue.Add(EnemyKind.Boss);
 
             Events.Add(new SimEvent { Type = Ev.WaveStart, A = Wave, Side = -1 });

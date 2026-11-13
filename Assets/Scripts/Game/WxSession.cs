@@ -36,6 +36,10 @@ namespace Rescue
             "我在梁山排到座次了",
         };
 
+        // 发给朋友是 5:4，朋友圈是 1:1。相对代码包根目录，导出时从 tools/share 拷进 images/。
+        const string ShareImage = "images/share.jpg";
+        const string ShareTimelineImage = "images/share_sq.jpg";
+
         public static bool CanAskProfile
         {
             get
@@ -192,7 +196,12 @@ namespace Rescue
 #if RESCUE_WX
             try
             {
-                WX.OnShareTimeline(done => done(new OnShareTimelineListenerResult { title = PickTitle() }));
+                WX.OnShareTimeline(done => done(new OnShareTimelineListenerResult
+                {
+                    title = PickTitle(),
+                    imageUrl = ShareTimelineImage,
+                    imagePreviewUrl = ShareTimelineImage,
+                }));
             }
             catch (Exception e)
             {
@@ -210,9 +219,17 @@ namespace Rescue
                 {
                     menus = new[] { "shareAppMessage", "shareTimeline" },
                 });
-                WX.OnShareAppMessage(new WXShareAppMessageParam { title = PickTitle() }, done =>
+                WX.OnShareAppMessage(new WXShareAppMessageParam
                 {
-                    done(new WXShareAppMessageParam { title = PickTitle() });
+                    title = PickTitle(),
+                    imageUrl = ShareImage,
+                }, done =>
+                {
+                    done(new WXShareAppMessageParam
+                    {
+                        title = PickTitle(),
+                        imageUrl = ShareImage,
+                    });
                 });
             }
             catch (Exception e)
@@ -413,8 +430,126 @@ namespace Rescue
 #endif
         }
 
+        /// <summary>游戏圈按钮盖在主页入口上，并且正在显示。微信这个按钮点下去才会进圈，不能靠自己的点击回调跳转。</summary>
+        public static bool GameClubReady { get; private set; }
+
+        /// <summary>开发者工具里游戏圈按钮会直接拉起浏览器网页，真机才进圈。</summary>
+        public static bool Devtools
+        {
+            get
+            {
+#if RESCUE_WX
+                if (_devtools.HasValue) return _devtools.Value;
+                try
+                {
+                    var info = WX.GetSystemInfoSync();
+                    _devtools = info != null && info.platform == "devtools";
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning("[GameClub] " + e.Message);
+                    _devtools = false;
+                }
+                return _devtools.Value;
+#else
+                return false;
+#endif
+            }
+        }
+
+        /// <summary>主页露出时盖上，被别的页面挡住时藏起来。微信的按钮画在画布上面，不藏的话会穿透商店和弹层。开发者工具不盖，避免点一下打开浏览器。</summary>
+        public static void SyncGameClub(RectTransform hit, bool visible)
+        {
+#if RESCUE_WX
+            if (Devtools)
+            {
+                CloseGameClub();
+                return;
+            }
+            if (!visible || !hit)
+            {
+                if (_clubBtn != null && GameClubReady)
+                {
+                    _clubBtn.Hide();
+                    GameClubReady = false;
+                }
+                return;
+            }
+            Rect now = ScreenRect(hit);
+            if (now.width < 4f || now.height < 4f) return;
+            bool moved = _clubBtn == null
+                || Mathf.Abs(now.xMin - _clubRect.xMin) > 1f || Mathf.Abs(now.yMin - _clubRect.yMin) > 1f
+                || Mathf.Abs(now.width - _clubRect.width) > 1f || Mathf.Abs(now.height - _clubRect.height) > 1f;
+            if (!moved)
+            {
+                if (!GameClubReady)
+                {
+                    _clubBtn.Show();
+                    GameClubReady = true;
+                }
+                return;
+            }
+            CloseGameClub();
+            try
+            {
+                // 头像按钮的 JS 会自己除以像素比。游戏圈按钮不会，这里直接给逻辑像素，否则按钮落在章外面，点章没有反应。
+                RectInt r = ToCss(now);
+                _clubBtn = WX.CreateGameClubButton(new WXCreateGameClubButtonParam
+                {
+                    type = GameClubButtonType.text,
+                    text = " ",
+                    style = new GameClubButtonStyle
+                    {
+                        left = r.x,
+                        top = r.y,
+                        width = r.width,
+                        height = r.height,
+                        backgroundColor = "rgba(0, 0, 0, 0)",
+                        borderColor = "#FFFFFF",
+                        borderWidth = 0,
+                        borderRadius = 0,
+                        color = "rgba(0, 0, 0, 0)",
+                        textAlign = GameClubButtonTextAlign.center,
+                        fontSize = 16,
+                        lineHeight = r.height,
+                    },
+                });
+                if (_clubBtn == null) return;
+                _clubRect = now;
+                _clubBtn.Show();
+                GameClubReady = true;
+                Debug.Log($"[GameClub] 盖在 {r.x},{r.y} {r.width}x{r.height}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[GameClub] " + e.Message);
+                _clubBtn = null;
+                GameClubReady = false;
+            }
+#else
+            _ = hit;
+            _ = visible;
+#endif
+        }
+
+        public static void CloseGameClub()
+        {
+#if RESCUE_WX
+            if (_clubBtn != null)
+            {
+                try { _clubBtn.Destroy(); }
+                catch (Exception e) { Debug.LogWarning("[GameClub] " + e.Message); }
+                _clubBtn = null;
+            }
+#endif
+            GameClubReady = false;
+        }
+
 #if RESCUE_WX
         static WXUserInfoButton _infoBtn;
+        static WXGameClubButton _clubBtn;
+        static Rect _clubRect;
+        static bool? _devtools;
 
         static void ShowProfileButton(Rect screenRect, Action<string, string, string> got)
         {
@@ -502,6 +637,19 @@ namespace Rescue
                 Mathf.RoundToInt((Screen.height - screenRect.yMax) * scale),
                 Mathf.Max(1, Mathf.RoundToInt(screenRect.width * scale)),
                 Mathf.Max(1, Mathf.RoundToInt(screenRect.height * scale)));
+        }
+
+        /// <summary>游戏圈按钮的 left/top 是逻辑像素。头像按钮在 JS 里才除像素比，这边要自己除。</summary>
+        static RectInt ToCss(Rect screenRect)
+        {
+            RectInt physical = ToPhysical(screenRect);
+            float dpr = Convert.ToSingle(WX.GetSystemInfoSync().pixelRatio);
+            if (dpr < 1f) dpr = 1f;
+            return new RectInt(
+                Mathf.RoundToInt(physical.x / dpr),
+                Mathf.RoundToInt(physical.y / dpr),
+                Mathf.Max(1, Mathf.RoundToInt(physical.width / dpr)),
+                Mathf.Max(1, Mathf.RoundToInt(physical.height / dpr)));
         }
 
         static void AskAvatar(Action<string> done)

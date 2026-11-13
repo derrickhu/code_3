@@ -162,10 +162,25 @@ def patch_privacy_check():
     print("已关开发版隐私接口校验")
 
 
+def copy_share():
+    """分享图不进首包资源，放在代码包 images/ 里，imageUrl 用相对路径。"""
+    src_dir = ROOT / "tools/share"
+    dst_dir = ROOT / "wechat-minigame/minigame/images"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("share.jpg", "share_sq.jpg"):
+        src = src_dir / name
+        if not src.exists():
+            raise SystemExit(f"缺少 {src}，先跑 tools/build_share_art.py")
+        dst = dst_dir / name
+        shutil.copyfile(src, dst)
+        print(f"分享图 {dst.name}  {dst.stat().st_size // 1024}KB")
+
+
 def main():
     if not SRC.exists():
         raise SystemExit(f"缺少 {SRC}，先跑 tools/build_loading_art.py")
     compose()
+    copy_share()
     patch_game_js()
     patch_request_transport()
     patch_privacy_check()

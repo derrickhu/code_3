@@ -364,55 +364,79 @@ namespace Rescue.Sim
         }
     }
 
-    /// <summary>羁绊：同时凑出若干名有渊源的好汉，他们伤害提高。</summary>
+    /// <summary>羁绊质变机制：除了加伤害，不同渊源的好汉同场还会触发贴合水浒原著的战场特效。</summary>
+    public enum BondTrait { WaveWater, PierceCrit, BanditBuns, MysticUlt, SwornGuard }
+
+    /// <summary>羁绊：同时凑出若干名有渊源的好汉，他们伤害提高并激活原著特技。</summary>
     public sealed class Bond
     {
         public string Name, Story;
         public HeroId[] Members;
         public int Need;
         public float Dmg;
+        public BondTrait Trait;
+
+        public static string TraitName(BondTrait t) => t switch
+        {
+            BondTrait.WaveWater => "水泊掀浪",
+            BondTrait.PierceCrit => "铁骑破甲",
+            BondTrait.BanditBuns => "劫富犒军",
+            BondTrait.MysticUlt => "奇门借风",
+            _ => "生死护义",
+        };
+
+        public static string TraitDesc(BondTrait t) => t switch
+        {
+            BondTrait.WaveWater => "旱地亦享四成水战威势，水上命中绊缓官兵",
+            BondTrait.PierceCrit => "暴击率+12%，对铁甲与头目破甲增伤10%",
+            BondTrait.BanditBuns => "每斩五敌多得1炊饼，斩头目立得3炊饼",
+            BondTrait.MysticUlt => "绝技冷却缩短20%，奇门频出",
+            _ => "出手加快15%，结义瞬间为宋江张开护体金光",
+        };
+
+        public string EffectSummary => $"伤害+{Math.Round(Dmg * 100)}% · {TraitName(Trait)}（{TraitDesc(Trait)}）";
 
         public static readonly Bond[] All =
         {
-            new Bond { Name = "阮氏三雄", Need = 2, Dmg = 0.25f, Story = "石碣村打鱼的三兄弟，同心智取生辰纲",
+            new Bond { Name = "阮氏三雄", Need = 2, Dmg = 0.25f, Trait = BondTrait.WaveWater, Story = "石碣村打鱼的三兄弟，同心智取生辰纲",
                 Members = new[] { HeroId.RuanXiaoEr, HeroId.RuanXiaoWu, HeroId.RuanXiaoQi } },
-            new Bond { Name = "五虎上将", Need = 2, Dmg = 0.15f, Story = "梁山马军五虎将",
+            new Bond { Name = "五虎上将", Need = 2, Dmg = 0.15f, Trait = BondTrait.PierceCrit, Story = "梁山马军五虎将",
                 Members = new[] { HeroId.GuanSheng, HeroId.LinChong, HeroId.QinMing, HeroId.HuYanZhuo, HeroId.DongPing } },
-            new Bond { Name = "八骠骑", Need = 2, Dmg = 0.12f, Story = "马军八骠骑兼先锋使",
+            new Bond { Name = "八骠骑", Need = 2, Dmg = 0.12f, Trait = BondTrait.PierceCrit, Story = "马军八骠骑兼先锋使",
                 Members = new[] { HeroId.HuaRong, HeroId.XuNing, HeroId.YangZhi, HeroId.SuoChao, HeroId.ZhangQing, HeroId.ZhuTong, HeroId.ShiJin, HeroId.MuHong } },
-            new Bond { Name = "二龙山", Need = 2, Dmg = 0.15f, Story = "鲁智深、杨志、武松同占二龙山",
+            new Bond { Name = "二龙山", Need = 2, Dmg = 0.15f, Trait = BondTrait.BanditBuns, Story = "鲁智深、杨志、武松同占二龙山",
                 Members = new[] { HeroId.LuZhiShen, HeroId.YangZhi, HeroId.WuSong, HeroId.CaoZheng, HeroId.ShiEn, HeroId.ZhangQingY, HeroId.SunErNiang } },
-            new Bond { Name = "七星聚义", Need = 3, Dmg = 0.15f, Story = "晁盖与七人聚义，智取生辰纲",
+            new Bond { Name = "七星聚义", Need = 3, Dmg = 0.15f, Trait = BondTrait.MysticUlt, Story = "晁盖与七人聚义，智取生辰纲",
                 Members = new[] { HeroId.WuYong, HeroId.GongSunSheng, HeroId.LiuTang, HeroId.RuanXiaoEr, HeroId.RuanXiaoWu, HeroId.RuanXiaoQi, HeroId.BaiSheng } },
-            new Bond { Name = "张氏兄弟", Need = 2, Dmg = 0.2f, Story = "浔阳江上船火儿与浪里白条",
+            new Bond { Name = "张氏兄弟", Need = 2, Dmg = 0.2f, Trait = BondTrait.WaveWater, Story = "浔阳江上船火儿与浪里白条",
                 Members = new[] { HeroId.ZhangHeng, HeroId.ZhangShun } },
-            new Bond { Name = "解氏兄弟", Need = 2, Dmg = 0.2f, Story = "登州打虎的两头蛇与双尾蝎",
+            new Bond { Name = "解氏兄弟", Need = 2, Dmg = 0.2f, Trait = BondTrait.SwornGuard, Story = "登州打虎的两头蛇与双尾蝎",
                 Members = new[] { HeroId.XieZhen, HeroId.XieBao } },
-            new Bond { Name = "翠屏山", Need = 2, Dmg = 0.18f, Story = "杨雄、石秀结为兄弟，带时迁投梁山",
+            new Bond { Name = "翠屏山", Need = 2, Dmg = 0.18f, Trait = BondTrait.SwornGuard, Story = "杨雄、石秀结为兄弟，带时迁投梁山",
                 Members = new[] { HeroId.YangXiong, HeroId.ShiXiu, HeroId.ShiQian } },
-            new Bond { Name = "少华山", Need = 2, Dmg = 0.15f, Story = "史进与朱武、陈达、杨春不打不相识",
+            new Bond { Name = "少华山", Need = 2, Dmg = 0.15f, Trait = BondTrait.BanditBuns, Story = "史进与朱武、陈达、杨春不打不相识",
                 Members = new[] { HeroId.ShiJin, HeroId.ZhuWu, HeroId.ChenDa, HeroId.YangChun } },
-            new Bond { Name = "十字坡夫妻", Need = 2, Dmg = 0.18f, Story = "张青、孙二娘夫妻开店",
+            new Bond { Name = "十字坡夫妻", Need = 2, Dmg = 0.18f, Trait = BondTrait.BanditBuns, Story = "张青、孙二娘夫妻开店",
                 Members = new[] { HeroId.ZhangQingY, HeroId.SunErNiang } },
-            new Bond { Name = "王英扈三娘", Need = 2, Dmg = 0.18f, Story = "宋江作主，一丈青嫁了矮脚虎",
+            new Bond { Name = "王英扈三娘", Need = 2, Dmg = 0.18f, Trait = BondTrait.SwornGuard, Story = "宋江作主，一丈青嫁了矮脚虎",
                 Members = new[] { HeroId.WangYing, HeroId.HuSanNiang } },
-            new Bond { Name = "登州孙家", Need = 2, Dmg = 0.15f, Story = "孙立、孙新、顾大嫂登州劫牢",
+            new Bond { Name = "登州孙家", Need = 2, Dmg = 0.15f, Trait = BondTrait.BanditBuns, Story = "孙立、孙新、顾大嫂登州劫牢",
                 Members = new[] { HeroId.SunLi, HeroId.SunXin, HeroId.GuDaSao, HeroId.YueHe } },
-            new Bond { Name = "芒砀三杰", Need = 2, Dmg = 0.18f, Story = "混世魔王樊瑞与左右手项充、李衮",
+            new Bond { Name = "芒砀三杰", Need = 2, Dmg = 0.18f, Trait = BondTrait.MysticUlt, Story = "混世魔王樊瑞与左右手项充、李衮",
                 Members = new[] { HeroId.FanRui, HeroId.XiangChong, HeroId.LiGun } },
-            new Bond { Name = "画戟双英", Need = 2, Dmg = 0.2f, Story = "吕方、郭盛对影山斗戟，花荣一箭射开",
+            new Bond { Name = "画戟双英", Need = 2, Dmg = 0.2f, Trait = BondTrait.PierceCrit, Story = "吕方、郭盛对影山斗戟，花荣一箭射开",
                 Members = new[] { HeroId.LvFang, HeroId.GuoSheng } },
-            new Bond { Name = "揭阳水军", Need = 2, Dmg = 0.15f, Story = "李俊与童威、童猛浔阳江上做私商",
+            new Bond { Name = "揭阳水军", Need = 2, Dmg = 0.15f, Trait = BondTrait.WaveWater, Story = "李俊与童威、童猛浔阳江上做私商",
                 Members = new[] { HeroId.LiJun, HeroId.TongWei, HeroId.TongMeng, HeroId.LiLi } },
-            new Bond { Name = "铁牛与哥哥", Need = 2, Dmg = 0.2f, Story = "黑旋风生死追随宋江",
+            new Bond { Name = "铁牛与哥哥", Need = 2, Dmg = 0.2f, Trait = BondTrait.SwornGuard, Story = "黑旋风生死追随宋江",
                 Members = new[] { HeroId.SongJiang, HeroId.LiKui } },
-            new Bond { Name = "主仆情深", Need = 2, Dmg = 0.2f, Story = "浪子燕青舍命救主卢俊义",
+            new Bond { Name = "主仆情深", Need = 2, Dmg = 0.2f, Trait = BondTrait.SwornGuard, Story = "浪子燕青舍命救主卢俊义",
                 Members = new[] { HeroId.LuJunYi, HeroId.YanQing } },
-            new Bond { Name = "郓城都头", Need = 2, Dmg = 0.18f, Story = "朱仝、雷横先后私放晁盖、宋江",
+            new Bond { Name = "郓城都头", Need = 2, Dmg = 0.18f, Trait = BondTrait.SwornGuard, Story = "朱仝、雷横先后私放晁盖、宋江",
                 Members = new[] { HeroId.ZhuTong, HeroId.LeiHeng } },
-            new Bond { Name = "水火二将", Need = 2, Dmg = 0.2f, Story = "凌州圣水将、神火将",
+            new Bond { Name = "水火二将", Need = 2, Dmg = 0.2f, Trait = BondTrait.MysticUlt, Story = "凌州圣水将、神火将",
                 Members = new[] { HeroId.ShanTingGui, HeroId.WeiDingGuo } },
-            new Bond { Name = "江州好汉", Need = 2, Dmg = 0.12f, Story = "江州劫法场救宋江",
+            new Bond { Name = "江州好汉", Need = 2, Dmg = 0.12f, Trait = BondTrait.SwornGuard, Story = "江州劫法场救宋江",
                 Members = new[] { HeroId.DaiZong, HeroId.LiKui, HeroId.ZhangShun, HeroId.LiJun, HeroId.MuHong } },
         };
     }

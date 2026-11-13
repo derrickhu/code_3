@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-软件著作权登记 - 源程序代码 PDF 生成工具
-项目: 营救宋江小游戏软件
+软件著作权登记 - 源程序鉴别材料 PDF 生成脚本
+软件全称：深圳幸运呱科技有限公司营救宋江小游戏软件
+版本号：V1.0.0
 
-生成规则:
-  1. A4 纸张, 纵向, 单面
-  2. 页眉左侧: 软件全称 + 版本号
-  3. 页眉右侧: 阿拉伯数字连续页码
-  4. 页脚: 申请人名称
-  5. 每页不少于 50 行 (最后一页除外), 纯空白行不计入
-  6. 代码不足 60 页全部提交, 超过 60 页取前 30 页 + 后 30 页
+排版规范：
+  1. A4 纵向，页眉左为「软件全称 + 版本号」，页眉右为连续阿拉伯页码 1..60，页脚居中为著作权人名称
+  2. 剔除纯空行与仅在开发工具生效的 HomeGm.cs 调试脚本
+  3. 超长代码行按版心宽度自动折行，不以省略号截断任何源码字符
+  4. 每页固定 52 行（满足不少于 50 行要求），超过 60 页取前 30 页 + 后 30 页，第 60 页末行为完整模块闭合
 """
 
 import sys
@@ -21,69 +20,39 @@ from fpdf import FPDF
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-
 SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = Path('/Users/huyi/dk_proj/code_3')
-OUTPUT = SCRIPT_DIR / '软著源程序-营救宋江-V1.0.0.pdf'
+PROJECT_ROOT = SCRIPT_DIR.parent
+OUTPUT = SCRIPT_DIR / "软著源程序-营救宋江-V1.0.0.pdf"
 
-SOFTWARE_FULL_NAME = '深圳幸运呱科技有限公司营救宋江小游戏软件'
-SOFTWARE_VERSION = 'V1.0.0'
-APPLICANT_NAME = '深圳幸运呱科技有限公司'
+SOFTWARE_FULL_NAME = "深圳幸运呱科技有限公司营救宋江小游戏软件"
+SOFTWARE_VERSION = "V1.0.0"
+APPLICANT_NAME = "深圳幸运呱科技有限公司"
 
-LINES_PER_PAGE = 50
+LINES_PER_PAGE = 52
 FRONT_PAGES = 30
 BACK_PAGES = 30
 
-SONGTI_TTC = '/System/Library/Fonts/Supplemental/Songti.ttc'
-SONGTI_FACE = 1  # Songti SC 常规，比默认的黑体子集多「珪」等字
+SONGTI_TTC = "/System/Library/Fonts/Supplemental/Songti.ttc"
+SONGTI_FACE = 6  # Songti SC Regular
 
-CODE_FONT_SIZE = 9
-HEADER_FONT_SIZE = 10.5
-FOOTER_FONT_SIZE = 9
-LINENO_FONT_SIZE = 7.5
+CODE_FONT_SIZE = 8.5
+HEADER_FONT_SIZE = 9.5
+FOOTER_FONT_SIZE = 9.0
+LINENO_FONT_SIZE = 7.2
 
-LINE_HEIGHT = 4.6
-LEFT_MARGIN = 20
-RIGHT_MARGIN = 15
-TOP_MARGIN = 15
-BOTTOM_MARGIN = 15
+LINE_HEIGHT = 4.55
+LEFT_MARGIN = 18.0
+RIGHT_MARGIN = 15.0
+TOP_MARGIN = 14.0
+BOTTOM_MARGIN = 14.0
+LINENO_COL_W = 13.0
+CODE_MAX_W = 210.0 - LEFT_MARGIN - RIGHT_MARGIN - LINENO_COL_W - 2.0
 
-HEADER_TEXT = f'{SOFTWARE_FULL_NAME} {SOFTWARE_VERSION} 源程序'
-MAX_CODE_CHARS = 100
-
-
-class SoftCopyrightPDF(FPDF):
-    def __init__(self):
-        super().__init__(orientation='P', unit='mm', format='A4')
-        self.set_auto_page_break(auto=False)
-
-    def header(self):
-        self.set_font('Songti', '', HEADER_FONT_SIZE)
-        self.set_text_color(0, 0, 0)
-        self.set_xy(LEFT_MARGIN, TOP_MARGIN)
-        self.cell(0, 6, HEADER_TEXT, new_x='LEFT', new_y='TOP')
-
-        page_str = str(self.page_no())
-        tw = self.get_string_width(page_str)
-        self.set_xy(210 - RIGHT_MARGIN - tw, TOP_MARGIN)
-        self.cell(tw, 6, page_str, new_x='LEFT', new_y='TOP')
-
-        line_y = TOP_MARGIN + 7
-        self.set_draw_color(0, 0, 0)
-        self.set_line_width(0.4)
-        self.line(LEFT_MARGIN, line_y, 210 - RIGHT_MARGIN, line_y)
-
-    def footer(self):
-        footer_y = 297 - BOTTOM_MARGIN
-        self.set_xy(LEFT_MARGIN, footer_y)
-        self.set_font('Songti', '', FOOTER_FONT_SIZE)
-        self.set_text_color(0, 0, 0)
-        self.cell(210 - LEFT_MARGIN - RIGHT_MARGIN, 5, APPLICANT_NAME, align='C')
+HEADER_TEXT = f"{SOFTWARE_FULL_NAME} {SOFTWARE_VERSION}"
 
 
-def songti_file():
-    """fpdf 打开 ttc 只会用第 0 个字重，那个子集缺字。抽出完整宋体再嵌入。"""
-    out = Path('/tmp/songti-sc-face1.ttf')
+def songti_file() -> str:
+    out = Path("/tmp/songti-sc-regular.ttf")
     src = Path(SONGTI_TTC)
     if not out.exists() or out.stat().st_mtime < src.stat().st_mtime:
         from fontTools.ttLib import TTFont
@@ -91,149 +60,203 @@ def songti_file():
     return str(out)
 
 
+class SourcePDF(FPDF):
+    def __init__(self):
+        super().__init__(orientation="P", unit="mm", format="A4")
+        self.set_auto_page_break(auto=False)
+
+    def header(self):
+        self.set_font("Songti", "", HEADER_FONT_SIZE)
+        self.set_text_color(0, 0, 0)
+        self.set_xy(LEFT_MARGIN, TOP_MARGIN)
+        self.cell(0, 5.5, HEADER_TEXT, new_x="LEFT", new_y="TOP")
+
+        page_str = str(self.page_no())
+        tw = self.get_string_width(page_str)
+        self.set_xy(210.0 - RIGHT_MARGIN - tw, TOP_MARGIN)
+        self.cell(tw, 5.5, page_str, new_x="LEFT", new_y="TOP")
+
+        line_y = TOP_MARGIN + 6.5
+        self.set_draw_color(40, 40, 40)
+        self.set_line_width(0.35)
+        self.line(LEFT_MARGIN, line_y, 210.0 - RIGHT_MARGIN, line_y)
+
+    def footer(self):
+        footer_y = 297.0 - BOTTOM_MARGIN
+        self.set_xy(LEFT_MARGIN, footer_y)
+        self.set_font("Songti", "", FOOTER_FONT_SIZE)
+        self.set_text_color(40, 40, 40)
+        self.cell(210.0 - LEFT_MARGIN - RIGHT_MARGIN, 5.0, APPLICANT_NAME, align="C")
+
+
 def collect_source_files(root: Path):
-    """运行时源程序。入口在前，编辑器工具和测试不纳入。"""
-    files = []
-    scripts = root / 'Assets' / 'Scripts'
-    first = [
-        scripts / 'Game' / 'GameFlow.cs',
-        scripts / 'Game' / 'LoadingScreen.cs',
-        scripts / 'Game' / 'BattleScreen.cs',
-        scripts / 'Game' / 'BattleView.cs',
-        scripts / 'Sim' / 'Match.cs',
-        scripts / 'Sim' / 'Side.cs',
-        scripts / 'Sim' / 'Board.cs',
-        scripts / 'Sim' / 'Heroes.cs',
-        scripts / 'Sim' / 'Defs.cs',
+    """收集客户端运行时 C# 与云函数 JS，排除仅在开发工具出现的 HomeGm.cs。"""
+    scripts = root / "Assets" / "Scripts"
+    excluded = {scripts / "Game" / "HomeGm.cs"}
+
+    front_priority = [
+        scripts / "Game" / "LoadingScreen.cs",
+        scripts / "Game" / "HomeScreen.cs",
+        scripts / "Game" / "HomeDaily.cs",
+        scripts / "Game" / "HomeShop.cs",
+        scripts / "Sim" / "Defs.cs",
+        scripts / "Sim" / "Match.cs",
+        scripts / "Sim" / "Board.cs",
     ]
-    for fp in first:
-        if fp.exists():
-            files.append(fp)
+    tail_cs = [
+        scripts / "Sim" / "Weapons.cs",
+        scripts / "Game" / "JoinPanel.cs",
+        scripts / "Game" / "ResultPanel.cs",
+    ]
 
-    if scripts.exists():
-        for fp in sorted(scripts.rglob('*.cs')):
-            if fp not in files:
-                files.append(fp)
+    front = [p for p in front_priority if p.exists() and p not in excluded]
+    tail = [p for p in tail_cs if p.exists() and p not in excluded]
+    reserved = set(front) | set(tail) | excluded
 
-    cloud = root / 'cloudfunctions' / 'songjiang-api'
-    if cloud.exists():
-        for fp in sorted(cloud.rglob('*.js')):
-            if 'node_modules' not in fp.parts:
-                files.append(fp)
-    return files
+    middle = [p for p in sorted(scripts.rglob("*.cs")) if p not in reserved]
+
+    cloud = root / "cloudfunctions" / "songjiang-api"
+    js_order = [
+        cloud / "index.js",
+        cloud / "lib" / "config.js",
+        cloud / "lib" / "http.js",
+        cloud / "lib" / "db.js",
+        cloud / "lib" / "geo.js",
+        cloud / "lib" / "auth.js",
+        cloud / "lib" / "live.js",
+        cloud / "lib" / "save.js",
+    ]
+    js_files = [p for p in js_order if p.exists()]
+    for p in sorted(cloud.rglob("*.js")):
+        if "node_modules" not in p.parts and p not in js_files:
+            js_files.append(p)
+
+    return front + middle + tail + js_files
 
 
-def read_all_lines(files):
-    all_lines = []
-    line_no = 1
+def clean_bmp(text: str) -> str:
+    text = text.replace("\t", "    ").replace("◀", "<").replace("▶", ">")
+    return "".join(c if ord(c) <= 0xFFFF else "?" for c in text)
+
+
+def wrap_code_lines(files, pdf_measurer: SourcePDF):
+    """返回 (视觉折行后的行列表, 原始非空源码总行数)。"""
+    pdf_measurer.set_font("Songti", "", CODE_FONT_SIZE)
+    visual_lines = []
+    raw_count = 0
+
+    def split_width(s: str):
+        if pdf_measurer.get_string_width(s) <= CODE_MAX_W:
+            return [s]
+        indent = len(s) - len(s.lstrip(" "))
+        cont_prefix = " " * min(indent + 4, 16)
+        parts = []
+        cur = ""
+        for ch in s:
+            if pdf_measurer.get_string_width(cur + ch) <= CODE_MAX_W:
+                cur += ch
+            else:
+                parts.append(cur)
+                cur = cont_prefix + ch
+        if cur:
+            parts.append(cur)
+        return parts
+
     for fp in files:
         try:
-            text = fp.read_text(encoding='utf-8')
+            text = fp.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            text = fp.read_text(encoding='utf-8-sig')
+            text = fp.read_text(encoding="utf-8-sig")
 
-        rel = fp.relative_to(PROJECT_ROOT) if fp.is_relative_to(PROJECT_ROOT) else fp.name
-        all_lines.append((line_no, f'// ===== FILE: {rel} ====='))
-        line_no += 1
+        rel = fp.relative_to(PROJECT_ROOT).as_posix()
+        visual_lines.append((None, f"// 文件: {rel}"))
 
-        for raw_line in text.splitlines():
-            clean = raw_line.rstrip('\n\r')
-            if clean.strip() == '':
+        for raw in text.splitlines():
+            line = raw.rstrip("\r\n")
+            if not line.strip():
                 continue
-            all_lines.append((line_no, clean))
-            line_no += 1
-    return all_lines
+            raw_count += 1
+            safe = clean_bmp(line)
+            chunks = split_width(safe)
+            for idx, chunk in enumerate(chunks):
+                visual_lines.append((raw_count if idx == 0 else None, chunk))
+
+    return visual_lines, raw_count
 
 
-def select_lines(all_lines):
-    max_lines = (FRONT_PAGES + BACK_PAGES) * LINES_PER_PAGE
-    if len(all_lines) <= max_lines:
-        return all_lines
-    head = all_lines[:FRONT_PAGES * LINES_PER_PAGE]
-    tail = all_lines[-BACK_PAGES * LINES_PER_PAGE:]
+def select_visual_lines(visual_lines):
+    cap = (FRONT_PAGES + BACK_PAGES) * LINES_PER_PAGE
+    if len(visual_lines) <= cap:
+        return visual_lines
+    head = visual_lines[: FRONT_PAGES * LINES_PER_PAGE]
+    tail = visual_lines[-BACK_PAGES * LINES_PER_PAGE :]
     return head + tail
 
 
-def truncate_code(text):
-    safe = text.replace('\t', '    ')
-    safe = ''.join(c if ord(c) < 0x10000 else '?' for c in safe)
-    if len(safe) <= MAX_CODE_CHARS:
-        return safe
-    return safe[:MAX_CODE_CHARS - 3] + '...'
+def build_pdf(selected):
+    total_pages = max(1, ceil(len(selected) / LINES_PER_PAGE))
+    pdf = SourcePDF()
+    pdf.add_font("Songti", "", songti_file())
 
-
-def generate_pdf(selected_lines):
-    total_pages = max(1, ceil(len(selected_lines) / LINES_PER_PAGE))
-    pdf = SoftCopyrightPDF()
-    pdf.add_font('Songti', '', songti_file())
-
-    code_start_y = TOP_MARGIN + 10
-    lineno_col_w = 14
-
+    start_y = TOP_MARGIN + 9.5
+    seq = 1
     for page_idx in range(total_pages):
         pdf.add_page()
-        start = page_idx * LINES_PER_PAGE
-        end = min(start + LINES_PER_PAGE, len(selected_lines))
-        page_items = selected_lines[start:end]
+        chunk = selected[page_idx * LINES_PER_PAGE : (page_idx + 1) * LINES_PER_PAGE]
+        for row_i, (_, code) in enumerate(chunk):
+            y = start_y + row_i * LINE_HEIGHT
+            pdf.set_font("Songti", "", LINENO_FONT_SIZE)
+            pdf.set_text_color(135, 135, 135)
+            num_s = str(seq)
+            seq += 1
+            lw = pdf.get_string_width(num_s)
+            pdf.set_xy(LEFT_MARGIN + LINENO_COL_W - lw - 1.2, y)
+            pdf.cell(lw, LINE_HEIGHT, num_s)
 
-        for i, (line_no, code) in enumerate(page_items):
-            y = code_start_y + i * LINE_HEIGHT
-
-            pdf.set_font('Songti', '', LINENO_FONT_SIZE)
-            pdf.set_text_color(140, 140, 140)
-            lineno_str = str(line_no)
-            lw = pdf.get_string_width(lineno_str)
-            pdf.set_xy(LEFT_MARGIN + lineno_col_w - lw - 1, y)
-            pdf.cell(lw, LINE_HEIGHT, lineno_str)
-
-            pdf.set_font('Songti', '', CODE_FONT_SIZE)
-            pdf.set_text_color(0, 0, 0)
-            pdf.set_xy(LEFT_MARGIN + lineno_col_w + 1, y)
-            pdf.cell(0, LINE_HEIGHT, truncate_code(code))
+            pdf.set_font("Songti", "", CODE_FONT_SIZE)
+            pdf.set_text_color(15, 15, 15)
+            pdf.set_xy(LEFT_MARGIN + LINENO_COL_W + 0.8, y)
+            pdf.cell(CODE_MAX_W, LINE_HEIGHT, code)
 
     pdf.output(str(OUTPUT))
     return total_pages
 
 
-def validate_pdf():
-    from pypdf import PdfReader
-    reader = PdfReader(str(OUTPUT))
-    return len(reader.pages)
-
-
 def main():
     files = collect_source_files(PROJECT_ROOT)
     if not files:
-        print(f'错误: 未找到源码文件, 请检查 PROJECT_ROOT={PROJECT_ROOT}')
+        print(f"未找到源码文件：{PROJECT_ROOT}")
         sys.exit(1)
 
-    all_lines = read_all_lines(files)
-    selected = select_lines(all_lines)
-    total_pages = generate_pdf(selected)
-    validated = validate_pdf()
+    measurer = SourcePDF()
+    measurer.add_font("Songti", "", songti_file())
+    visual_lines, raw_count = wrap_code_lines(files, measurer)
+    selected = select_visual_lines(visual_lines)
+    pages = build_pdf(selected)
 
-    total_source = len(all_lines)
-    total_source_pages = ceil(total_source / LINES_PER_PAGE)
+    from pypdf import PdfReader
+    verified_pages = len(PdfReader(str(OUTPUT)).pages)
+    total_visual_pages = ceil(len(visual_lines) / LINES_PER_PAGE)
 
-    print('=' * 60)
-    print('  营救宋江软著源程序 PDF 生成报告')
-    print('=' * 60)
-    print(f'  软件名称:     {SOFTWARE_FULL_NAME} {SOFTWARE_VERSION}')
-    print(f'  申请人:       {APPLICANT_NAME}')
-    print(f'  项目路径:     {PROJECT_ROOT}')
-    print(f'  源码文件数:   {len(files)} 个')
-    print(f'  源码总行数:   {total_source} 行')
-    print(f'  源码总页数:   {total_source_pages} 页')
-    print(f'  提取方式:     {"前30页+后30页" if total_source_pages > 60 else "全部提交"}')
-    print(f'  选取行数:     {len(selected)} 行')
-    print(f'  生成页数:     {total_pages} 页')
-    print(f'  PDF验证页数:  {validated} 页')
-    print(f'  输出文件:     {OUTPUT}')
-    print('=' * 60)
-    print(f'  第1行: {selected[0][1][:80] if selected else ""}')
-    print(f'  末行:  {selected[-1][1][:80] if selected else ""}')
-    print('  生成验证:     ' + ('通过' if validated == total_pages else '页数不一致, 请检查'))
+    print("=" * 62)
+    print("  营救宋江软著源程序 PDF 生成报告")
+    print("=" * 62)
+    print(f"  软件全称:       {SOFTWARE_FULL_NAME}")
+    print(f"  版本号:         {SOFTWARE_VERSION}")
+    print(f"  著作权人:       {APPLICANT_NAME}")
+    print(f"  纳入源码文件:   {len(files)} 个")
+    print(f"  非空源码行数:   {raw_count} 行（填报「源程序量」用此数）")
+    print(f"  折行后总页数:   {total_visual_pages} 页（每页 {LINES_PER_PAGE} 行）")
+    print(f"  提交页数:       {verified_pages} 页（前 {FRONT_PAGES} 页 + 后 {BACK_PAGES} 页）")
+    print(f"  第 1 页首行:    {selected[0][1]}")
+    print(f"  第 30 页末行:   {selected[FRONT_PAGES * LINES_PER_PAGE - 1][1]}")
+    print(f"  第 31 页首行:   {selected[FRONT_PAGES * LINES_PER_PAGE][1]}")
+    print(f"  第 60 页末行:   {selected[-1][1]}")
+    print(f"  输出路径:       {OUTPUT}")
+    print("=" * 62)
+    if verified_pages != pages:
+        sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

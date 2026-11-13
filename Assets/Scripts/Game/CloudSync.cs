@@ -101,7 +101,11 @@ namespace Rescue
                 Debug.LogWarning("[CloudSync] login failed, keep local save: " + err);
                 EnterCacheOnly("login-failed");
             }
-            else yield return PullOnStartup();
+            else
+            {
+                Analytics.BindUser(Backend.UserId);
+                yield return PullOnStartup();
+            }
 
             _initDone = true;
             done();
@@ -278,7 +282,11 @@ namespace Rescue
         void HookHide()
         {
             if (_hideHooked) return;
-            _hideHooked = Backend.HookHide(() => FlushNow("hide"));
+            _hideHooked = Backend.HookHide(() =>
+            {
+                Analytics.OnHide("wx-hide");
+                FlushNow("hide");
+            });
         }
 
         void OnApplicationPause(bool paused)

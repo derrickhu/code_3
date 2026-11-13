@@ -223,10 +223,14 @@ namespace Rescue
 
         ChapterDef _pending;
 
-        /// <summary>剧情回直接取；越过终章的序号是聚义厅，按当前阵数和阵容现生成。</summary>
+        /// <summary>剧情回、好汉列传（2000+）、水泊名役（3000+）、每日一战（1000）或聚义厅车轮战。</summary>
         static ChapterDef Resolve(int chapter)
         {
             if (chapter == ChapterDef.DailySlot) return ChapterDef.Daily(int.Parse(Save.Today));
+            if (chapter >= ChapterDef.CampaignSlotBase && chapter < ChapterDef.CampaignSlotBase + ChapterDef.Campaigns.Length)
+                return ChapterDef.Campaigns[chapter - ChapterDef.CampaignSlotBase];
+            if (chapter >= ChapterDef.BioSlotBase && chapter < ChapterDef.BioSlotBase + ChapterDef.Bios.Length)
+                return ChapterDef.Bios[chapter - ChapterDef.BioSlotBase];
             if (chapter < ChapterDef.StoryCount) return ChapterDef.All[Mathf.Max(0, chapter)];
             return ChapterDef.Endless(Save.D.endlessRound, Save.Team(), (uint)Environment.TickCount);
         }
@@ -241,8 +245,14 @@ namespace Rescue
                 {
                     ShowHome();
                     if (autoplay || _home == null) return;
-                    if (JoinPanel.WantCodex) { JoinPanel.WantCodex = false; _home.ShowCodex(); }
-                    else _home.ShowShop();
+                    if (JoinPanel.WantNextChapter >= 0)
+                    {
+                        int next = JoinPanel.WantNextChapter;
+                        JoinPanel.WantNextChapter = -1;
+                        _home.StartSlot(next);
+                    }
+                    else if (JoinPanel.WantCodex) { JoinPanel.WantCodex = false; _home.ShowCodex(); }
+                    else if (Save.D.unlocked >= 3) _home.ShowShop();
                 }));
         }
 
@@ -705,11 +715,18 @@ namespace Rescue
             _battle.ShotPlay();
             yield return new WaitForSecondsRealtime(0.55f);
             yield return Shot("tut_recruit");
-            _battle.M.Player.Recruit();
+            _battle.M.Player.RefreshCamp();
             yield return new WaitForSecondsRealtime(0.5f);
-            yield return Shot("tut_place_from");
-            yield return new WaitForSecondsRealtime(0.8f);
-            yield return Shot("tut_place");
+            yield return Shot("tut_gold_first");
+            _battle.M.Player.CampToCell(0, 2, 3);
+            _battle.View.ExternalTick();
+            _battle.NotifyPlaced();
+            yield return new WaitForSecondsRealtime(0.5f);
+            yield return Shot("tut_gold_second");
+            _battle.M.Player.CampToCell(1, 3, 3);
+            _battle.View.ExternalTick();
+            yield return new WaitForSecondsRealtime(1.0f);
+            yield return Shot("tut_shijin_formed");
             Application.Quit();
         }
 
@@ -752,6 +769,10 @@ namespace Rescue
             yield return Page(() => _home.ShowChapters(), "chapters");
             yield return Page(() => JoinPanel.Show(new System.Collections.Generic.List<HeroId> { HeroId.LinChong }, 3, false, null), "join");
             Destroy(Ui.Root.Find("join")?.gameObject);
+            yield return Page(() => JoinPanel.Show(new System.Collections.Generic.List<HeroId> { HeroId.ShiJin, HeroId.ZhuWu, HeroId.ChenDa, HeroId.YangChun }, 0, false, null), "join_group");
+            Destroy(Ui.Root.Find("join")?.gameObject);
+            yield return Page(() => JoinPanel.Show(new System.Collections.Generic.List<HeroId>(), 0, false, null), "lore");
+            Destroy(Ui.Root.Find("join")?.gameObject);
 
             for (int i = 25; i < ChapterDef.StoryCount; i++) Save.WinStory(i);
             Save.D.endlessRound = 7;
@@ -762,7 +783,7 @@ namespace Rescue
 
             Destroy(_home.gameObject);
             ShowHome();
-            Save.D.coins = 117;
+            Save.D.coins = 360;
             _home.ShowShop();
             yield return new WaitForSecondsRealtime(0.8f);
             yield return Shot("shop");
@@ -790,6 +811,8 @@ namespace Rescue
 
             Destroy(_home.gameObject);
             _home = null;
+            Save.D.battles = 38;
+            Save.D.wins = 27;
             var match = BuildMatch(1);
             yield return new WaitForSecondsRealtime(0.9f);
             yield return Shot("match");

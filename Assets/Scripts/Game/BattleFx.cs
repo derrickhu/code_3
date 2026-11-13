@@ -309,6 +309,7 @@ namespace Rescue
 
         void DustPuff(Vector2 p, float size)
         {
+            if (HeavyFxLoad) return;
             var fx = Ink("fx_dust", Dust.A(0.5f), p, size, 0.5f, Rnd(-20, 20), 30, 0.4f, 0f, 0.15f);
             var drift = new Vector2(Rnd(-0.15f, 0.15f), Rnd(0.1f, 0.25f));
             var step = fx.Step;
@@ -415,6 +416,8 @@ namespace Rescue
 
         void UnitAttackFx(SimEvent ev)
         {
+            bool mine = ev.Side == 0;
+            if (!mine && HeavyFxLoad) return;
             var from = World(ev.Side, ev.P);
             var to = World(ev.Side, ev.Q);
             var kind = (UnitKind)ev.B;
@@ -424,13 +427,13 @@ namespace Rescue
             float dist = dir.magnitude;
             bool figure = _pieces.TryGetValue(ev.A, out var pv);
             if (figure) pv.Attack(kind, n, dist);
+            if (!mine && LowFxLoad) return;
             // 特效等兵的出手帧再出：刀落下、枪刺出、箭离弦、马撞上。
             float hit = figure ? PieceView.HitDelay(kind, lv) : 0f;
             var lvc = Pal.ForLevel(lv);
             var ink = Color.Lerp(Pal.Ink, lvc, 0.55f);
             var rim = lv >= 4 ? Color.Lerp(Pal.GoldBright, Color.white, 0.35f) : Steel;
             float grow = 1f + (lv - 1) * 0.07f;
-            bool mine = ev.Side == 0;
             switch (kind)
             {
                 case UnitKind.Dao:
@@ -902,16 +905,19 @@ namespace Rescue
 
         // ─────────────────────────── 击杀 ───────────────────────────
 
-        /// <summary>敌人被打飞：字被拍飞旋转淡出，地上留下一摊墨渍慢慢褪去。</summary>
+        /// <summary>敌人被打飞：字被拍飞旋转淡出，地上留下一摊墨渍慢慢褪去（高波次缩短残影并免去对手半区抛尸防掉帧）。</summary>
         void KillFx(SimEvent ev)
         {
             var pos = World(ev.Side, ev.P);
+            bool mine = ev.Side == 0;
+            if (!mine && HeavyFxLoad) return;
             float size = ev.Flag == 2 ? 2.4f : ev.Flag == 1 ? 1.4f : 0.85f;
             Ink("fx_burst", Pal.Ink.A(0.8f), pos, size, 0.35f, Rnd(0, 360), 34, 0.3f);
-            InkDrops(pos, ev.Flag > 0 ? 9 : 5);
-            Ink("fx_burst", Pal.Ink.A(0.22f), pos, size * 0.9f, 2.6f, Rnd(0, 360), 11, 0.6f, 0f, 0.4f);
+            if (mine || !LowFxLoad) InkDrops(pos, ev.Flag > 0 ? 9 : 5);
+            if (!HeavyFxLoad)
+                Ink("fx_burst", Pal.Ink.A(0.22f), pos, size * 0.9f, LowFxLoad ? 0.85f : 2.6f, Rnd(0, 360), 11, 0.6f, 0f, 0.4f);
 
-            if (_enemies.TryGetValue(ev.A, out var view) && view.Root != null)
+            if ((mine || !LowFxLoad) && _enemies.TryGetValue(ev.A, out var view) && view.Root != null)
             {
                 var start = (Vector2)view.Root.localPosition;
                 var dir = new Vector2(Rnd(-1f, 1f), Rnd(0.6f, 1.2f)).normalized;

@@ -60,7 +60,7 @@ namespace Rescue.Tests
                 for (int c = 0; c < Board.Cols; c++)
                     for (int r = 0; r < Board.Rows; r++)
                         if (b.Cells[c, r] != Cell.Path && b.Cells[c, r] != Cell.Rock) potential++;
-                Assert.That(start, Is.InRange(5, 8), ch.Name + " 开局白地应是一小块");
+                Assert.That(start, Is.InRange(5, ch.Index == 0 ? 10 : 8), ch.Name + " 开局白地应是一小块");
                 Assert.GreaterOrEqual(potential, 16, ch.Name + " 能开荒的地太少");
                 Assert.IsTrue(b.AnyDiggable(), ch.Name);
             }
@@ -356,6 +356,18 @@ namespace Rescue.Tests
         }
 
         [Test]
+        public void RescueStaysHiddenUntilEnemyNearsSongJiangAlongThePath()
+        {
+            var m = new Match(Named("柴进庄"), 7);
+            var s = m.Player;
+            m.SpawnOn(s, EnemyKind.Zu, Tuning.SpawnCover + 0.3f);
+            Assert.IsFalse(s.AtTheGate, "刚走出草堆，还要绕到路尽头，不该亮救");
+            s.Enemies[0].Progress = s.Board.PathLength - 1.2f;
+            s.Enemies[0].Pos = s.Board.PosAt(s.Enemies[0].Progress);
+            Assert.IsTrue(s.AtTheGate, "沿路快到宋江跟前才该亮救");
+        }
+
+        [Test]
         public void RescuePushesEnemiesBackToTheFront()
         {
             var m = NewMatch();
@@ -457,7 +469,7 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void AiVsAiMatchesEndInReasonableTime([Values(0, 1, 2, 24, 40, 56)] int chapter)
+        public void AiVsAiMatchesEndInReasonableTime([Values(0, 1, 2, 30, 50, 71)] int chapter)
         {
             var m = new Match(ChapterDef.All[chapter], 7);
             var a = new RivalAI(m.Player, 0.8f, 11);
@@ -593,7 +605,7 @@ namespace Rescue.Tests
         }
 
         [Test]
-        public void MidChaptersNeedSkillOrAds([Values(12, 30)] int chapter)
+        public void MidChaptersNeedSkillOrAds([Values(14, 34)] int chapter)
         {
             const int runs = 48;
             int casual = WinsOf(chapter, 0.5f, false, runs);
@@ -641,7 +653,36 @@ namespace Rescue.Tests
             UnityEngine.Debug.Log($"[平衡] 第一回 第二次征兵 {second:0}s, 对手首次掉心第 {foeLeak:0.0} 波, 对局 {end:0}s, 玩家剩血 {playerHp:0}");
             Assert.Less(second, 35f, "第一波打完就该接上第二次征兵");
             Assert.Less(foeLeak, 12f, "对手最迟要在头目波开始掉心");
-            Assert.Less(end, 270f, "第一回别拖太久");
+            Assert.Less(end, 130f, "第一回限五波速战，90秒上下收官");
+        }
+
+        [Test]
+        public void ShuihuLoreCoversAllChaptersAndTutorialDealsShiJin()
+        {
+            Assert.AreEqual(72, ChapterDef.StoryCount, "主线应扩充至72回");
+            Assert.AreEqual(ChapterDef.StoryCount, ShuihuLore.All.Length, "72回水浒小课堂须逐回配齐");
+            for (int i = 0; i < ChapterDef.StoryCount; i++)
+            {
+                var e = ShuihuLore.Of(i);
+                Assert.IsNotNull(e, $"第{i + 1}回缺讲古");
+                Assert.IsNotEmpty(e.Topic);
+                Assert.IsNotEmpty(e.Verse);
+                Assert.IsNotEmpty(e.Note);
+                Assert.IsNotEmpty(e.Question);
+                Assert.AreEqual(3, e.Options.Length);
+                Assert.That(e.Answer, Is.InRange(0, 2));
+                foreach (var opt in e.Options) Assert.IsNotEmpty(opt);
+            }
+
+            var m = new Match(ChapterDef.All[0], 7);
+            m.Player.TutorialScript = true;
+            Assert.IsTrue(m.Player.RefreshCamp());
+            Assert.AreEqual('史', m.Player.Camp[0].Char);
+            Assert.AreEqual('进', m.Player.Camp[1].Char);
+            Assert.IsTrue(m.Player.CampToCell(0, 2, 3));
+            Assert.IsTrue(m.Player.CampToCell(1, 3, 3));
+            Assert.AreEqual(1, m.Player.Heroes.Count);
+            Assert.AreEqual(HeroId.ShiJin, m.Player.Heroes[0].Def.Id);
         }
 
         [Test]
@@ -1014,7 +1055,7 @@ namespace Rescue.Tests
         /// 按进度带兵器不能比以前两边空手好打；多练的兵器有用，但满配也赢不到闭眼；落后于进度的更难。
         /// </summary>
         [Test]
-        public void WeaponsDoNotMakeTheStoryEasier([Values(6, 12, 24, 40, 56)] int chapter)
+        public void WeaponsDoNotMakeTheStoryEasier([Values(8, 14, 27, 46, 71)] int chapter)
         {
             const int runs = 40, heroes = 3;
             var ch = ChapterDef.All[chapter];
@@ -1467,17 +1508,234 @@ namespace Rescue.Tests
             int Wins(System.Func<Loadout> make)
             {
                 int w = 0;
-                for (uint s = 2001; s < 2001 + runs; s++) if (LoadoutWins(12, s, make())) w++;
+                for (uint s = 2001; s < 2001 + runs; s++) if (LoadoutWins(14, s, make())) w++;
                 return w;
             }
             int none = Wins(() => new Loadout());
             int stove = Wins(() => new Loadout { Stove = true, Wine = true, Gang = true, Flag = true });
             int classic = Wins(() => new Loadout { Gang = true, Flag = true, Marsh = true, Stele = true });
-            UnityEngine.Debug.Log($"[平衡] {ChapterDef.All[12].Name} 被动：不带 {none}/{runs}，灶酒纲旗 {stove}/{runs}，纲旗泊碣 {classic}/{runs}");
+            UnityEngine.Debug.Log($"[平衡] {ChapterDef.All[14].Name} 被动：不带 {none}/{runs}，灶酒纲旗 {stove}/{runs}，纲旗泊碣 {classic}/{runs}");
             Assert.Greater(stove, none, "带被动要比不带好打");
             Assert.Greater(classic, none);
             Assert.LessOrEqual(stove, runs * 9 / 10, "四个被动也不该稳赢");
             Assert.LessOrEqual(classic, runs * 9 / 10);
+        }
+
+        [Test]
+        public void OrphanCharBoostsNearbyUnitAttackSpeed()
+        {
+            var m = PoolMatch(HeroId.WuSong);
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            // 先测无孤字时 1 级弓兵打一箭后的冷却
+            s.Board.Pieces[2, 2] = Piece.Unit(UnitKind.Gong, 1);
+            m.SpawnOn(s, EnemyKind.Zu, Tuning.SpawnCover + 0.5f);
+            s.Enemies[0].Hp = s.Enemies[0].MaxHp = 999f;
+            s.Enemies[0].Pos = new CellPos(2, 2).Center;
+            s.Enemies[0].StunT = 99f;
+            s.Tick(0.02f); // 第一箭射出，进入基础冷却
+            float baseWait = 0f;
+            m.Events.Clear();
+            while (m.Events.Count == 0 && baseWait < 3f) { s.Tick(0.01f); baseWait += 0.01f; }
+
+            // 再在旁边 (1,2) 摆一枚未成名的孤字「武」，测第二箭冷却变短
+            s.Board.Pieces[1, 2] = Piece.Hero('武', 1);
+            s.RecomputeHeroes();
+            Assert.AreEqual(0, s.Heroes.Count, "单字尚未成名");
+            Assert.AreEqual(1, s.OrphanBoostersNear(2, 2), "周围八格应识别到1枚孤字助威");
+
+            // 等下一箭重置冷却后再量一轮完整间隔
+            m.Events.Clear();
+            while (m.Events.Count == 0 && baseWait < 6f) s.Tick(0.01f);
+            float boostedWait = 0f;
+            m.Events.Clear();
+            while (m.Events.Count == 0 && boostedWait < 3f) { s.Tick(0.01f); boostedWait += 0.01f; }
+            Assert.Less(boostedWait, baseWait - 0.03f, "孤字助威应显著缩短周围友军出手间隔");
+        }
+
+        [Test]
+        public void XiaoRangPenCompletesOrphanAndConvertsUnitToHero()
+        {
+            // 用法一：点孤字，右边紧邻有可放空地时当场挥毫补字成将
+            var m = PoolMatch(HeroId.WuSong, HeroId.LinChong);
+            var s = m.Player;
+            Clear(s);
+            var run1 = FindRun(s, 2, new CellPos(1, 0));
+            s.Items.Pen = 3;
+            s.Board.Pieces[run1.c, run1.r] = Piece.Hero('武', 2);
+            s.RecomputeHeroes();
+            Assert.IsTrue(s.PreviewPen(run1.c, run1.r, out char ch1, out var hd1, out bool isUnit1));
+            Assert.AreEqual('松', ch1);
+            Assert.AreEqual(HeroId.WuSong, hd1.Id);
+            Assert.IsFalse(isUnit1);
+            Assert.IsTrue(s.UsePen(run1.c, run1.r));
+            Assert.AreEqual(1, s.Heroes.Count, "紧邻有空位应直接落笔拼出武松");
+            Assert.AreEqual(HeroId.WuSong, s.Heroes[0].Def.Id);
+            Assert.AreEqual(2, s.Heroes[0].Level, "补出的字继承孤字等级");
+
+            // 用法二：找另一处两连可放格，点紧挨孤字「林」右侧的 3 级小兵，当场把小兵点化为 3 级「冲」合成林冲
+            s.PenCd = 0f;
+            CellPos run2 = default;
+            bool foundRun2 = false;
+            for (int r = 0; r < Board.Rows && !foundRun2; r++)
+                for (int c = 0; c + 1 < Board.Cols && !foundRun2; c++)
+                    if (s.Board.Placeable(c, r) && s.Board.Placeable(c + 1, r) &&
+                        s.Board.Pieces[c, r] == null && s.Board.Pieces[c + 1, r] == null)
+                    {
+                        run2 = new CellPos(c, r);
+                        foundRun2 = true;
+                    }
+            Assert.IsTrue(foundRun2);
+            s.Board.Pieces[run2.c, run2.r] = Piece.Hero('林', 3);
+            s.Board.Pieces[run2.c + 1, run2.r] = Piece.Unit(UnitKind.Dao, 3);
+            s.RecomputeHeroes();
+            Assert.IsTrue(s.PreviewPen(run2.c + 1, run2.r, out char ch2, out var hd2, out bool isUnit2));
+            Assert.IsTrue(isUnit2);
+            Assert.AreEqual('冲', ch2);
+            Assert.AreEqual(HeroId.LinChong, hd2.Id);
+            Assert.IsTrue(s.UsePen(run2.c + 1, run2.r));
+            Assert.AreEqual(2, s.Heroes.Count, "小兵原地点化后应立即合成林冲");
+            var lin = s.Heroes.Find(h => h.Def.Id == HeroId.LinChong);
+            Assert.IsNotNull(lin);
+            Assert.AreEqual(3, lin.Level, "点化保留小兵原有等级");
+
+            // 用法三：当孤字四周被堵满无法直连落格时，代笔应把配对字稳稳送进山寨
+            Clear(s);
+            OpenAll(s);
+            s.PenCd = 0f;
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                    if (s.Board.Placeable(c, r)) s.Board.Pieces[c, r] = Piece.Unit(UnitKind.Gong, 1);
+            s.Board.Pieces[run1.c, run1.r] = Piece.Hero('武', 1);
+            s.RecomputeHeroes();
+            Assert.IsTrue(s.UsePen(run1.c, run1.r));
+            Assert.IsNotNull(s.Camp[0]);
+            Assert.AreEqual('松', s.Camp[0].Char, "四周无空地时配对字应送入山寨");
+        }
+
+        [Test]
+        public void BondTraitsGrantShieldUltCdrAndKillBuns()
+        {
+            // 1. 生死护义（铁牛与哥哥）：凑齐瞬间给宋江张开护体金盾
+            var m1 = PoolMatch(HeroId.SongJiang, HeroId.LiKui);
+            var s1 = m1.Player;
+            Clear(s1);
+            OpenAll(s1);
+            Spell(s1, HeroId.SongJiang, 1);
+            Spell(s1, HeroId.LiKui, 3);
+            s1.RecomputeHeroes();
+            Assert.IsTrue(s1.HasBondTrait(HeroId.LiKui, BondTrait.SwornGuard));
+            Assert.GreaterOrEqual(s1.ShieldT, 2.4f, "生死护义结成瞬间为宋江张开护盾");
+
+            // 2. 奇门借风（水火二将）：大招冷却缩短 20%
+            var m2 = PoolMatch(HeroId.ShanTingGui, HeroId.WeiDingGuo);
+            var s2 = m2.Player;
+            Clear(s2);
+            OpenAll(s2);
+            Spell(s2, HeroId.ShanTingGui, 1);
+            s2.RecomputeHeroes();
+            float soloUlt = s2.UltMax(s2.Heroes[0]);
+            Spell(s2, HeroId.WeiDingGuo, 3);
+            s2.RecomputeHeroes();
+            Assert.AreEqual(soloUlt * 0.8f, s2.UltMax(s2.Heroes[0]), 0.01f, "奇门借风缩短绝技冷却20%");
+
+            // 3. 劫富犒军（十字坡夫妻）：斩头目额外得 3 炊饼
+            var m3 = PoolMatch(HeroId.ZhangQingY, HeroId.SunErNiang);
+            var s3 = m3.Player;
+            Clear(s3);
+            OpenAll(s3);
+            Spell(s3, HeroId.ZhangQingY, 1);
+            Spell(s3, HeroId.SunErNiang, 3);
+            s3.RecomputeHeroes();
+            Assert.IsTrue(s3.HasBondTrait(HeroId.ZhangQingY, BondTrait.BanditBuns));
+        }
+
+        [Test]
+        public void NemesisDuelFiresOnceWhenBossEntersField()
+        {
+            var ch = Named("风雪山神庙");
+            Assert.AreEqual(HeroId.LinChong, ch.Boss.Nemesis);
+            var m = new Match(ch, 42);
+            var s = m.Player;
+            Clear(s);
+            OpenAll(s);
+            Spell(s, HeroId.LinChong, 2);
+            s.RecomputeHeroes();
+            s.Heroes[0].Cd = 0.8f;
+            s.Heroes[0].UltCd = 10f;
+            m.SpawnOn(s, EnemyKind.Boss, Tuning.SpawnCover + 0.5f);
+            m.Events.Clear();
+            s.Tick(0.02f);
+
+            int duels = 0;
+            string shout = "";
+            foreach (var ev in m.Events)
+                if (ev.Type == Ev.NemesisDuel) { duels++; shout = ev.Text; }
+            Assert.AreEqual(1, duels, "宿命对决应触发一次");
+            StringAssert.Contains("陆谦", shout);
+            Assert.LessOrEqual(s.Heroes[0].UltCd, 5.1f, "宿命对决使绝技冷却减半");
+
+            m.Events.Clear();
+            s.Tick(0.1f);
+            foreach (var ev in m.Events)
+                Assert.AreNotEqual(Ev.NemesisDuel, ev.Type, "同一头目不重复刷屏");
+        }
+
+        [Test]
+        public void HundredTwentyExpansionCovers72Main36BiosAnd12Campaigns()
+        {
+            Assert.AreEqual(72, ChapterDef.StoryCount, "一横：72回主线");
+            Assert.AreEqual(36, ChapterDef.Bios.Length, "纵线一：36折好汉列传");
+            Assert.AreEqual(12, ChapterDef.Campaigns.Length, "纵线二：12幕水泊名役");
+            Assert.AreEqual(120, ChapterDef.GrandTotalCount, "总计百二十回立体章回");
+
+            // 验证旧档 57 -> 72 映射严格递增且首尾精准
+            Assert.AreEqual(57, ChapterDef.Legacy57To72.Length);
+            Assert.AreEqual(0, ChapterDef.MigrateUnlocked57To72(0));
+            Assert.AreEqual(72, ChapterDef.MigrateUnlocked57To72(57));
+            for (int i = 1; i < ChapterDef.Legacy57To72.Length; i++)
+                Assert.Greater(ChapterDef.Legacy57To72[i], ChapterDef.Legacy57To72[i - 1], "旧档映射序号须严格递增");
+
+            // 验证 36 折好汉列传：池子精炼、克星能打、地图合法
+            for (int i = 0; i < ChapterDef.Bios.Length; i++)
+            {
+                var b = ChapterDef.Bios[i];
+                Assert.AreEqual(i, b.BioIndex);
+                Assert.IsTrue(b.IsBio);
+                Assert.That(b.Pool.Length, Is.InRange(2, 3), b.Name + " 列传应是小池专场");
+                Assert.Contains(b.Boss.Nemesis, b.Pool, b.Name);
+                Assert.IsFalse(HeroDef.Get(b.Boss.Nemesis).NoAttack, b.Name);
+                Assert.Greater(new Board(b.Map).Path.Count, 10, b.Name);
+            }
+
+            // 验证 12 幕水泊名役：全部带战场天象规则且奖励兵器有效
+            for (int i = 0; i < ChapterDef.Campaigns.Length; i++)
+            {
+                var c = ChapterDef.Campaigns[i];
+                Assert.AreEqual(i, c.CampaignIndex);
+                Assert.IsTrue(c.IsCampaign);
+                Assert.AreNotEqual(BattleRule.None, c.Rule, c.Name + " 名役须有天象词缀");
+                Assert.IsNotEmpty(c.RuleTitle);
+                Assert.IsNotEmpty(c.RuleDesc);
+                Assert.Contains(c.Boss.Nemesis, c.Pool, c.Name);
+                Assert.IsFalse(HeroDef.Get(c.Boss.Nemesis).NoAttack, c.Name);
+                var wp = HeroDef.Get(ChapterDef.CampaignMetas[i].RewardWeaponHero);
+                Assert.IsNotEmpty(wp.Weapon, c.Name + " 首通奖励兵器不能为空");
+                Assert.Greater(new Board(c.Map).Path.Count, 10, c.Name);
+            }
+
+            // 验证战场天象规则生效（如赤日炎炎开局+25炊饼，铁甲洪流长枪增伤）
+            var sunMatch = new Match(ChapterDef.Campaigns[0], 11);
+            Assert.AreEqual(Tuning.StartBuns + 25, sunMatch.Player.Buns, "赤日炎炎开局多25炊饼");
+
+            var ironMatch = new Match(ChapterDef.Campaigns[7], 11);
+            Assert.AreEqual(1.35f, ironMatch.Player.RuleHeroDamageMul(HeroDef.Get(HeroId.XuNing), false), 0.001f, "铁甲洪流枪系好汉+35%伤");
+
+            // 验证每日一战带军司轮换加成
+            var daily = ChapterDef.Daily(20261114);
+            Assert.AreEqual(BattleRule.CorpsFocus, daily.Rule);
+            Assert.AreNotEqual(CorpsKind.None, daily.Corps);
         }
     }
 }

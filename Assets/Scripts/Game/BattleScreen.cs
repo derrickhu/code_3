@@ -19,6 +19,8 @@ namespace Rescue
         public bool GmDrop;
         /// <summary>每日一战：不动座次，当天首胜给铜钱。</summary>
         public bool Daily;
+        public int BioIndex = -1;
+        public int CampaignIndex = -1;
         /// <summary>这一局一定缴获兵器（每日一战首胜）。</summary>
         public bool SureDrop;
         public List<HeroId> Formed = new List<HeroId>();
@@ -28,7 +30,7 @@ namespace Rescue
     /// <summary>一局战斗：对局、对手 AI、界面浮层（横幅、引导、暂停、结算）。</summary>
     public sealed class BattleScreen : MonoBehaviour
     {
-        enum Tut { Recruit, Place, Merge, Gold, Hero, Rain, Dismiss, Dig, Danger }
+        enum Tut { Recruit, Place, Merge, Gold, Hero, Rain, Dismiss, Dig, Danger, GoldSecond }
 
         public Match M { get; private set; }
         public BattleView View { get; private set; }
@@ -50,7 +52,7 @@ namespace Rescue
         float _tutT;
         float _bossSay;
         bool _tutorialRun;
-        enum Aim { None, Recruit, Place, Merge, Gold, Rescue, Dismiss }
+        enum Aim { None, Recruit, Place, Merge, Gold, GoldSecond, Rescue, Dismiss }
         Aim _aim;
         float _handT;
         RectTransform _handRoot;
@@ -81,7 +83,7 @@ namespace Rescue
             View.Build(M, cam);
             View.OnEvent += OnSimEvent;
             View.OnPauseClicked += ShowPause;
-            View.OnPlaced += () => { if (_tut == Tut.Place) CompleteTut(); };
+            View.OnPlaced += OnPiecePlaced;
             if (Autoplay) { View.InputEnabled = false; View.Speed = 2f; }
 
             _overlay = Ui.Rect(Ui.Root, "BattleOverlay");
@@ -91,7 +93,8 @@ namespace Rescue
             _bannerLayer = Ui.Rect(_overlay, "banners");
             BuildHint();
 
-            _tutorialRun = ch.Index == 0 && !Save.Tut((int)Tut.Hero) && !Autoplay;
+            _tutorialRun = ch.Index == 0 && !ch.IsDaily && !ch.IsEndless && !ch.IsBio && !ch.IsCampaign && !Save.Tut((int)Tut.Hero) && !Autoplay;
+            if (_tutorialRun) M.Player.TutorialScript = true;
             if (Autoplay) Begin();
             else ShowIntro(ch, items);
             BuildBattleGm();
@@ -114,27 +117,66 @@ namespace Rescue
             if (M.Over || _ending) return;
             View.Paused = true;
             var layer = Ui.Fill(_overlay, new Color(0, 0, 0, 0.72f), true, "gm");
-            var card = Ui.WoodPanel(layer, new Vector2(820, 760), new Vector2(0, 40));
-            Ui.Title(card, "GM", new Vector2(0, 360));
-            Ui.CloseX(card, new Vector2(-404, 366), () =>
+            var card = Ui.WoodPanel(layer, new Vector2(820, 920), new Vector2(0, 40));
+            Ui.Title(card, "GM", new Vector2(0, 440));
+            Ui.CloseX(card, new Vector2(-404, 446), () =>
             {
                 View.Paused = false;
                 Destroy(layer.gameObject);
             });
-            Ui.Label(card, "直接结束这一局，走真正的结算。\n胜利按撑过四波算，并一定缴获一件兵器。", 32, Pal.InkSoft,
-                new Vector2(0, 180), new Vector2(720, 110));
-            Ui.CartoonBtn(card, "胜利结算", new Vector2(560, 120), new Vector2(0, -10), Ui.BtnRed, () =>
+            Ui.Label(card, "直接结束这一局，或一键实测「萧让代笔 + 宿命对决」。", 30, Pal.InkSoft,
+                new Vector2(0, 290), new Vector2(720, 80));
+            Ui.CartoonBtn(card, "实测代笔与宿命", new Vector2(560, 114), new Vector2(0, 140), Ui.BtnOrange, () =>
+            {
+                Destroy(layer.gameObject);
+                View.Paused = false;
+                GmSetupPenAndNemesis();
+            }, 44);
+            Ui.CartoonBtn(card, "胜利结算", new Vector2(560, 114), new Vector2(0, -4), Ui.BtnRed, () =>
             {
                 Destroy(layer.gameObject);
                 GmFinish(true);
-            }, 48);
-            Ui.CartoonBtn(card, "失败结算", new Vector2(560, 120), new Vector2(0, -170), Ui.BtnDark, () =>
+            }, 46);
+            Ui.CartoonBtn(card, "失败结算", new Vector2(560, 114), new Vector2(0, -148), Ui.BtnDark, () =>
             {
                 Destroy(layer.gameObject);
                 GmFinish(false);
-            }, 48);
+            }, 46);
+            Ui.CartoonBtn(card, "查看军情密报", new Vector2(560, 100), new Vector2(0, -286), Ui.BtnYellow, () =>
+            {
+                Destroy(layer.gameObject);
+                View.Paused = false;
+                View.ShowChapterIntel();
+            }, 40, null, Pal.Ink);
             layer.SetAsLastSibling();
             Tween.Pop(card, 0.25f);
+        }
+
+        /// <summary>GM 一键布置反痛点验收现场：发2支萧让代笔、摆出克星前半孤字与邻格小兵、放出本回头目。</summary>
+        void GmSetupPenAndNemesis()
+        {
+            if (_intro) { Destroy(_intro.gameObject); _intro = null; }
+            if (!_started) Begin();
+            M.Hold = false;
+            var s = M.Player;
+            s.Items.Pen = Mathf.Max(2, s.Items.Pen + 2);
+            s.PenCd = 0f;
+            var nemDef = HeroDef.Get(M.Chapter.Boss.Nemesis);
+            // 找两格并排可放地，左放克星首字（孤字助威），右放1级刀兵（既可拖代笔点孤字，也可点小兵当场化字成将）
+            bool placed = false;
+            for (int r = Board.Rows - 1; r >= 0 && !placed; r--)
+                for (int c = 0; c + 1 < Board.Cols && !placed; c++)
+                {
+                    if (!s.Board.Placeable(c, r) || !s.Board.Placeable(c + 1, r)) continue;
+                    s.Board.Pieces[c, r] = Piece.Hero(nemDef.Name[0], 2);
+                    s.Board.Pieces[c + 1, r] = Piece.Unit(UnitKind.Dao, 2);
+                    placed = true;
+                }
+            s.RecomputeHeroes();
+            bool hasBoss = false;
+            foreach (var e in s.Enemies) if (!e.Dead && e.Boss != null) hasBoss = true;
+            if (!hasBoss) M.SpawnOn(s, EnemyKind.Boss, Tuning.SpawnCover + 0.6f);
+            ShowHint($"已发「萧让代笔×2」并摆好「{nemDef.Name[0]}」字与头目！\n把左下角代笔拖到「{nemDef.Name[0]}」或右边刀兵上即可成将并触发宿命对决！", 8f);
         }
 
         public void GmFinish(bool win)
@@ -230,7 +272,11 @@ namespace Rescue
             var layer = Ui.Fill(_overlay, new Color(0.08f, 0.06f, 0.04f, 0.78f), true, "intro");
             _intro = layer;
             var card = Ui.WoodPanel(Ui.Fit(layer, 1420), new Vector2(940, 1240), new Vector2(0, 40), Pal.Hex("8C6B4E"), Pal.Paper);
-            string head = ch.IsDaily ? "每日一战 · 今天人人同一阵" : ch.IsEndless ? "聚义厅 · 车轮战" : $"第{BattleView.ToCn(ch.Index + 1)}回 · {ch.Act}";
+            string head = ch.IsDaily ? "每日一战 · 今天人人同一阵"
+                : ch.IsBio ? $"好汉列传 · 第{BattleView.ToCn((ch.BioIndex % 3) + 1)}折"
+                : ch.IsCampaign ? $"水泊名役 · 第{BattleView.ToCn(ch.CampaignIndex + 1)}幕"
+                : ch.IsEndless ? "聚义厅 · 车轮战"
+                : $"第{BattleView.ToCn(ch.Index + 1)}回 · {ch.Act}";
             Ui.Label(card.transform, head, 42, Pal.InkSoft, new Vector2(0, 500), new Vector2(800, 64));
             Ui.Label(card.transform, ch.Name, 140, Pal.Ink, new Vector2(0, 385), new Vector2(860, 170), TextAnchor.MiddleCenter, Fonts.Brush);
             if (!string.IsNullOrEmpty(ch.Hui))
@@ -241,8 +287,13 @@ namespace Rescue
             foreach (var id in ch.Pool) { var d = HeroDef.Get(id); if (!d.Hidden) names.Add(d.Name); }
             Ui.Label(card.transform, "本回好汉：" + string.Join("  ", names), 38, Pal.Gold, new Vector2(0, 20), new Vector2(820, 70));
             if (ch.IsDaily)
-                Ui.Label(card.transform, Save.DailyWonToday ? "今天已经赢过，再赢不另给铜钱" : $"今日首胜：铜钱 ×{Save.DailyCoinsReward}，必掉一件兵器　不动座次",
-                    34, Save.DailyWonToday ? Pal.InkSoft : Pal.Red, new Vector2(0, -55), new Vector2(840, 90));
+                Ui.Label(card.transform, Save.DailyWonToday ? $"今日军令：{ch.RuleDesc}" : $"今日首胜：铜钱 ×{Save.DailyCoinsReward}，必掉兵器　{ch.RuleTitle}（好汉伤+25%）",
+                    32, Save.DailyWonToday ? Pal.InkSoft : Pal.Red, new Vector2(0, -55), new Vector2(840, 90));
+            else if (ch.IsCampaign)
+                Ui.Label(card.transform, $"战场天象【{ch.RuleTitle}】{ch.RuleDesc}", 30, Pal.Red, new Vector2(0, -55), new Vector2(840, 90));
+            else if (ch.IsBio)
+                Ui.Label(card.transform, Save.BioCleared(ch.BioIndex) ? "此折已通晓，重温人物专场不扣座次" : $"列传专场：锁定双雄字池极易成将　首通赏铜钱 ×{Save.BioFirstRewardCoins}",
+                    32, Save.BioCleared(ch.BioIndex) ? Pal.InkSoft : Pal.Red, new Vector2(0, -55), new Vector2(840, 90));
             else if (ch.Joins.Length > 0)
             {
                 var j = new List<string>();
@@ -254,7 +305,10 @@ namespace Rescue
             var nem = HeroDef.Get(ch.Boss.Nemesis).Name;
             Ui.Label(card.transform, $"头目：{ch.Boss.Title}{ch.Boss.Name}（{ch.Boss.SkillText}）\n克星：{nem}，对他伤害 ×5", 34, Pal.RedDeep,
                 new Vector2(0, -170), new Vector2(820, 120));
-            Ui.Label(card.transform, "对手：" + ch.RivalName + "（谁的宋江先倒谁输）", 32, Pal.InkSoft, new Vector2(0, -260), new Vector2(800, 56));
+            string goalLine = ch.MaxWaves > 0
+                ? $"本回共 {BattleView.ToCn(ch.MaxWaves)} 波 · 守住宋江并击退{ch.Boss.Name}即胜"
+                : $"宿敌：{ch.RivalName}（战法：{ch.RivalStyleLabel}）";
+            Ui.Label(card.transform, goalLine, 32, Pal.InkSoft, new Vector2(0, -260), new Vector2(840, 56));
             if (items != null && ItemSummary(items).Length > 0)
                 Ui.Label(card.transform, "随身：" + ItemSummary(items), 32, Pal.Willow, new Vector2(0, -320), new Vector2(800, 56));
             if (items != null && GearSummary(items).Length > 0)
@@ -263,12 +317,17 @@ namespace Rescue
                 Ui.Label(card.transform, rack, rack.Length > 24 ? 28 : 32, Pal.Willow, new Vector2(0, -378), new Vector2(860, 48));
             }
 
-            Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Ui.BtnRed, () =>
+            if (!Autoplay) Analytics.IntroShow(ch.Index + 1, ch.Name);
+            var startBtn = Ui.CartoonBtn(card.transform, "开  战", new Vector2(480, 140), new Vector2(0, -470), Ui.BtnRed, () =>
             {
                 Destroy(layer.gameObject);
                 Begin();
                 Banner("官军探马", "看清来路，趁官兵未到先征兵布阵", Pal.Gold, 1.1f);
             }, 68);
+            Tween.Run(startBtn, 999f, k =>
+            {
+                if (startBtn) startBtn.localScale = Vector3.one * (1f + 0.04f * Mathf.Sin(k * 999f * 4.5f));
+            });
             Tween.Pop(card.transform, 0.4f);
         }
 
@@ -290,6 +349,7 @@ namespace Rescue
             if (l.Baozi > 0) actives.Add("baozi");
             if (l.Fu > 0) actives.Add("fu");
             if (l.Trap > 0) actives.Add("trap");
+            if (l.Pen > 0) actives.Add("pen");
             Analytics.Loadout(string.Join(",", passives), string.Join(",", actives), l.Rack != null ? l.Rack.Count : 0);
         }
 
@@ -307,6 +367,7 @@ namespace Rescue
             if (l.Shovels > 0) parts.Add("铲子×" + l.Shovels);
             if (l.Fu > 0) parts.Add("攻速符×" + l.Fu);
             if (l.Trap > 0) parts.Add("陷阱×" + l.Trap);
+            if (l.Pen > 0) parts.Add("代笔×" + l.Pen);
             if (l.Far) parts.Add("御敌千里");
             if (l.Stove) parts.Add("十字坡灶");
             if (l.Wine) parts.Add("招贤酒");
@@ -340,8 +401,16 @@ namespace Rescue
                     var d = HeroDef.Get((HeroId)ev.B);
                     bool fresh = !Save.D.heroes.Contains((int)d.Id);
                     HeroBanner(d, fresh);
-                    if (_tut == Tut.Gold || _tut == Tut.Hero) CompleteTut();
-                    if (_tutorialRun) Save.SetTut((int)Tut.Hero);
+                    if (_tutorialRun) Analytics.TutorialStep("hero_formed");
+                    if (_tut == Tut.Gold || _tut == Tut.GoldSecond || _tut == Tut.Hero) CompleteTut();
+                    if (_tutorialRun)
+                    {
+                        Save.SetTut((int)Tut.Gold);
+                        Save.SetTut((int)Tut.GoldSecond);
+                        Save.SetTut((int)Tut.Hero);
+                        M.Hold = false;
+                        if (!Save.Tut((int)Tut.Place)) StartTut(Tut.Place);
+                    }
                     break;
                 }
                 case Ev.WaveStart when ev.A == 1:
@@ -363,7 +432,17 @@ namespace Rescue
                     Bond b = null;
                     foreach (var x in Bond.All) if (x.Name == ev.Text) b = x;
                     Sfx.Play(Snd.Join, 0.8f);
-                    Banner("羁绊 · " + ev.Text, (b != null ? b.Story + "　" : "") + $"伤害 +{Mathf.RoundToInt(ev.Val * 100)}%", Pal.Hex("B5651D"), 1.1f);
+                    string sub = b != null
+                        ? $"伤+{Mathf.RoundToInt(ev.Val * 100)}% · 【{Bond.TraitName(b.Trait)}】{Bond.TraitDesc(b.Trait)}"
+                        : $"伤害 +{Mathf.RoundToInt(ev.Val * 100)}%";
+                    Banner("羁绊　" + ev.Text, sub, Pal.Hex("B5651D"), 1.25f);
+                    break;
+                }
+                case Ev.NemesisDuel when mine:
+                {
+                    var hd = HeroDef.Get((HeroId)ev.B);
+                    Sfx.Play(Snd.Hero, 0.9f);
+                    Banner($"宿命对决　{hd.Name}！", $"{ev.Text}", Pal.Red, 1.35f);
                     break;
                 }
                 case Ev.EliteWarn:
@@ -371,8 +450,10 @@ namespace Rescue
                     break;
                 case Ev.ItemUsed when mine:
                 {
-                    string sub = ev.Flag == 3 ? "十二秒内全军出手快四成" : ev.Flag == 4 ? "官兵跌进去，一时爬不上来" : "";
-                    Banner(ev.Text + "！", sub, ev.Flag == 3 ? Pal.Gold : Pal.Willow, 0.9f);
+                    string sub = ev.Flag == 3 ? "十二秒内全军出手快四成"
+                        : ev.Flag == 4 ? "官兵跌进去，一时爬不上来"
+                        : ev.Flag == 5 ? "圣手书生挥毫补字，好汉应召而来" : "";
+                    Banner(ev.Text + "！", sub, ev.Flag == 3 || ev.Flag == 5 ? Pal.Gold : Pal.Willow, 0.9f);
                     break;
                 }
                 case Ev.Ult when ev.Flag == 1 && mine:
@@ -391,17 +472,27 @@ namespace Rescue
                     Banner("方便铲！", "鲁智深送来一把铲子，拖到草地上开荒", Pal.Willow, 0.8f);
                     break;
                 case Ev.Rescue when mine:
-                    Banner("宋江哥哥有惊无险！", "公孙胜作法，把官兵都推回路口", Pal.Red, 1.2f);
+                    Banner("公孙胜仗剑作法！", "狂风卷退官兵，炊饼+12，在场兵丁升阶助阵！", Pal.Red, 1.3f);
                     break;
                 case Ev.Dig when mine && !Save.Tut((int)Tut.Dig):
                     Save.SetTut((int)Tut.Dig);
                     ShowHint("开出来的白地才能摆字。\n招兵偶尔会掉铲子，上方铲子按钮看广告也能领。", 5f);
                     break;
                 case Ev.Merge when mine:
-                    if (_tut == Tut.Merge) CompleteTut();
+                    if (_tut == Tut.Merge) { Analytics.TutorialStep("merge_unit"); CompleteTut(); }
                     break;
                 case Ev.Recruit when mine:
-                    if (_tut == Tut.Recruit) { CompleteTut(); StartTut(Tut.Place); }
+                    if (_tut == Tut.Recruit)
+                    {
+                        Analytics.TutorialStep("recruit");
+                        CompleteTut();
+                        if (_tutorialRun && !Save.Tut((int)Tut.Hero) && HasGoldPairInCamp(M.Player))
+                        {
+                            M.Hold = true;
+                            StartTut(Tut.Gold);
+                        }
+                        else StartTut(Tut.Place);
+                    }
                     break;
                 case Ev.End:
                     OnEnd(ev.A == 0);
@@ -530,39 +621,74 @@ namespace Rescue
             if (!_hintWant && _hintGroup.alpha <= 0f) _hint.gameObject.SetActive(false);
         }
 
+        public void NotifyPlaced() => OnPiecePlaced();
+
+        void OnPiecePlaced()
+        {
+            if (_tut == Tut.Place)
+            {
+                Analytics.TutorialStep("place_unit");
+                CompleteTut();
+                return;
+            }
+            if (_tut == Tut.Gold && _tutorialRun)
+            {
+                if (M.Player.Heroes.Count > 0) return;
+                if (TryFindHeroSecondStep(out _, out _))
+                {
+                    Analytics.TutorialStep("gold_first");
+                    Save.SetTut((int)Tut.Gold);
+                    StartTut(Tut.GoldSecond);
+                }
+            }
+        }
+
         void StartTut(Tut t)
         {
             _tut = t;
             switch (t)
             {
                 case Tut.Recruit:
-                    ShowHint("军师吴用：哥哥被押在路尽头了！\n点下面的「聚义」，花炊饼招好汉。", 999);
+                    ShowHint("军师吴用：哥哥被押在路尽头了！\n点下面的「聚义」，招来好汉与义军。", 999);
                     SetAim(Aim.Recruit);
                     break;
                 case Tut.Place:
-                    ShowHint("把山寨里的字拖到路边的白地上，\n他们会自动打路上的官兵。", 999);
+                    ShowHint("把山寨里的兵丁拖到路边的石板上，\n他们会自动迎击路上的官兵。", _tutorialRun && Save.Tut((int)Tut.Hero) ? 10f : 999f);
                     SetAim(Aim.Place);
                     break;
                 case Tut.Merge:
-                    ShowHint("两个一样、同级的兵拖到一起，\n就能合成升级，更猛！", 7f);
+                    ShowHint("两个同兵种、同级的兵拖到一起，\n就能合成升阶，攻速伤害暴涨！", 8f);
                     SetAim(Aim.Merge);
                     break;
                 case Tut.Gold:
                 {
-                    var names = new List<string>();
-                    foreach (var h in M.Player.Pool) if (!h.Hidden) names.Add(h.Name);
-                    ShowHint("金字是好汉的名字！按顺序摆在一起\n（左→右或上→下）就能召唤：" + string.Join("、", names), 9f);
-                    SetAim(Aim.Gold);
+                    if (_tutorialRun && HasCharAvailable('史'))
+                    {
+                        ShowHint("黄牌是好汉名讳！先把「史」字\n拖到路边的石板上（右边留出空位）。", 24f);
+                        SetAim(Aim.Gold);
+                    }
+                    else
+                    {
+                        var names = new List<string>();
+                        foreach (var h in M.Player.Pool) if (!h.Hidden) names.Add(h.Name);
+                        ShowHint("黄牌是好汉名讳！按顺序紧挨摆好\n（左→右或上→下）就能召唤：" + string.Join("、", names), 9f);
+                        SetAim(Aim.Gold);
+                    }
                     break;
                 }
+                case Tut.GoldSecond:
+                    ShowHint("再把「进」字紧挨着摆到「史」的右边（左→右），\n立刻召唤天微星·九纹龙史进（克制县尉 5 倍伤害）！", 24f);
+                    SetAim(Aim.GoldSecond);
+                    break;
             }
         }
 
         void CompleteTut()
         {
             if (_tut == null) return;
-            Save.SetTut((int)_tut.Value);
-            if (_tut == Tut.Place) M.Hold = false;
+            var done = _tut.Value;
+            Save.SetTut((int)done);
+            if (done == Tut.Place || done == Tut.Gold || done == Tut.GoldSecond) M.Hold = false;
             _tut = null;
             SetAim(Aim.None);
             HideHint();
@@ -586,19 +712,22 @@ namespace Rescue
             if (!Save.Tut((int)Tut.Danger) && p.AtTheGate && !p.RescueUsed)
             {
                 Save.SetTut((int)Tut.Danger);
-                ShowHint("宋江危险！点山寨右边的「救」，\n看段广告把官兵推回路口。", 4f);
+                ShowHint(View.FreeRescue
+                    ? "宋江危急！快点山寨右边的「救」，\n请公孙胜免费仗剑作法退敌！"
+                    : "宋江危急！点山寨右边的「救」，\n请公孙胜作法退敌并助全军升阶！", 5f);
                 SetAim(Aim.Rescue);
                 return;
             }
             if (!Save.Tut((int)Tut.Dismiss) && Save.Tut((int)Tut.Place) && p.EmptyCampSlots == 0 && p.Buns >= p.RecruitCost)
             {
                 Save.SetTut((int)Tut.Dismiss);
-                ShowHint("再点聚义，底下这一排全部换新。\n不想花炊饼，就把字拖到按钮上遣散。", 5f);
+                ShowHint("再点聚义，底下这一排全部换新。\n不想花炊饼，就把棋子拖到按钮上遣散。", 5f);
                 SetAim(Aim.Dismiss);
                 return;
             }
             if (!_tutorialRun) return;
-            if (!Save.Tut((int)Tut.Merge) && HasMergePair(p)) StartTut(Tut.Merge);
+            if (!Save.Tut((int)Tut.Place) && Save.Tut((int)Tut.Hero)) StartTut(Tut.Place);
+            else if (!Save.Tut((int)Tut.Merge) && HasMergePair(p)) StartTut(Tut.Merge);
             else if (!Save.Tut((int)Tut.Gold) && HasGoldInCamp(p)) StartTut(Tut.Gold);
         }
 
@@ -616,6 +745,83 @@ namespace Rescue
         static bool HasGoldInCamp(Side p)
         {
             foreach (var c in p.Camp) if (c != null && c.Type == PieceType.HeroChar) return true;
+            return false;
+        }
+
+        static bool HasGoldPairInCamp(Side p)
+        {
+            bool shi = false, jin = false;
+            foreach (var c in p.Camp)
+            {
+                if (c == null || c.Type != PieceType.HeroChar) continue;
+                if (c.Char == '史') shi = true;
+                if (c.Char == '进') jin = true;
+            }
+            return shi && jin;
+        }
+
+        bool HasCharAvailable(char ch) => TryFindCharSource(ch, out _);
+
+        bool TryFindCharSource(char ch, out Vector2 from)
+        {
+            var p = M.Player;
+            for (int i = 0; i < p.Camp.Length; i++)
+                if (p.Camp[i] != null && p.Camp[i].Type == PieceType.HeroChar && p.Camp[i].Char == ch)
+                {
+                    from = BattleView.CampWorld(i);
+                    return true;
+                }
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var q = p.Board.Pieces[c, r];
+                    if (q != null && q.Type == PieceType.HeroChar && q.Char == ch && p.HeroAt(c, r) == null)
+                    {
+                        from = BattleView.CellWorld(0, c, r);
+                        return true;
+                    }
+                }
+            from = default;
+            return false;
+        }
+
+        bool TryFindHeroSecondStep(out Vector2 from, out Vector2 to)
+        {
+            from = to = default;
+            var b = M.Player.Board;
+            // 优先找场上已放下的「史」，引导把「进」拖到它右边或下边紧邻格
+            for (int c = 0; c < Board.Cols; c++)
+                for (int r = 0; r < Board.Rows; r++)
+                {
+                    var q = b.Pieces[c, r];
+                    if (q == null || q.Type != PieceType.HeroChar) continue;
+                    if (q.Char == '史' && TryFindCharSource('进', out from))
+                    {
+                        if (b.Placeable(c + 1, r) && (b.Pieces[c + 1, r] == null || b.Pieces[c + 1, r].Type != PieceType.HeroChar))
+                        {
+                            to = BattleView.CellWorld(0, c + 1, r);
+                            return true;
+                        }
+                        if (b.Placeable(c, r - 1) && (b.Pieces[c, r - 1] == null || b.Pieces[c, r - 1].Type != PieceType.HeroChar))
+                        {
+                            to = BattleView.CellWorld(0, c, r - 1);
+                            return true;
+                        }
+                    }
+                    if (q.Char == '进' && TryFindCharSource('史', out from))
+                    {
+                        if (b.Placeable(c - 1, r) && (b.Pieces[c - 1, r] == null || b.Pieces[c - 1, r].Type != PieceType.HeroChar))
+                        {
+                            to = BattleView.CellWorld(0, c - 1, r);
+                            return true;
+                        }
+                        if (b.Placeable(c, r + 1) && (b.Pieces[c, r + 1] == null || b.Pieces[c, r + 1].Type != PieceType.HeroChar))
+                        {
+                            to = BattleView.CellWorld(0, c, r + 1);
+                            return true;
+                        }
+                    }
+                }
             return false;
         }
 
@@ -649,11 +855,17 @@ namespace Rescue
                 case Aim.Rescue: from = View.RescueWorld; break;
                 case Aim.Place:
                     drag = true;
-                    if (!CampAt(null, true, out from) || !View.TryFindEmptyCell(from, out to)) { HideHand(); return; }
+                    if (!CampAt(PieceType.Unit, true, out from) && !CampAt(null, true, out from)) { HideHand(); return; }
+                    if (!View.TryFindEmptyCell(from, out to)) { HideHand(); return; }
                     break;
                 case Aim.Gold:
                     drag = true;
+                    if (_tutorialRun && TryFindCharSource('史', out from) && View.TryFindEmptyPair(out to, out _)) break;
                     if (!CampAt(PieceType.HeroChar, false, out from) || !View.TryFindEmptyCell(from, out to)) { HideHand(); return; }
+                    break;
+                case Aim.GoldSecond:
+                    drag = true;
+                    if (!TryFindHeroSecondStep(out from, out to)) { HideHand(); return; }
                     break;
                 case Aim.Merge:
                     drag = true;
@@ -857,7 +1069,7 @@ namespace Rescue
             var r = new BattleResult
             {
                 Chapter = M.Chapter.Index, Round = M.Chapter.Round, Pool = M.Chapter.Pool, Win = win, Quit = quit, Wave = M.Wave, Kills = M.Player.Kills, Rains = M.Player.Rains,
-                GmDrop = _gmDrop, Daily = M.Chapter.IsDaily,
+                GmDrop = _gmDrop, Daily = M.Chapter.IsDaily, BioIndex = M.Chapter.BioIndex, CampaignIndex = M.Chapter.CampaignIndex,
             };
             foreach (var id in M.Player.FormedEver)
             {

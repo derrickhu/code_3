@@ -26,7 +26,12 @@ namespace Rescue
         public string lottoDay = "";
         public int lottoUsed;
         public bool gang, flag, marsh, stele, xuming, far, stove, wine;
-        public int menghan, tianshu, baozi, shovels, fu, trap;
+        public int menghan, tianshu, baozi, shovels, fu, trap, pen;
+        /// <summary>山寨传家底牌：跨零点保留不清空的那件核心被动（-1 表示自动挑品质最高的一件）。</summary>
+        public int heirloom = -1;
+        /// <summary>跨日结算待弹出的护航提示（旧货折银数与保留的底牌名），弹过即清。</summary>
+        public int carryCoinsNotice;
+        public string carryItemNotice = "";
         /// <summary>今天带上场的主动道具。最多两件。没选过时，有的就带，超过两件只带前两件。</summary>
         public List<int> activeOn = new List<int>();
         public bool activeSet;
@@ -39,6 +44,8 @@ namespace Rescue
         public List<int> adCount = new List<int>();
         /// <summary>好汉谱里已经领过入伙赏钱的好汉。</summary>
         public List<int> codexPaid = new List<int>();
+        /// <summary>水浒小课堂已经答对领过赏钱的回目序号（0..56）。</summary>
+        public List<int> loreQuizzed = new List<int>();
         /// <summary>服务器按 IP 定的省份，只用来显示。空串表示还没联网拿到，「江湖」表示查不到省（海外等）。</summary>
         public string region = "";
         /// <summary>微信昵称。空着时排行榜用「好汉」加四位数。</summary>
@@ -76,6 +83,10 @@ namespace Rescue
         public int endlessRound = 1, endlessBest;
         /// <summary>一百单八将聚齐后排座次的仪式只放一次。</summary>
         public bool seated;
+        /// <summary>好汉列传（0..35）已通关的序号。</summary>
+        public List<int> bioCleared = new List<int>();
+        /// <summary>水泊名役（0..11）已通关的序号。</summary>
+        public List<int> campaignCleared = new List<int>();
 
         public Loadout PeekLoadout()
         {
@@ -84,7 +95,7 @@ namespace Rescue
             {
                 Gang = gang && On(0), Flag = flag && On(1), Marsh = marsh && On(2), Stele = stele && On(3),
                 MengHan = Save.FieldCount(4), TianShu = Save.FieldCount(5), Baozi = Save.FieldCount(6),
-                Xuming = xuming && On(7), Shovels = On(8) ? shovels : 0, Fu = Save.FieldCount(9), Trap = Save.FieldCount(11), Far = far && On(10),
+                Xuming = xuming && On(7), Shovels = On(8) ? shovels : 0, Fu = Save.FieldCount(9), Trap = Save.FieldCount(11), Pen = Save.FieldCount(14), Far = far && On(10),
                 Stove = stove && On(12), Wine = wine && On(13),
                 Rack = new List<int>(),
                 RackLv = new List<int>(),
@@ -101,14 +112,15 @@ namespace Rescue
         public void ClearItems()
         {
             gang = flag = marsh = stele = xuming = far = stove = wine = false;
-            menghan = tianshu = baozi = shovels = fu = trap = 0;
+            menghan = tianshu = baozi = shovels = fu = trap = pen = 0;
+            heirloom = -1;
             if (activeOn != null) activeOn.Clear();
             activeSet = true;
             if (passiveOn != null) passiveOn.Clear();
             passiveSet = true;
         }
 
-        public bool HasAnyItem => gang || flag || marsh || stele || xuming || far || stove || wine || menghan > 0 || tianshu > 0 || baozi > 0 || shovels > 0 || fu > 0 || trap > 0;
+        public bool HasAnyItem => gang || flag || marsh || stele || xuming || far || stove || wine || menghan > 0 || tianshu > 0 || baozi > 0 || shovels > 0 || fu > 0 || trap > 0 || pen > 0;
     }
 
     public static class Save
@@ -116,7 +128,7 @@ namespace Rescue
         const string Key = "rescue_save_v1";
         public static SaveData D { get; private set; }
 
-        public const int Version = 5;
+        public const int Version = 6;
 
         public static string RankName => RankRules.Name(D.tier);
         public static int Major => RankRules.Major(D.tier);
@@ -183,6 +195,9 @@ namespace Rescue
             D.armed.Clear();
             D.armWhat.Clear();
             if (D.team == null) D.team = new List<int>();
+            if (D.loreQuizzed == null) D.loreQuizzed = new List<int>();
+            if (D.bioCleared == null) D.bioCleared = new List<int>();
+            if (D.campaignCleared == null) D.campaignCleared = new List<int>();
             if (D.ver < Version)
             {
                 if (D.ver < 2)
@@ -194,6 +209,21 @@ namespace Rescue
                 }
                 // 4 起被动一场只带四件：老档没选过，按稀有度挑最好的四件带上，其余留在背包。
                 if (D.ver < 4) D.passiveSet = false;
+                // 6 起主线从 57 回精补扩充至 72 回：把老档进度与已答讲古卷无损映射到新 72 回序号。
+                if (D.ver > 0 && D.ver < 6)
+                {
+                    D.unlocked = ChapterDef.MigrateUnlocked57To72(D.unlocked);
+                    var mapped = new List<int>();
+                    foreach (var oldIdx in D.loreQuizzed)
+                    {
+                        if (oldIdx >= 0 && oldIdx < ChapterDef.Legacy57To72.Length)
+                        {
+                            int nextIdx = ChapterDef.Legacy57To72[oldIdx];
+                            if (!mapped.Contains(nextIdx)) mapped.Add(nextIdx);
+                        }
+                    }
+                    D.loreQuizzed = mapped;
+                }
                 D.ver = Version;
             }
             if (D.passiveOn == null) D.passiveOn = new List<int>();
@@ -201,6 +231,7 @@ namespace Rescue
             if (D.adCount == null) D.adCount = new List<int>();
             if (D.codexPaid == null) D.codexPaid = new List<int>();
             if (D.region == null) D.region = "";
+            if (D.carryItemNotice == null) D.carryItemNotice = "";
             D.tier = RankRules.Clamp(D.tier);
             D.unlocked = Mathf.Clamp(D.unlocked, 0, ChapterDef.StoryCount);
             D.team.RemoveAll(id => !Joined(id));
@@ -242,7 +273,7 @@ namespace Rescue
         /// <summary>按北京时间算日子。拿到服务器时间后用服务器的，改手机时钟刷不了每日次数。</summary>
         public static string Today => LiveConfig.Now.ToOffset(TimeSpan.FromHours(8)).ToString("yyyyMMdd");
 
-        /// <summary>过零点才清背包。打完一局只换货架上的新货，已经买下的留到当天结束。</summary>
+        /// <summary>过零点护航结算：保留 1 件压寨传家被动 + 1 件护航主动，其余昨日旧货按每件 15 铜钱折旧贴补（上限 60），彻底告别次日白板坐牢。</summary>
         public static void RefreshShopDay()
         {
             if (D.lottoDay != Today)
@@ -252,8 +283,9 @@ namespace Rescue
             }
             bool newDay = D.shopDay != Today;
             bool newMatch = D.shopBattle != D.battles || D.shopOffer.Count != OfferCount;
-            if (newDay && !string.IsNullOrEmpty(D.shopDay)) D.ClearItems();
+            if (newDay && !string.IsNullOrEmpty(D.shopDay)) RolloverItemsForNewDay();
             else RestoreBoughtItems();
+            EnsureHeirloom();
             if (!newDay && !newMatch) return;
             D.shopDay = Today;
             D.shopBattle = D.battles;
@@ -278,6 +310,97 @@ namespace Rescue
             Pick(false, OfferCount - 2);
             if (D.shopOffer.Count == before) Pick(true, OfferCount - D.shopOffer.Count);
             Write();
+        }
+
+        /// <summary>跨零点时执行一次（GM 也可手动模拟测试）：保留压寨底牌与一件护航主动，多余旧货折算启动铜钱。</summary>
+        public static void RolloverItemsForNewDay()
+        {
+            EnsureHeirloom();
+            int keptPassive = PassiveOwned(D.heirloom) ? D.heirloom : -1;
+            int keptActive = -1;
+            int bestActRank = -1, bestActPrice = -1;
+            int totalPieces = 0;
+
+            foreach (var it in ShopItem.All)
+            {
+                int cnt = it.Count();
+                if (cnt <= 0) continue;
+                if (!it.Active)
+                {
+                    totalPieces += 1;
+                }
+                else
+                {
+                    totalPieces += cnt;
+                    int rr = RarityRank(it);
+                    if (rr > bestActRank || (rr == bestActRank && it.Price > bestActPrice))
+                    {
+                        bestActRank = rr;
+                        bestActPrice = it.Price;
+                        keptActive = it.Id;
+                    }
+                }
+            }
+
+            int keptCount = (keptPassive >= 0 ? 1 : 0) + (keptActive >= 0 ? 1 : 0);
+            int expiredPieces = Mathf.Max(0, totalPieces - keptCount);
+            int refund = Mathf.Min(60, expiredPieces * 15);
+
+            D.ClearItems();
+            var keptNames = new List<string>();
+            if (keptPassive >= 0 && keptPassive < ShopItem.All.Length)
+            {
+                ShopItem.All[keptPassive].Give();
+                D.heirloom = keptPassive;
+                keptNames.Add(ShopItem.All[keptPassive].Name);
+            }
+            if (keptActive >= 0 && keptActive < ShopItem.All.Length)
+            {
+                ShopItem.All[keptActive].Give();
+                keptNames.Add(ShopItem.All[keptActive].Name);
+            }
+            if (refund > 0) D.coins += refund;
+            D.carryCoinsNotice = refund;
+            D.carryItemNotice = string.Join("、", keptNames);
+            PrepareActiveField();
+            PreparePassiveField();
+        }
+
+        public static void EnsureHeirloom()
+        {
+            if (PassiveOwned(D.heirloom)) return;
+            D.heirloom = -1;
+            int bestRank = -1, bestPrice = -1;
+            foreach (var it in ShopItem.All)
+            {
+                if (it.Active || it.Count() <= 0) continue;
+                int rr = RarityRank(it);
+                if (rr > bestRank || (rr == bestRank && it.Price > bestPrice))
+                {
+                    bestRank = rr;
+                    bestPrice = it.Price;
+                    D.heirloom = it.Id;
+                }
+            }
+        }
+
+        public static bool SetHeirloom(int id)
+        {
+            if (!PassiveOwned(id)) return false;
+            D.heirloom = id;
+            Write();
+            return true;
+        }
+
+        public static bool ConsumeCarryNotice(out string keptItems, out int refundCoins)
+        {
+            keptItems = D.carryItemNotice ?? "";
+            refundCoins = D.carryCoinsNotice;
+            if (string.IsNullOrEmpty(keptItems) && refundCoins <= 0) return false;
+            D.carryItemNotice = "";
+            D.carryCoinsNotice = 0;
+            Write();
+            return true;
         }
 
         /// <summary>旧版本一进对局就清背包，货架却还写着已售完。同一天再进店时把买过、看过广告的货补回背包。</summary>
@@ -440,6 +563,7 @@ namespace Rescue
                 case 6: return D.baozi;
                 case 9: return D.fu;
                 case 11: return D.trap;
+                case 14: return D.pen;
                 default: return 0;
             }
         }
@@ -539,7 +663,7 @@ namespace Rescue
             return D.passiveOn.Contains(id);
         }
 
-        /// <summary>买到或退掉被动之后调用。上场没满就自动带上。</summary>
+        /// <summary>买到或退掉被动之后调用。上场没满就自动带上，顺带维护压寨传家格。</summary>
         public static void NotePassive(int id)
         {
             if (!D.passiveSet) PreparePassiveField();
@@ -547,9 +671,11 @@ namespace Rescue
             if (!PassiveOwned(id))
             {
                 D.passiveOn.Remove(id);
+                EnsureHeirloom();
                 return;
             }
             if (!D.passiveOn.Contains(id) && D.passiveOn.Count < MaxPassiveField) D.passiveOn.Add(id);
+            EnsureHeirloom();
         }
 
         public static bool TogglePassiveField(int id, out string err)
@@ -657,6 +783,121 @@ namespace Rescue
             return total;
         }
 
+        // ───────────── 水浒小课堂考校赏钱 ─────────────
+
+        public static bool LoreAnswered(int chapter) => D.loreQuizzed != null && D.loreQuizzed.Contains(chapter);
+
+        public static int LoreAnsweredCount => D.loreQuizzed == null ? 0 : D.loreQuizzed.Count;
+
+        public static int LoreQuizPending
+        {
+            get
+            {
+                int done = Mathf.Min(D.unlocked, ChapterDef.StoryCount);
+                int n = 0;
+                for (int i = 0; i < done; i++)
+                    if (!LoreAnswered(i)) n++;
+                return n;
+            }
+        }
+
+        public static int FirstPendingLoreChapter()
+        {
+            int done = Mathf.Min(D.unlocked, ChapterDef.StoryCount);
+            for (int i = 0; i < done; i++)
+                if (!LoreAnswered(i)) return i;
+            return Mathf.Clamp(done - 1, 0, ChapterDef.StoryCount - 1);
+        }
+
+        public static int ClaimLoreQuiz(int chapter)
+        {
+            if (chapter < 0 || chapter >= ChapterDef.StoryCount || LoreAnswered(chapter)) return 0;
+            D.loreQuizzed.Add(chapter);
+            D.coins += ShuihuLore.QuizRewardCoins;
+            Write();
+            return ShuihuLore.QuizRewardCoins;
+        }
+
+        // ───────────── 好汉列传（36 折）与水泊名役（12 幕） ─────────────
+
+        public const int BioFirstRewardCoins = 45;
+        public const int CampaignFirstRewardCoins = 80;
+
+        public static bool BioCleared(int bioIdx) => D.bioCleared != null && D.bioCleared.Contains(bioIdx);
+        public static int BioClearedCount => D.bioCleared == null ? 0 : D.bioCleared.Count;
+
+        /// <summary>主角入伙后解锁其个人列传；前一折通关再开下一折。</summary>
+        public static bool BioOpen(int bioIdx)
+        {
+            if (bioIdx < 0 || bioIdx >= ChapterDef.Bios.Length) return false;
+            var ep = ChapterDef.BioHeroes[bioIdx / 3];
+            if (!Joined((int)ep.Hero)) return false;
+            int actInHero = bioIdx % 3;
+            return actInHero == 0 || BioCleared(bioIdx - 1);
+        }
+
+        public static bool WinBio(int bioIdx)
+        {
+            if (bioIdx < 0 || bioIdx >= ChapterDef.Bios.Length) return false;
+            if (D.bioCleared == null) D.bioCleared = new List<int>();
+            if (D.bioCleared.Contains(bioIdx)) return false;
+            D.bioCleared.Add(bioIdx);
+            D.coins += BioFirstRewardCoins;
+            Write();
+            return true;
+        }
+
+        public static bool CampaignCleared(int camIdx) => D.campaignCleared != null && D.campaignCleared.Contains(camIdx);
+        public static int CampaignClearedCount => D.campaignCleared == null ? 0 : D.campaignCleared.Count;
+
+        public static bool CampaignOpen(int camIdx)
+        {
+            if (camIdx < 0 || camIdx >= ChapterDef.Campaigns.Length) return false;
+            return D.unlocked > ChapterDef.CampaignMetas[camIdx].UnlockStoryIndex;
+        }
+
+        public static bool WinCampaign(int camIdx)
+        {
+            if (camIdx < 0 || camIdx >= ChapterDef.Campaigns.Length) return false;
+            if (D.campaignCleared == null) D.campaignCleared = new List<int>();
+            if (D.campaignCleared.Contains(camIdx)) return false;
+            D.campaignCleared.Add(camIdx);
+            D.coins += CampaignFirstRewardCoins;
+            Write();
+            return true;
+        }
+
+        /// <summary>某好汉成名兵器：不把玩家还没入伙的好汉通过列传名役偷渡进好汉谱，若未入伙则改选已入伙中最高品级的一把。</summary>
+        public static WeaponFind GrantCampaignWeapon(HeroId preferred)
+        {
+            HeroId pick = preferred;
+            if (!Joined((int)pick) || string.IsNullOrEmpty(HeroDef.Get(pick).Weapon))
+            {
+                int bestG = -1;
+                foreach (var id in D.joined)
+                {
+                    var cand = HeroDef.Get((HeroId)id);
+                    if (!string.IsNullOrEmpty(cand.Weapon) && cand.WGrade > bestG)
+                    {
+                        bestG = cand.WGrade;
+                        pick = cand.Id;
+                    }
+                }
+            }
+            var d = HeroDef.Get(pick);
+            if (!Joined((int)pick) || string.IsNullOrEmpty(d.Weapon)) return default;
+            if (D.weapons.Count >= MaxWeapons)
+            {
+                D.coins += RecycleCoins;
+                return new WeaponFind("兵器囊已满，换成铜钱 " + RecycleCoins, pick, false);
+            }
+            D.weapons.Add((int)pick);
+            if (!OnRack((int)pick) && RackCount < D.rackSlots) D.rack.Add((int)pick);
+            return new WeaponFind(d.Weapon, pick, true);
+        }
+
+        public static int GrandClearedCount => Mathf.Min(D.unlocked, ChapterDef.StoryCount) + BioClearedCount + CampaignClearedCount;
+
         // ───────────── 每日一战 ─────────────
 
         /// <summary>打过第五回才开放。</summary>
@@ -665,6 +906,8 @@ namespace Rescue
 
         public static bool DailyOpen => D.unlocked >= DailyUnlock;
         public static bool DailyWonToday => D.dailyDay == Today && D.dailyWon;
+        /// <summary>每天首局挑战每日一战免收 5 点体力，体力耗尽也能免费爽打一把。</summary>
+        public static bool DailyFreeToday => DailyOpen && (D.dailyDay != Today || D.dailyTries <= 0);
 
         public static void NoteDailyTry()
         {

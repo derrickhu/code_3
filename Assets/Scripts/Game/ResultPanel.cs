@@ -21,6 +21,9 @@ namespace Rescue
         public static void Show(BattleResult r, System.Action onClose, HeroId? preview = null)
         {
             bool dailyFirst = false;
+            bool bioFirst = false;
+            bool camFirst = false;
+            bool specialMode = r.Daily || r.BioIndex >= 0 || r.CampaignIndex >= 0;
             int coins;
             if (r.Daily)
             {
@@ -29,13 +32,24 @@ namespace Rescue
                 if (dailyFirst) r.SureDrop = true;
                 if (!r.Quit) Analytics.DailyBattle(r.Win, dailyFirst);
             }
+            else if (r.BioIndex >= 0)
+            {
+                coins = r.Quit ? 0 : (r.Win ? (Save.BioCleared(r.BioIndex) ? 18 : 0) : Economy.LoseCoins(r.Wave));
+                if (r.Win) bioFirst = Save.WinBio(r.BioIndex);
+            }
+            else if (r.CampaignIndex >= 0)
+            {
+                coins = r.Quit ? 0 : (r.Win ? (Save.CampaignCleared(r.CampaignIndex) ? 24 : 0) : Economy.LoseCoins(r.Wave));
+                if (r.Win) camFirst = Save.WinCampaign(r.CampaignIndex);
+            }
             else coins = r.Quit ? 0 : (r.Win ? WinCoins(r.Chapter, r.Round) : Economy.LoseCoins(r.Wave));
-            var rank = r.Quit || r.Daily
+            var rank = r.Quit || specialMode
                 ? new Save.RankDelta { OldTier = Save.D.tier, OldStars = Save.D.stars }
                 : Save.ApplyResult(r.Win);
-            if (!r.Quit && !r.Daily) Analytics.RankChange(rank.OldTier, rank.OldStars, Save.D.tier, Save.D.stars, r.Win);
+            if (!r.Quit && !specialMode) Analytics.RankChange(rank.OldTier, rank.OldStars, Save.D.tier, Save.D.stars, r.Win);
+            bool firstStoryClear = r.Win && !specialMode && r.Round == 0 && !Save.LoreAnswered(r.Chapter);
             var joined = new List<HeroId>();
-            if (r.Daily) joined.Clear();
+            if (specialMode) joined.Clear();
             else if (r.Round > 0)
             {
                 if (r.Win)
@@ -51,7 +65,11 @@ namespace Rescue
             foreach (var id in r.Formed) if (!Save.D.heroes.Contains((int)id)) Save.D.heroes.Add((int)id);
             Save.D.coins += coins;
             if (dailyFirst) coins += Save.DailyCoinsReward;
-            var loot = Save.RollWeapon(r);
+            if (bioFirst) coins += Save.BioFirstRewardCoins;
+            if (camFirst) coins += Save.CampaignFirstRewardCoins;
+            var loot = camFirst
+                ? Save.GrantCampaignWeapon(ChapterDef.CampaignMetas[r.CampaignIndex].RewardWeaponHero)
+                : Save.RollWeapon(r);
             if (!string.IsNullOrEmpty(loot.Text)) Analytics.WeaponDrop(HeroDef.Get(loot.Hero).Weapon, HeroDef.Get(loot.Hero).WGrade, !loot.IsWeapon);
             bool showWeapon = loot.IsWeapon;
             HeroId dropped = loot.Hero;
@@ -73,7 +91,7 @@ namespace Rescue
                 Object.Destroy(layer.gameObject);
                 void Next()
                 {
-                    if (joined.Count > 0) JoinPanel.Show(joined, r.Chapter, seatNow, onClose);
+                    if (joined.Count > 0 || firstStoryClear) JoinPanel.Show(joined, r.Chapter, seatNow, onClose);
                     else onClose?.Invoke();
                 }
                 if (showWeapon) ShowLoot(HeroDef.Get(dropped), Next);
@@ -89,6 +107,13 @@ namespace Rescue
             var tags = new List<(string, Color)>();
             if (dailyFirst) tags.Add(("每日一战 首胜", Pal.Hex("C0392B")));
             else if (r.Daily) tags.Add(("每日一战 不动座次", Pal.Hex("6E5D45")));
+            if (bioFirst)
+            {
+                int baseIdx = (r.BioIndex / 3) * 3;
+                bool fullBio = Save.BioCleared(baseIdx) && Save.BioCleared(baseIdx + 1) && Save.BioCleared(baseIdx + 2);
+                tags.Add((fullBio ? "列传三折圆满 · 判词点亮" : "好汉列传 首通", Pal.Hex("2E6F40")));
+            }
+            if (camFirst) tags.Add(("水泊名役 首通夺兵", Pal.Hex("B5651D")));
             if (showWeapon) tags.Add(("缴获 " + HeroDef.Get(dropped).Weapon, Ui.GradeColor(HeroDef.Get(dropped).WGrade)));
             else if (!string.IsNullOrEmpty(loot.Text)) tags.Add((loot.Text, Pal.Hex("8A54C0")));
             if (joined.Count > 0) tags.Add(($"{joined.Count} 位好汉入伙", Pal.Hex("C0392B")));
@@ -155,10 +180,12 @@ namespace Rescue
                 y -= 160;
             }
             Ui.CartoonBtn(c, r.Win ? "领取" : (coins > 0 ? "领取" : "关闭"), new Vector2(380, 112), new Vector2(0, y), Ui.BtnDark, Close, 52);
-            string next = showWeapon && joined.Count > 0 ? "领完铜钱，再看缴获的兵器，好汉来拜山"
+            string next = showWeapon && joined.Count > 0 ? "领完铜钱，鉴赏兵器、好汉拜山，再听水浒小课堂"
                 : showWeapon ? "领完铜钱，再看缴获的兵器"
-                : joined.Count > 0 ? "领完铜钱，新入伙的好汉来拜山"
-                : "领完铜钱，孙二娘的摊子就摆开";
+                : joined.Count > 0 ? "领完铜钱，好汉拜山入伙，再进水浒小课堂"
+                : firstStoryClear ? "领完铜钱，翻开本回水浒小课堂讲古"
+                : Save.D.unlocked >= 3 ? "领完铜钱，孙二娘的摊子就摆开"
+                : "领完铜钱，回山寨准备下一战";
             Ui.Label(c, next, 28, Pal.InkSoft.A(0.8f), new Vector2(0, y - 100), new Vector2(800, 44));
 
             Tween.Pop(banner, 0.4f, 0.15f);
